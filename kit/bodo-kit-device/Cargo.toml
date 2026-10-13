@@ -1,0 +1,30 @@
+[package]
+name = "bodo-kit-device"
+description = "Audio devices for Bodo Kit: selection, streams, latency, dropout detection and a virtual device."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+# ASIO on Windows. Off by default: the ASIO SDK is GPL-3.0 or proprietary (project.md section 3.1).
+asio = ["cpal/asio"]
+# Serialize device settings with serde.
+serde = ["dep:serde", "bodo-kit-core/serde"]
+
+[dependencies]
+audio_thread_priority.workspace = true
+bodo-kit-core.workspace = true
+bodo-kit-dsp.workspace = true
+cpal.workspace = true
+serde = { workspace = true, optional = true }
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_no_alloc = { workspace = true, features = ["warn_debug"] }
+
+[lints]
+workspace = true
