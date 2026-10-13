@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "end": "5:1:0",
+    "start": "1:1:0"
+  },
+  "result": {
+    "loop": {
+      "end": "5:1:0",
+      "start": "1:1:0"
+    }
+  },
+  "undo": null
+}

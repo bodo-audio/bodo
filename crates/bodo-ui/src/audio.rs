@@ -271,8 +271,7 @@ impl Audio {
                 }
                 Event::Metronome(on) => running.engine.set_metronome(on),
                 Event::CountIn(on) => running.engine.set_count_in(on),
-                // The song loop region arrives with its engine feature.
-                Event::Loop(_) => {}
+                Event::Loop(region) => running.engine.set_loop(region),
             }
         }
         if reopen || session.project().settings.sample_rate != running.stream.rate() {

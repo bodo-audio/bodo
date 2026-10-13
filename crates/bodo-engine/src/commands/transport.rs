@@ -48,6 +48,36 @@ fn count_in(ctx: &mut Ctx<'_>, p: Switch) -> Value {
     json!({ "countIn": on })
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetLoop {
+    /// Where the loop starts.
+    start: Option<Position>,
+    /// Where it ends; playing wraps back to the start exactly here.
+    end: Option<Position>,
+    /// True to stop looping.
+    #[serde(default)]
+    off: bool,
+}
+
+fn set_loop(ctx: &mut Ctx<'_>, p: SetLoop) -> Result<Value, CommandError> {
+    let region = match (p.off, &p.start, &p.end) {
+        (true, None, None) => None,
+        (false, Some(start), Some(end)) => {
+            let (start, end) = (start.resolve(&ctx.project)?.max(Tick::ZERO), end.resolve(&ctx.project)?);
+            if end <= start {
+                return Err(CommandError::invalid("the loop has to end after it starts"));
+            }
+            Some((start, end))
+        }
+        _ => return Err(CommandError::invalid("give start and end, or off: true")),
+    };
+    ctx.transport.loop_region = region;
+    ctx.emit(Event::Loop(region));
+    let shown = region.map(|(start, end)| json!({ "start": format_position(&ctx.project, start), "end": format_position(&ctx.project, end) }));
+    Ok(json!({ "loop": shown }))
+}
+
 fn state(ctx: &Ctx<'_>) -> Value {
     json!({ "playing": ctx.transport.playing, "mode": ctx.transport.mode, "position": format_position(&ctx.project, ctx.transport.position) })
 }
@@ -108,4 +138,6 @@ pub(super) fn register(r: &mut Registry) {
         Ok(count_in(ctx, p))
     })
     .example(json!({}));
+    r.edit("transport.set_loop", "Set loop region", "Loops Song mode over a region of the playlist, or stops looping.", Effects::NONE, set_loop)
+        .example(json!({ "start": "1:1:0", "end": "5:1:0" }));
 }

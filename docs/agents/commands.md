@@ -2351,6 +2351,27 @@ Example:
 {}
 ```
 
+### `transport.set_loop`
+
+Loops Song mode over a region of the playlist, or stops looping.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `end` | Position, optional | Where it ends; playing wraps back to the start exactly here. |
+| `off` | boolean, optional | True to stop looping. |
+| `start` | Position, optional | Where the loop starts. |
+
+Example:
+
+```json
+{
+  "end": "5:1:0",
+  "start": "1:1:0"
+}
+```
+
 ### `transport.set_mode`
 
 Chooses Pattern mode (loop the current pattern) or Song mode (play the playlist).

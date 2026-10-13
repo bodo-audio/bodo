@@ -1,10 +1,10 @@
-//! What the automation commands do to the project, beyond their examples.
+//! What the automation commands and the loop region do to the project and the transport, beyond their examples.
 
 #![allow(clippy::unwrap_used, clippy::panic)]
 
 mod common;
 
-use bodo_engine::{Call, ErrorCode, Session};
+use bodo_engine::{Call, ErrorCode, Event, Session};
 use bodo_kit_core::Tick;
 use bodo_model::Project;
 use bodo_model::automation::{AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget};
@@ -174,6 +174,25 @@ fn pattern_lanes_replace_and_remove_by_target() {
         error(&mut session, "automation.remove_lane", json!({ "pattern": "Verse", "target": { "channel": "HiHat", "param": "pan" } })),
         ErrorCode::NotFound
     );
+}
+
+#[test]
+fn the_loop_region_goes_to_the_transport_and_the_audio() {
+    let mut session = fixture();
+    session.take_events();
+    let result = run(&mut session, "transport.set_loop", json!({ "start": "2:1:0", "end": "4:1:0" }));
+    assert_eq!(result, json!({ "loop": { "start": "2:1:0", "end": "4:1:0" } }));
+    let region = Some((Tick(3840), Tick(3 * 3840)));
+    assert_eq!(session.transport().loop_region, region);
+    assert_eq!(session.take_events(), [Event::Loop(region)]);
+
+    assert_eq!(error(&mut session, "transport.set_loop", json!({ "start": "4:1:0", "end": "2:1:0" })), ErrorCode::InvalidParams);
+    assert_eq!(error(&mut session, "transport.set_loop", json!({ "start": "1:1:0" })), ErrorCode::InvalidParams);
+    assert_eq!(session.transport().loop_region, region);
+
+    run(&mut session, "transport.set_loop", json!({ "off": true }));
+    assert_eq!(session.transport().loop_region, None);
+    assert_eq!(session.take_events(), [Event::Loop(None)]);
 }
 
 /// One random automation edit.
