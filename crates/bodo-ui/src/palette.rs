@@ -6,7 +6,8 @@ use egui::{Align2, Key, RichText, vec2};
 use serde_json::{Map, Value};
 
 use crate::BodoApp;
-use crate::theme::{Tokens, size};
+use crate::i18n::t;
+use crate::theme::{Tokens, rem, size};
 
 /// The palette's search, highlighted row and open form.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -98,80 +99,83 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     let mut run: Option<(String, Value)> = None;
     let mut close = ctx.input(|i| i.key_pressed(Key::Escape));
     let mut back = false;
-    egui::Area::new(egui::Id::new("bodo-palette")).order(egui::Order::Foreground).anchor(Align2::CENTER_TOP, vec2(0.0, 90.0)).show(ctx, |ui| {
-        egui::Frame::popup(ui.style()).fill(tk.popup).inner_margin(10.0).show(ui, |ui| {
-            ui.set_width(520.0);
-            if let Some((id, mut fields)) = state.form.clone() {
-                ui.label(RichText::new(id.as_str()).monospace().color(tk.accent));
-                for (name, text, required) in fields.iter_mut() {
+    egui::Area::new(egui::Id::new("bodo-palette")).order(egui::Order::Foreground).anchor(Align2::CENTER_TOP, vec2(rem(0.0), rem(7.2))).show(
+        ctx,
+        |ui| {
+            egui::Frame::popup(ui.style()).fill(tk.popup).inner_margin(10.0).show(ui, |ui| {
+                ui.set_width(520.0);
+                if let Some((id, mut fields)) = state.form.clone() {
+                    ui.label(RichText::new(id.as_str()).monospace().color(tk.accent));
+                    for (name, text, required) in fields.iter_mut() {
+                        ui.horizontal(|ui| {
+                            ui.add_sized(vec2(rem(8.8), rem(1.6)), egui::Label::new(if *required { format!("{name} *") } else { name.clone() }));
+                            ui.add(egui::TextEdit::singleline(text).desired_width(rem(28.8)));
+                        });
+                    }
                     ui.horizontal(|ui| {
-                        ui.add_sized(vec2(110.0, 20.0), egui::Label::new(if *required { format!("{name} *") } else { name.clone() }));
-                        ui.add(egui::TextEdit::singleline(text).desired_width(360.0));
+                        if ui.button(t("Run")).clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
+                            let mut params = Map::new();
+                            for (name, text, _) in fields.iter().filter(|(_, t, _)| !t.trim().is_empty()) {
+                                let value = serde_json::from_str::<Value>(text.trim()).unwrap_or_else(|_| Value::String(text.trim().to_owned()));
+                                params.insert(name.clone(), value);
+                            }
+                            run = Some((id.clone(), Value::Object(params)));
+                        }
+                        if ui.button(t("Back")).clicked() {
+                            back = true;
+                        }
                     });
+                    state.form = if back { None } else { Some((id, fields)) };
+                    return;
                 }
-                ui.horizontal(|ui| {
-                    if ui.button("Run").clicked() || ui.input(|i| i.key_pressed(Key::Enter)) {
-                        let mut params = Map::new();
-                        for (name, text, _) in fields.iter().filter(|(_, t, _)| !t.trim().is_empty()) {
-                            let value = serde_json::from_str::<Value>(text.trim()).unwrap_or_else(|_| Value::String(text.trim().to_owned()));
-                            params.insert(name.clone(), value);
-                        }
-                        run = Some((id.clone(), Value::Object(params)));
+                let field = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text(t("Type a command")).desired_width(f32::INFINITY));
+                field.request_focus();
+                let mut found: Vec<(i32, Entry)> =
+                    entries(app, ctx).into_iter().filter_map(|e| score(&state.query, &format!("{} {}", e.title, e.id)).map(|s| (s, e))).collect();
+                found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
+                found.truncate(12);
+                if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
+                    state.selected = (state.selected + 1).min(found.len().saturating_sub(1));
+                }
+                if ui.input(|i| i.key_pressed(Key::ArrowUp)) {
+                    state.selected = state.selected.saturating_sub(1);
+                }
+                state.selected = state.selected.min(found.len().saturating_sub(1));
+                let enter = ui.input(|i| i.key_pressed(Key::Enter));
+                ui.add_space(rem(0.48));
+                let mut chosen = None;
+                for (index, (_, entry)) in found.iter().enumerate() {
+                    let selected = index == state.selected;
+                    let response = ui
+                        .horizontal(|ui| {
+                            let row = ui.selectable_label(selected, RichText::new(&entry.title).color(tk.text));
+                            ui.label(RichText::new(&entry.id).monospace().size(size::SMALL).color(tk.text_faint));
+                            if let Some(shortcut) = &entry.shortcut {
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    ui.label(RichText::new(shortcut).size(size::SMALL).color(tk.text_dim))
+                                });
+                            }
+                            row
+                        })
+                        .inner
+                        .on_hover_text(&entry.summary);
+                    if response.clicked() || (selected && enter) {
+                        chosen = Some(entry.clone());
                     }
-                    if ui.button("Back").clicked() {
-                        back = true;
+                }
+                if found.is_empty() {
+                    ui.label(RichText::new(t("No command matches")).color(tk.text_faint));
+                }
+                if let Some(entry) = chosen {
+                    if entry.required.is_empty() {
+                        run = Some((entry.id, Value::Object(Map::new())));
+                    } else {
+                        state.form = Some((entry.id, entry.fields.into_iter().map(|(name, required)| (name, String::new(), required)).collect()));
                     }
-                });
-                state.form = if back { None } else { Some((id, fields)) };
-                return;
-            }
-            let field = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text("Type a command").desired_width(f32::INFINITY));
-            field.request_focus();
-            let mut found: Vec<(i32, Entry)> =
-                entries(app, ctx).into_iter().filter_map(|e| score(&state.query, &format!("{} {}", e.title, e.id)).map(|s| (s, e))).collect();
-            found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
-            found.truncate(12);
-            if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
-                state.selected = (state.selected + 1).min(found.len().saturating_sub(1));
-            }
-            if ui.input(|i| i.key_pressed(Key::ArrowUp)) {
-                state.selected = state.selected.saturating_sub(1);
-            }
-            state.selected = state.selected.min(found.len().saturating_sub(1));
-            let enter = ui.input(|i| i.key_pressed(Key::Enter));
-            ui.add_space(6.0);
-            let mut chosen = None;
-            for (index, (_, entry)) in found.iter().enumerate() {
-                let selected = index == state.selected;
-                let response = ui
-                    .horizontal(|ui| {
-                        let row = ui.selectable_label(selected, RichText::new(&entry.title).color(tk.text));
-                        ui.label(RichText::new(&entry.id).monospace().size(size::SMALL).color(tk.text_faint));
-                        if let Some(shortcut) = &entry.shortcut {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(RichText::new(shortcut).size(size::SMALL).color(tk.text_dim))
-                            });
-                        }
-                        row
-                    })
-                    .inner
-                    .on_hover_text(&entry.summary);
-                if response.clicked() || (selected && enter) {
-                    chosen = Some(entry.clone());
                 }
-            }
-            if found.is_empty() {
-                ui.label(RichText::new("No command matches").color(tk.text_faint));
-            }
-            if let Some(entry) = chosen {
-                if entry.required.is_empty() {
-                    run = Some((entry.id, Value::Object(Map::new())));
-                } else {
-                    state.form = Some((entry.id, entry.fields.into_iter().map(|(name, required)| (name, String::new(), required)).collect()));
-                }
-            }
-        });
-    });
+            });
+        },
+    );
     if let Some((id, params)) = run {
         let _ = app.run(&id, params);
         close = true;

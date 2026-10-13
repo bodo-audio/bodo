@@ -21,7 +21,8 @@ use egui::{Rect, RichText, Ui, vec2};
 use serde_json::{Value, json};
 
 pub use self::sampler::SamplerTab;
-use crate::theme::{Tokens, size};
+use crate::i18n::t;
+use crate::theme::{Tokens, rem, size};
 use crate::windows::{WindowState, show_frame};
 use crate::{BodoApp, control};
 
@@ -125,9 +126,9 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
 
 fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, channel: &Channel, tab: SamplerTab) {
     egui::ScrollArea::vertical().id_salt(("channel-window", channel.id)).auto_shrink([false, false]).show(ui, |ui| {
-        ui.add_space(6.0);
+        ui.add_space(rem(0.48));
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(rem(0.64));
             ui.vertical(|ui| {
                 if !matches!(channel.kind, ChannelKind::Automation(_)) {
                     header(app, ui, project, channel);
@@ -141,7 +142,7 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, channel: &Channe
                     ChannelKind::MidiOut { port, channel: midi } => kinds::midi_out(app, ui, channel, port, *midi),
                     ChannelKind::Instrument { plugin } => kinds::instrument(ui, plugin),
                 }
-                ui.add_space(8.0);
+                ui.add_space(rem(0.64));
             });
         });
     });
@@ -153,7 +154,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
     ui.horizontal(|ui| {
         let mut pan = channel.pan;
         labeled(ui, "Pan", |ui| {
-            let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(26.0).label(format!("{name} window pan")));
+            let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(rem(2.08)).label(format!("{name} window pan")));
             control::record(ui, &knob, &format!("{name} window pan"), "knob", None);
             app.hint(&knob, format!("Pan: {}", bodo_kit_ui::knob::format_pan(pan)));
             if knob.changed() {
@@ -165,7 +166,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
             let knob = ui.add(
                 Knob::new(&mut volume, 0.0..=2.0)
                     .default(1.0)
-                    .diameter(26.0)
+                    .diameter(rem(2.08))
                     .label(format!("{name} window volume"))
                     .format(|v| format!("{:.0}%", v * 100.0)),
             );
@@ -186,7 +187,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
                 Knob::new(&mut semitones, -range..=range)
                     .default(0.0)
                     .origin(0.0)
-                    .diameter(26.0)
+                    .diameter(rem(2.08))
                     .label(format!("{name} window pitch"))
                     .format(|v| format!("{v:+.2} st")),
             );
@@ -217,8 +218,8 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
 fn insert_combo(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) {
     let number = channel.target.and_then(|t| bodo_engine::insert_number(project, t)).unwrap_or(0);
     let shown = if number == 0 { String::from("Master") } else { format!("Insert {number}") };
-    let combo = egui::ComboBox::from_id_salt(("channel-window-insert", channel.id)).width(96.0).selected_text(shown).show_ui(ui, |ui| {
-        if ui.selectable_label(number == 0, "Master").clicked() {
+    let combo = egui::ComboBox::from_id_salt(("channel-window-insert", channel.id)).width(rem(7.68)).selected_text(shown).show_ui(ui, |ui| {
+        if ui.selectable_label(number == 0, t("Master")).clicked() {
             let _ = app.run("channel.set_target_insert", json!({ "channel": channel.id, "insert": 0 }));
         }
         for (n, insert) in project.mixer.order.iter().filter_map(|i| project.mixer.inserts.get(i)).enumerate() {
@@ -234,7 +235,7 @@ fn insert_combo(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
 /// `add` above a small caption.
 fn labeled(ui: &mut Ui, caption: &str, add: impl FnOnce(&mut Ui)) {
     ui.vertical(|ui| {
-        ui.set_min_width(44.0);
+        ui.set_min_width(rem(3.52));
         add(ui);
         ui.label(RichText::new(caption).size(size::SMALL).color(Tokens::get().text_dim));
     });
@@ -242,7 +243,7 @@ fn labeled(ui: &mut Ui, caption: &str, add: impl FnOnce(&mut Ui)) {
 
 /// A section heading.
 fn heading(ui: &mut Ui, text: &str) {
-    ui.add_space(4.0);
+    ui.add_space(rem(0.32));
     ui.label(RichText::new(text).size(size::BODY).strong().color(Tokens::get().text));
 }
 
@@ -274,7 +275,7 @@ fn sampler_knob(
     let mut value = value;
     labeled(ui, field.label, |ui| {
         let element = field.element();
-        let knob = ui.add(Knob::new(&mut value, range).default(default).diameter(26.0).label(element.clone()).format(format));
+        let knob = ui.add(Knob::new(&mut value, range).default(default).diameter(rem(2.08)).label(element.clone()).format(format));
         control::record(ui, &knob, &element, "knob", None);
         app.hint(&knob, format!("{}: {}", field.hint, format(value)));
         if knob.changed() {
@@ -297,7 +298,7 @@ fn sampler_check(app: &mut BodoApp, ui: &mut Ui, field: Field<'_>, value: bool, 
 /// A list of choices for a sampler setting: `options` pairs each choice's label with the params it sends.
 fn sampler_combo(app: &mut BodoApp, ui: &mut Ui, field: Field<'_>, current: &str, options: Vec<(&str, Value)>) {
     let mut chosen = None;
-    let combo = egui::ComboBox::from_id_salt(field.element()).width(110.0).selected_text(current).show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt(field.element()).width(rem(8.8)).selected_text(current).show_ui(ui, |ui| {
         for (label, params) in options {
             if ui.selectable_label(label == current, label).clicked() {
                 chosen = Some(params);

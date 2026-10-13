@@ -140,8 +140,13 @@ fn the_envelopes_tab_edits_envelopes_the_filter_and_the_arpeggiator() {
     let filter = sampler(&h, "Kick").filter;
     assert_eq!(filter.kind, FilterKind::LowPass);
     assert!(filter.cutoff < 15_000.0, "turning the cutoff down: {}", filter.cutoff);
+    // The arpeggiator sits below the fold: scroll down to it over the window's margin, where no knob takes the wheel.
+    let filter = element(&h, "Kick Filter type");
+    let body = pos2(filter.left() - 4.0, filter.center().y);
+    common::scroll_to(&mut h, "Kick Arpeggiate", body);
     click(&mut h, "Kick Arpeggiate");
     assert!(sampler(&h, "Kick").arp.enabled);
+    common::scroll_to(&mut h, "Kick pitch envelope on", body);
     click(&mut h, "Kick pitch envelope on");
     turn(&mut h, "Kick pitch amount", 30.0);
     let pitch = sampler(&h, "Kick").pitch_envelope;

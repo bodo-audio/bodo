@@ -98,6 +98,27 @@ fn clamp_scale(scale: f32) -> f32 {
     if scale.is_finite() { scale.clamp(0.75, 2.0) } else { 1.0 }
 }
 
+/// The screen width, in points at the system's own scaling, at which Auto sizes the interface at 100%.
+pub const AUTO_BASE_WIDTH: f32 = 1440.0;
+
+/// The interface size Auto picks for a screen `width` points wide (at the system's own scaling), the way a responsive
+/// web page sizes `rem` from the viewport: 100% at [`AUTO_BASE_WIDTH`], in proportion beyond, kept between 75% and
+/// 200%, in steps of 5% so it never jitters.
+pub fn auto_scale(width: f32) -> f32 {
+    if !width.is_finite() || width <= 0.0 {
+        return 1.0;
+    }
+    ((width / AUTO_BASE_WIDTH).clamp(0.75, 2.0) * 20.0).round() / 20.0
+}
+
+/// The width Auto sizes from: the monitor's, else the window's, in points at the system's own scaling. egui measures
+/// both in points after the interface's own zoom, so the zoom is taken back out, or the size would chase itself.
+fn screen_width(ctx: &egui::Context) -> f32 {
+    let zoom = ctx.zoom_factor();
+    let monitor = ctx.input(|i| i.viewport().monitor_size).map(|size| size.x).filter(|w| *w > 0.0);
+    monitor.unwrap_or_else(|| ctx.content_rect().width()) * zoom
+}
+
 /// The next interface size up (`up`) or down from `scale` among [`UI_SCALES`], or `scale` at the end of the range.
 pub fn step_scale(scale: f32, up: bool) -> f32 {
     let scale = clamp_scale(scale);
@@ -116,8 +137,8 @@ pub struct Prefs {
     pub theme: ThemePref,
     /// Color-blind-safe colors for meters, clips, patterns and channels (project.md section 14.7).
     pub color_safe: bool,
-    /// The interface's size, from 0.75 to 2 (75% to 200%).
-    pub ui_scale: f32,
+    /// The interface's size, from 0.75 to 2 (75% to 200%), or `None` for Auto: from the screen's width.
+    pub ui_scale: Option<f32>,
     /// The language of the interface.
     pub language: i18n::LanguagePref,
     /// The window layout.
@@ -147,7 +168,7 @@ impl Default for Prefs {
         Self {
             theme: ThemePref::Dark,
             color_safe: false,
-            ui_scale: 1.0,
+            ui_scale: None,
             language: i18n::LanguagePref::default(),
             layout: Layout::default(),
             layouts: Vec::new(),
@@ -207,20 +228,20 @@ impl Snap {
         Self::Bar,
     ];
 
-    /// Its name in the snap menu.
+    /// Its name in `ui.set_snap` and, translated, in the snap menu.
     pub fn label(self) -> &'static str {
         match self {
-            Self::None => "None",
-            Self::SixthStep => "1/6 step",
-            Self::QuarterStep => "1/4 step",
-            Self::ThirdStep => "1/3 step",
-            Self::HalfStep => "1/2 step",
-            Self::Step => "Step",
-            Self::SixthBeat => "1/6 beat",
-            Self::ThirdBeat => "1/3 beat",
-            Self::HalfBeat => "1/2 beat",
-            Self::Beat => "Beat",
-            Self::Bar => "Bar",
+            Self::None => i18n::en("None"),
+            Self::SixthStep => i18n::en("1/6 step"),
+            Self::QuarterStep => i18n::en("1/4 step"),
+            Self::ThirdStep => i18n::en("1/3 step"),
+            Self::HalfStep => i18n::en("1/2 step"),
+            Self::Step => i18n::en("Step"),
+            Self::SixthBeat => i18n::en("1/6 beat"),
+            Self::ThirdBeat => i18n::en("1/3 beat"),
+            Self::HalfBeat => i18n::en("1/2 beat"),
+            Self::Beat => i18n::en("Beat"),
+            Self::Bar => i18n::en("Bar"),
         }
     }
 
@@ -321,6 +342,8 @@ pub struct BodoApp {
     closing: bool,
     autosave: autosave::Autosave,
     shown_theme: Option<(theme::Look, bool)>,
+    /// The interface size showing: the preference, or what Auto picked.
+    shown_scale: f32,
     status: Option<(String, bool, Instant)>,
     gestures: std::collections::HashMap<egui::Id, u64>,
     next_gesture: u64,
@@ -347,6 +370,7 @@ impl BodoApp {
             closing: false,
             autosave: autosave::Autosave::default(),
             shown_theme: None,
+            shown_scale: 1.0,
             status: None,
             gestures: std::collections::HashMap::new(),
             next_gesture: 1,
@@ -361,7 +385,7 @@ impl BodoApp {
         let name = if !project.meta.title.is_empty() {
             project.meta.title.clone()
         } else {
-            self.session.file().and_then(|f| f.file_stem()).map_or_else(|| String::from("Untitled"), |s| s.to_string_lossy().into_owned())
+            self.session.file().and_then(|f| f.file_stem()).map_or_else(|| String::from(i18n::t("Untitled")), |s| s.to_string_lossy().into_owned())
         };
         format!("{name}{}", if self.session.is_dirty() { " *" } else { "" })
     }
@@ -424,8 +448,12 @@ impl BodoApp {
     }
 
     /// Shows `text` in the hint bar for a few seconds; `error` shows it in the error color.
+    ///
+    /// English text is translated here, as with [`Self::hint`]; messages from commands show as they come.
     pub fn set_status(&mut self, text: impl Into<String>, error: bool) {
-        self.status = Some((text.into(), error, Instant::now()));
+        let text = text.into();
+        let text = i18n::lookup(&text).map_or(text, str::to_owned);
+        self.status = Some((text, error, Instant::now()));
     }
 
     /// The status message, if one is still showing, and whether it is an error.
@@ -510,20 +538,26 @@ impl BodoApp {
                     Some(Value::String(s)) => s.trim().trim_end_matches('%').trim().parse::<f32>().ok().map(|p| if p > 3.0 { p / 100.0 } else { p }),
                     _ => None,
                 };
+                let auto = params.get("scale").and_then(Value::as_str).is_some_and(|s| s.trim().eq_ignore_ascii_case("auto"));
                 match scale.filter(|s| (0.75..=2.0).contains(s)) {
+                    _ if auto => {
+                        self.prefs.ui_scale = None;
+                        Ok(json!({ "scale": "auto", "now": self.shown_scale }))
+                    }
                     Some(scale) => {
-                        self.prefs.ui_scale = scale;
+                        self.prefs.ui_scale = Some(scale);
                         Ok(json!({ "scale": scale }))
                     }
-                    None => Err(String::from("scale must be from 0.75 to 2 (75% to 200%)")),
+                    None => Err(String::from("scale must be \"auto\" or from 0.75 to 2 (75% to 200%)")),
                 }
             }
             "ui.zoom_in" | "ui.zoom_out" | "ui.zoom_reset" => {
+                // Larger and smaller step from the size showing now, Auto's too; reset goes back to Auto.
                 self.prefs.ui_scale = match id {
-                    "ui.zoom_reset" => 1.0,
-                    _ => step_scale(self.prefs.ui_scale, id == "ui.zoom_in"),
+                    "ui.zoom_reset" => None,
+                    _ => Some(step_scale(self.shown_scale, id == "ui.zoom_in")),
                 };
-                Ok(json!({ "scale": self.prefs.ui_scale }))
+                Ok(json!({ "scale": self.prefs.ui_scale.map_or_else(|| json!("auto"), |s| json!(s)) }))
             }
             "ui.set_language" => match i18n::LanguagePref::from_id(&text("language")) {
                 Some(language) => {
@@ -663,10 +697,14 @@ impl BodoApp {
                 "Color-blind-safe colors",
                 "Turns the color-blind-safe meter and clip colors on or off: {\"on\": true}, or toggles them.",
             ),
-            ("ui.set_ui_scale", "Set interface size", "Sets the interface's size: {\"scale\": 1.25} or {\"scale\": \"125%\"}, from 75% to 200%."),
+            (
+                "ui.set_ui_scale",
+                "Set interface size",
+                "Sets the interface's size: {\"scale\": \"auto\"} to follow the screen's width, or {\"scale\": 1.25} or \"125%\", from 75% to 200%.",
+            ),
             ("ui.zoom_in", "Make the interface larger", "Makes the interface one step larger, up to 200%."),
             ("ui.zoom_out", "Make the interface smaller", "Makes the interface one step smaller, down to 75%."),
-            ("ui.zoom_reset", "Reset the interface size", "Puts the interface back to 100%."),
+            ("ui.zoom_reset", "Automatic interface size", "Puts the interface size back to Auto, which follows the screen's width."),
             ("ui.set_language", "Set language", "Sets the interface's language: {\"language\": \"en\" | \"tr\" | \"system\"}."),
             ("ui.next_window", "Next window", "Brings the next open window to the front and moves keyboard focus into it."),
             ("ui.focus_menu", "Go to the menus", "Moves keyboard focus to the File menu; the arrow keys and Tab move on from there."),
@@ -730,12 +768,13 @@ impl BodoApp {
         }
         // The interface's size: the preference, kept between 75% and 200%. egui's own zoom keys are off, since
         // Bodo's zoom shortcuts can be changed like any other.
-        self.prefs.ui_scale = clamp_scale(self.prefs.ui_scale);
+        self.prefs.ui_scale = self.prefs.ui_scale.map(clamp_scale);
         if ctx.options(|o| o.zoom_with_keyboard) {
             ctx.options_mut(|o| o.zoom_with_keyboard = false);
         }
-        if (ctx.zoom_factor() - self.prefs.ui_scale).abs() > 1e-4 {
-            ctx.set_zoom_factor(self.prefs.ui_scale);
+        self.shown_scale = self.prefs.ui_scale.unwrap_or_else(|| auto_scale(screen_width(ctx)));
+        if (ctx.zoom_factor() - self.shown_scale).abs() > 1e-4 {
+            ctx.set_zoom_factor(self.shown_scale);
         }
         self.remote.set_ctx(ctx);
         typing::handle(self, ctx);
@@ -830,10 +869,18 @@ impl BodoApp {
         false
     }
 
+    /// The interface size showing now, from 0.75 to 2: the preference, or what Auto picked for the screen.
+    pub fn ui_scale(&self) -> f32 {
+        self.shown_scale
+    }
+
     /// Sets the hint bar's text for this frame, for the control under the pointer.
+    ///
+    /// `text` is English and is translated here: pass a literal, or text from [`tf!`] when it has values in it.
     pub fn hint(&mut self, response: &egui::Response, text: impl Into<String>) {
-        if response.hovered() {
-            self.view.hint = Some(text.into());
+        if response.hovered() || response.has_focus() {
+            let text = text.into();
+            self.view.hint = Some(i18n::lookup(&text).map_or(text, str::to_owned));
         }
     }
 }
@@ -848,6 +895,43 @@ impl windows::WindowHost for BodoApp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auto_sizes_the_interface_from_the_screen_width() {
+        assert_eq!(auto_scale(1440.0), 1.0, "the base width");
+        assert_eq!(auto_scale(1512.0), 1.05, "a 14-inch laptop");
+        assert_eq!(auto_scale(1920.0), 1.35, "a full HD monitor");
+        assert_eq!(auto_scale(2560.0), 1.8, "a 27-inch monitor");
+        assert_eq!(auto_scale(3840.0), 2.0, "the largest size");
+        assert_eq!(auto_scale(800.0), 0.75, "the smallest size");
+        assert_eq!(auto_scale(0.0), 1.0, "no screen size gives 100%");
+        for width in [1000.0, 1333.0, 1777.7, 2222.2] {
+            let scale = auto_scale(width);
+            assert!(((scale * 20.0).round() - scale * 20.0).abs() < 1e-4, "{scale} is a 5% step");
+        }
+    }
+
+    #[test]
+    fn the_interface_size_preference_round_trips() {
+        for size in [None, Some(1.25)] {
+            let prefs = Prefs { ui_scale: size, ..Prefs::default() };
+            let back: Prefs = serde_json::from_str(&serde_json::to_string(&prefs).unwrap()).unwrap();
+            assert_eq!(back.ui_scale, size);
+        }
+        let old: Prefs = serde_json::from_str(r#"{"theme":"dark"}"#).unwrap();
+        assert_eq!(old.ui_scale, None, "preferences from before the setting are on Auto");
+        assert_eq!(step_scale(1.05, true), 1.1, "larger steps up from Auto's size");
+        assert_eq!(step_scale(1.05, false), 1.0);
+        assert_eq!(step_scale(2.0, true), 2.0, "the top of the range stays");
+    }
+
+    #[test]
+    fn rem_sizes_are_whole_points_from_one_base() {
+        assert_eq!(theme::rem(1.0), theme::REM);
+        assert_eq!(theme::size::BODY, theme::REM);
+        const { assert!(theme::size::SMALL >= 12.5, "small text stays readable") };
+        assert_eq!(theme::rem(0.48).fract(), 0.0, "whole points, so edges stay on pixels");
+    }
 
     #[test]
     fn snapping_treats_a_hair_below_a_line_as_on_it() {

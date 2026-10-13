@@ -17,12 +17,13 @@ use bodo_kit_ui::{Icon, icons};
 use craft_ui::buttons::{ButtonVisuals, IconButton, IconButtonStyle};
 use egui::{Align2, CornerRadius, Id, Order, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder, Vec2, pos2, vec2};
 
-use crate::theme::{Tokens, size};
+use crate::i18n::en;
+use crate::theme::{Tokens, rem, size};
 
 /// The smallest a window gets, in points.
-const MIN_SIZE: Vec2 = vec2(260.0, 120.0);
+const MIN_SIZE: Vec2 = vec2(rem(20.8), rem(9.6));
 /// How far from an edge a resize drag starts, in points.
-const GRIP: f32 = 6.0;
+const GRIP: f32 = rem(0.48);
 
 /// A free window.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
@@ -46,10 +47,10 @@ impl WindowKind {
     /// Its title.
     pub fn title(self) -> &'static str {
         match self {
-            Self::ChannelRack => "Channel rack",
-            Self::Playlist => "Playlist",
-            Self::PianoRoll => "Piano roll",
-            Self::Mixer => "Mixer",
+            Self::ChannelRack => en("Channel rack"),
+            Self::Playlist => en("Playlist"),
+            Self::PianoRoll => en("Piano roll"),
+            Self::Mixer => en("Mixer"),
         }
     }
 
@@ -175,11 +176,11 @@ impl Preset {
     /// Its name in menus.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Default => "Default",
-            Self::Compose => "Compose",
-            Self::Arrange => "Arrange",
-            Self::Mix => "Mix",
-            Self::Master => "Master",
+            Self::Default => en("Default"),
+            Self::Compose => en("Compose"),
+            Self::Arrange => en("Arrange"),
+            Self::Mix => en("Mix"),
+            Self::Master => en("Master"),
         }
     }
 
@@ -330,20 +331,42 @@ fn button_style(tk: &Tokens) -> IconButtonStyle {
 }
 
 /// A small icon button in the interface's style. Returns its response; the caller acts on clicks.
+///
+/// `label` is English: the control channel records it as it is, so agents find the button in any language, while
+/// screen readers and the tooltip get it translated.
 pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> egui::Response {
-    painted_button(ui, label, selected, |painter, rect, color| {
+    icon_button_as(ui, icon, label, crate::i18n::lookup(label).unwrap_or(label), selected)
+}
+
+/// [`icon_button`] whose shown text is `shown`, already in the interface's language, for labels with values in
+/// them; `label` is the English one the control channel records.
+pub fn icon_button_as(ui: &mut Ui, icon: Icon, label: &str, shown: &str, selected: bool) -> egui::Response {
+    painted_button_as(ui, label, shown, selected, |painter, rect, color| {
         let side = 14.0;
         icon.paint(painter, Rect::from_center_size(rect.center(), vec2(side, side)), color);
     })
 }
 
 /// A small button in the interface's style whose face `paint` draws into its rect, in the color its state gives.
+/// `label` is English, translated for screen readers and the tooltip as in [`icon_button`].
 pub fn painted_button(ui: &mut Ui, label: &str, selected: bool, paint: impl FnOnce(&egui::Painter, Rect, egui::Color32)) -> egui::Response {
+    painted_button_as(ui, label, crate::i18n::lookup(label).unwrap_or(label), selected, paint)
+}
+
+/// [`painted_button`] whose shown text is `shown`, already translated; `label` is the English one recorded.
+pub fn painted_button_as(
+    ui: &mut Ui,
+    label: &str,
+    shown: &str,
+    selected: bool,
+    paint: impl FnOnce(&egui::Painter, Rect, egui::Color32),
+) -> egui::Response {
     let tk = Tokens::get();
     let style = button_style(&tk);
-    let response = IconButton::new(label, vec2(22.0, 20.0), &style).selected(selected).show(ui, |ui, rect, color| paint(ui.painter(), rect, color));
+    let response =
+        IconButton::new(shown, vec2(rem(1.76), rem(1.6)), &style).selected(selected).show(ui, |ui, rect, color| paint(ui.painter(), rect, color));
     crate::control::record(ui, &response, label, "button", Some(selected));
-    response.on_hover_text(label)
+    response.on_hover_text(shown)
 }
 
 /// Shows window `kind` inside `workspace` with `title`. `header` draws extra controls into the title bar after the
@@ -441,40 +464,53 @@ pub fn show_frame<T: WindowHost>(
             new_state.frame = to_frame(keep_inside(moved, workspace), workspace);
         }
 
-        let mut bar =
-            ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(6.0, 3.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(0.0, 3.0), vec2(14.0, 14.0)), tk.text_dim);
-        bar.add_space(18.0);
-        bar.label(egui::RichText::new(title).color(tk.text).size(size::BODY));
-        bar.add_space(10.0);
+        let buttons_width = title_buttons_width(if detachable { 4 } else { 3 });
+        let mut bar = title_bar(ui, title_rect, buttons_width);
+        icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(rem(0.0), rem(0.24)), vec2(rem(1.12), rem(1.12))), tk.text_dim);
+        bar.add_space(rem(1.44));
+        let shown = shown_title(title);
+        title_label(&mut bar, &shown);
+        bar.add_space(rem(0.8));
         header(state_of, &mut bar);
-        let mut buttons =
-            ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(4.0, 3.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
-        if icon_button(&mut buttons, icons::X, &format!("Close {title}"), false).clicked() {
+        let mut buttons = ui.new_child(
+            UiBuilder::new().max_rect(title_rect.shrink2(vec2(rem(0.32), rem(0.24)))).layout(egui::Layout::right_to_left(egui::Align::Center)),
+        );
+        // The control channel names the buttons in English, with the English title; people see them translated.
+        if icon_button_as(&mut buttons, icons::X, &format!("Close {title}"), &tf!("Close {window}", window = shown), false).clicked() {
             new_state.open = false;
             events.closed = true;
         }
-        let (max_icon, max_label) = if state.maximized { (icons::WINDOW_RESTORE, "Restore") } else { (icons::SQUARE, "Maximize") };
-        if icon_button(&mut buttons, max_icon, &format!("{max_label} {title}"), false).clicked() {
+        let (max_icon, max_label, max_shown) = if state.maximized {
+            (icons::WINDOW_RESTORE, "Restore", tf!("Restore {window}", window = shown))
+        } else {
+            (icons::SQUARE, "Maximize", tf!("Maximize {window}", window = shown))
+        };
+        if icon_button_as(&mut buttons, max_icon, &format!("{max_label} {title}"), &max_shown, false).clicked() {
             new_state.maximized = !state.maximized;
             new_state.minimized = false;
         }
-        if icon_button(&mut buttons, icons::MINUS, &format!("Minimize {title}"), state.minimized).clicked() {
+        if icon_button_as(&mut buttons, icons::MINUS, &format!("Minimize {title}"), &tf!("Minimize {window}", window = shown), state.minimized)
+            .clicked()
+        {
             new_state.minimized = !state.minimized;
         }
         if detachable {
             if state.detached {
                 // Only where the backend can't open more windows: the window stays here, ready to go back.
-                if icon_button(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), true).clicked() {
+                if icon_button_as(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), &tf!("Attach {window}", window = shown), true)
+                    .clicked()
+                {
                     new_state.detached = false;
                 }
-            } else if icon_button(&mut buttons, icons::EXTERNAL_LINK, &format!("Detach {title}"), false).clicked() {
+            } else if icon_button_as(&mut buttons, icons::EXTERNAL_LINK, &format!("Detach {title}"), &tf!("Detach {window}", window = shown), false)
+                .clicked()
+            {
                 new_state = detach(ctx, new_state, full);
             }
         }
 
         if !state.minimized {
-            let body_rect = Rect::from_min_max(pos2(rect.left() + 1.0, title_rect.bottom()), rect.max - vec2(1.0, 1.0));
+            let body_rect = Rect::from_min_max(pos2(rect.left() + 1.0, title_rect.bottom()), rect.max - vec2(rem(0.08), rem(0.08)));
             let mut body_ui =
                 ui.new_child(UiBuilder::new().id_salt(id.with("body")).max_rect(body_rect).layout(egui::Layout::top_down(egui::Align::Min)));
             body_ui.set_clip_rect(body_rect.intersect(workspace));
@@ -519,7 +555,7 @@ fn show_detached<T: WindowHost>(
     let spawn_key = id.with("spawn");
     let [x, y, w, h] = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(spawn_key, || state.screen.unwrap_or(fallback)));
     let builder = egui::ViewportBuilder::default()
-        .with_title(format!("{title} - Bodo"))
+        .with_title(format!("{} - Bodo", shown_title(title)))
         .with_position([x, y])
         .with_inner_size([w.max(MIN_SIZE.x), h.max(MIN_SIZE.y)])
         .with_min_inner_size(MIN_SIZE);
@@ -542,18 +578,20 @@ fn show_detached<T: WindowHost>(
             events.hovered = ui.rect_contains_pointer(rect);
             let title_rect = Rect::from_min_size(rect.min, vec2(rect.width(), size::TITLE_BAR));
             ui.painter().rect_filled(title_rect, 0.0, tk.chrome);
-            let mut bar =
-                ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(6.0, 3.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-            icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(0.0, 3.0), vec2(14.0, 14.0)), tk.text_dim);
-            bar.add_space(18.0);
-            bar.label(egui::RichText::new(title).color(tk.text).size(size::BODY));
-            bar.add_space(10.0);
+            let mut bar = title_bar(ui, title_rect, title_buttons_width(1));
+            icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(rem(0.0), rem(0.24)), vec2(rem(1.12), rem(1.12))), tk.text_dim);
+            bar.add_space(rem(1.44));
+            let shown = shown_title(title);
+            title_label(&mut bar, &shown);
+            bar.add_space(rem(0.8));
             if let Some(header) = header.take() {
                 header(state_of, &mut bar);
             }
-            let mut buttons =
-                ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(4.0, 3.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
-            if icon_button(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), true).clicked() {
+            let mut buttons = ui.new_child(
+                UiBuilder::new().max_rect(title_rect.shrink2(vec2(rem(0.32), rem(0.24)))).layout(egui::Layout::right_to_left(egui::Align::Center)),
+            );
+            if icon_button_as(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), &tf!("Attach {window}", window = shown), true).clicked()
+            {
                 new_state.detached = false;
             }
             let body_rect = Rect::from_min_max(pos2(rect.left(), title_rect.bottom()), rect.max);
@@ -579,9 +617,9 @@ fn resize_grips(ui: &mut Ui, id: Id, rect: Rect, full: Rect, workspace: Rect, st
     let corner = Rect::from_min_max(rect.max - vec2(GRIP * 2.0, GRIP * 2.0), rect.max);
     let mut size = full.size();
     for (rect, name, cursor, axes) in [
-        (right, "right", egui::CursorIcon::ResizeHorizontal, vec2(1.0, 0.0)),
-        (bottom, "bottom", egui::CursorIcon::ResizeVertical, vec2(0.0, 1.0)),
-        (corner, "corner", egui::CursorIcon::ResizeNwSe, vec2(1.0, 1.0)),
+        (right, "right", egui::CursorIcon::ResizeHorizontal, vec2(rem(0.08), rem(0.0))),
+        (bottom, "bottom", egui::CursorIcon::ResizeVertical, vec2(rem(0.0), rem(0.08))),
+        (corner, "corner", egui::CursorIcon::ResizeNwSe, vec2(rem(0.08), rem(0.08))),
     ] {
         let response = ui.interact(rect, id.with(name), Sense::drag()).on_hover_cursor(cursor);
         if response.dragged() {
@@ -614,9 +652,74 @@ fn keep_inside(rect: Rect, area: Rect) -> Rect {
     Rect::from_min_size(Pos2::new(x, y), rect.size())
 }
 
-/// Draws `text` centered in `rect`, for empty states.
+/// The width the title bar's `count` buttons take at its right end.
+fn title_buttons_width(count: usize) -> f32 {
+    count as f32 * (rem(1.76) + rem(0.48)) + rem(0.32)
+}
+
+/// The left part of a title bar in `title_rect`, for the icon, the title and the header, leaving `buttons_width` at
+/// the right for the window's buttons. Whatever doesn't fit is cut off rather than drawn under them.
+fn title_bar(ui: &mut Ui, title_rect: Rect, buttons_width: f32) -> Ui {
+    let left = Rect::from_min_max(title_rect.min, pos2((title_rect.right() - buttons_width).max(title_rect.left()), title_rect.bottom()));
+    let mut bar =
+        ui.new_child(UiBuilder::new().max_rect(left.shrink2(vec2(rem(0.48), rem(0.24)))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    bar.set_clip_rect(left.intersect(ui.clip_rect()));
+    bar
+}
+
+/// The window's title, at most about a third of the bar so the header's controls keep their room, shortened with an
+/// ellipsis when longer; hovering it shows it whole.
+fn title_label(bar: &mut Ui, shown: &str) {
+    let room = (bar.available_width() * 0.32).max(rem(6.0));
+    bar.scope(|ui| {
+        ui.set_max_width(room);
+        ui.add(egui::Label::new(egui::RichText::new(shown).color(Tokens::get().text).size(size::BODY)).truncate());
+    });
+}
+
+/// The words window titles are built from, such as "Piano roll" in "Piano roll - Verse > Kick". Titles are written in
+/// English and shown with each of these pieces translated, so the names in them stay as they are.
+pub const TITLE_WORDS: [&str; 14] = [
+    en("Channel rack"),
+    en("Playlist"),
+    en("Arrangement"),
+    en("Piano roll"),
+    en("Mixer"),
+    en("Sampler"),
+    en("Audio clip"),
+    en("Automation clip"),
+    en("Layer"),
+    en("MIDI Out"),
+    en("Instrument"),
+    en("Insert"),
+    en("Master"),
+    en("No pattern"),
+];
+
+/// Window title `title`, written in English, in the interface's language: each piece between " - " and " > " that
+/// the catalog has is translated, and names stay as they are.
+///
+/// Complexity: O(n) in the title's length.
+pub fn shown_title(title: &str) -> String {
+    let mut out = String::with_capacity(title.len());
+    for (i, part) in title.split(" - ").enumerate() {
+        if i > 0 {
+            out.push_str(" - ");
+        }
+        for (j, piece) in part.split(" > ").enumerate() {
+            if j > 0 {
+                out.push_str(" > ");
+            }
+            out.push_str(crate::i18n::lookup(piece).unwrap_or(piece));
+        }
+    }
+    out
+}
+
+/// Draws `text`, English, centered in `rect` in the interface's language, for empty states.
 pub fn placeholder(ui: &Ui, rect: Rect, text: &str) {
     let tk = Tokens::get();
+    let text = crate::i18n::lookup(text).unwrap_or(text);
     ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, egui::FontId::proportional(size::BODY), tk.text_faint);
 }
 
@@ -629,7 +732,7 @@ mod tests {
         let workspace = Rect::from_min_size(pos2(100.0, 50.0), vec2(1000.0, 600.0));
         let rect = frame_rect([0.5, 0.25, 0.25, 0.5], workspace);
         assert!(workspace.contains_rect(rect));
-        assert_eq!(rect, Rect::from_min_size(pos2(600.0, 200.0), vec2(260.0, 300.0)), "at least the minimum width");
+        assert_eq!(rect, Rect::from_min_size(pos2(600.0, 200.0), vec2(MIN_SIZE.x, 300.0)), "at least the minimum width");
         let back = to_frame(rect, workspace);
         assert!((back[0] - 0.5).abs() < 1e-6 && (back[3] - 0.5).abs() < 1e-6);
         let outside = keep_inside(Rect::from_min_size(pos2(1050.0, 600.0), vec2(200.0, 100.0)), workspace);

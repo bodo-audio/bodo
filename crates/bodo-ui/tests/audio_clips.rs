@@ -100,9 +100,9 @@ fn a_sound_dropped_on_a_track_becomes_an_audio_clip_there() {
     assert_eq!(placed[0].start, Tick(2 * 3840 + 960), "the beat the sound was dropped on");
     assert_eq!(h.state().view.playlist.source, Some(channel), "the dropped sound is what the draw tool places next");
     // The draw tool now places the crash, as long as its sample.
-    common::click_at(&mut h, at(canvas, 8.2, 3));
+    common::click_at(&mut h, at(canvas, 7.2, 3));
     let drawn = clips(&h, 3);
-    assert_eq!(drawn.iter().map(|c| (c.source, c.start, c.len)).collect::<Vec<_>>(), [(ClipSource::Audio(channel), Tick(7 * 3840), placed[0].len)]);
+    assert_eq!(drawn.iter().map(|c| (c.source, c.start, c.len)).collect::<Vec<_>>(), [(ClipSource::Audio(channel), Tick(6 * 3840), placed[0].len)]);
     settle(&mut h);
     assert_eq!(h.state_mut().view.playlist.waveforms_loading(), 0);
 }

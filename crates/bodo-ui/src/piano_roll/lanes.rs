@@ -22,11 +22,12 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use super::{Grid, KEYS};
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// How close to a stem or a point the pointer has to pass to change it.
-const REACH: f32 = 3.0;
+const REACH: f32 = rem(0.24);
 
 /// What a lane edits: a value of each note, or a controller of the channel.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -364,7 +365,7 @@ fn note_values(
     let selected = app.session.editor().notes.clone();
     let any_selected = notes.iter().any(|n| selected.contains(&n.id));
     let color = project.channels.get(&channel).map_or(tk.accent, |c| theme::color(c.color));
-    let stems = ui.painter().with_clip_rect(area.expand2(vec2(0.0, 4.0)));
+    let stems = ui.painter().with_clip_rect(area.expand2(vec2(rem(0.0), rem(0.32))));
     for note in notes {
         let x = grid.x(note.start.0 as f64);
         if x < area.left() - 4.0 || x > area.right() + 4.0 {
@@ -385,7 +386,7 @@ fn note_values(
         control::record_rect(
             ui,
             ui.id().with(("lane", note.id)),
-            Rect::from_center_size(pos2(x, top), vec2(8.0, 8.0)),
+            Rect::from_center_size(pos2(x, top), vec2(rem(0.64), rem(0.64))),
             &format!("{} of {} at {}: {}", lane.label(), bodo_engine::params::key_name(note.key), note.start.0, lane.describe(note)),
             "lane-point",
             Some(picked),
@@ -439,7 +440,7 @@ fn controller(
     let color = project.channels.get(&channel).map_or(tk.accent, |c| theme::color(c.color));
     let y_of = |v: f32| area.bottom() - v.clamp(0.0, 1.0) * area.height();
     // Controllers step from event to event, so the curve holds each value until the next point.
-    let painter = ui.painter().with_clip_rect(area.expand2(vec2(0.0, 4.0)));
+    let painter = ui.painter().with_clip_rect(area.expand2(vec2(rem(0.0), rem(0.32))));
     let mut line = vec![pos2(area.left(), y_of(points.values().next().copied().unwrap_or(rest)))];
     for (&at, &value) in &points {
         let x = grid.x(at as f64);
@@ -458,7 +459,7 @@ fn controller(
         control::record_rect(
             ui,
             ui.id().with(("controller", at)),
-            Rect::from_center_size(at_point, vec2(6.0, 6.0)),
+            Rect::from_center_size(at_point, vec2(rem(0.48), rem(0.48))),
             &format!("{} at {at}: {:.0}%", Lane::from_param(param).label(), value * 100.0),
             "lane-point",
             None,
@@ -525,7 +526,7 @@ fn expression(app: &mut BodoApp, ui: &Ui, project: &Project, area: Rect, grid: &
     let selected = app.session.editor().notes.clone();
     let color = project.channels.get(&channel).map_or(tk.accent, |c| theme::color(c.color));
     let y_of = |v: f32| area.bottom() - lane.curve_height(v) * area.height();
-    let painter = ui.painter().with_clip_rect(area.expand2(vec2(0.0, 4.0)));
+    let painter = ui.painter().with_clip_rect(area.expand2(vec2(rem(0.0), rem(0.32))));
     for note in notes {
         let (x0, x1) = (grid.x(note.start.0 as f64), grid.x(note.end().0 as f64));
         if x1 < area.left() || x0 > area.right() {
@@ -623,7 +624,13 @@ fn lane_menu(app: &mut BodoApp, ui: &mut Ui, label: Rect) {
     let response = ui.interact(label, ui.id().with("piano-lane-kind"), Sense::click());
     control::record(ui, &response, "Piano roll lane kind", "combo", None);
     app.hint(&response, "Click to choose what the lane edits");
-    ui.painter().text(label.center_top() + vec2(0.0, 10.0), Align2::CENTER_CENTER, lane.short(), FontId::proportional(size::SMALL), tk.text_dim);
+    ui.painter().text(
+        label.center_top() + vec2(rem(0.0), rem(0.8)),
+        Align2::CENTER_CENTER,
+        lane.short(),
+        FontId::proportional(size::SMALL),
+        tk.text_dim,
+    );
     egui::Popup::menu(&response).show(|ui| {
         for choice in Lane::NOTES.into_iter().chain(Lane::EXPRESSION).chain(Lane::CONTROLLERS) {
             if choice == Lane::NotePitch || choice == Lane::PitchBend {
@@ -634,7 +641,7 @@ fn lane_menu(app: &mut BodoApp, ui: &mut Ui, label: Rect) {
             }
         }
         ui.horizontal(|ui| {
-            ui.label("Other CC");
+            ui.label(t("Other CC"));
             let mut number = match lane {
                 Lane::Cc(n) => n,
                 _ => 2,

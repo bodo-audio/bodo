@@ -33,19 +33,19 @@ pub struct Meter {
     channels: usize,
     clip: Option<bool>,
     label: String,
-    size: Vec2,
+    size: Option<Vec2>,
     palette: Option<Palette>,
 }
 
 impl Meter {
     /// A mono meter showing `peak`, a linear sample peak (1.0 is 0 dBFS).
     pub fn mono(peak: f32) -> Self {
-        Self { peaks: [peak, peak], channels: 1, clip: None, label: String::new(), size: vec2(6.0, 120.0), palette: None }
+        Self { peaks: [peak, peak], channels: 1, clip: None, label: String::new(), size: None, palette: None }
     }
 
     /// A stereo meter showing the linear peaks of the left and right channels.
     pub fn stereo(left: f32, right: f32) -> Self {
-        Self { peaks: [left, right], channels: 2, clip: None, label: String::new(), size: vec2(10.0, 120.0), palette: None }
+        Self { peaks: [left, right], channels: 2, clip: None, label: String::new(), size: None, palette: None }
     }
 
     /// Lights the clip LED or keeps it dark. Without this, it lights while a peak reaches 0 dBFS.
@@ -62,7 +62,7 @@ impl Meter {
 
     /// The meter's size in points.
     pub fn size(mut self, size: Vec2) -> Self {
-        self.size = vec2(size.x.max(2.0), size.y.max(LED + 8.0));
+        self.size = Some(vec2(size.x.max(2.0), size.y.max(LED + 8.0)));
         self
     }
 
@@ -75,7 +75,10 @@ impl Meter {
 
 impl Widget for Meter {
     fn ui(self, ui: &mut Ui) -> Response {
-        let (rect, response) = ui.allocate_exact_size(self.size, Sense::hover());
+        let em = crate::em(ui);
+        let width = if self.channels == 2 { 0.8 * em } else { 0.48 * em };
+        let size = self.size.unwrap_or_else(|| vec2(width, 9.6 * em));
+        let (rect, response) = ui.allocate_exact_size(size, Sense::hover());
         let peaks = &self.peaks[..self.channels];
         let loudest = peaks.iter().fold(0.0f32, |a, &b| a.max(b.abs()));
         let enabled = ui.is_enabled();

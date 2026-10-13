@@ -88,7 +88,7 @@ pub struct Knob<'a> {
     label: String,
     unit: String,
     format: Option<fn(f32) -> String>,
-    diameter: f32,
+    diameter: Option<f32>,
     axis: DragAxis,
     step: f32,
     palette: Option<Palette>,
@@ -105,7 +105,7 @@ impl<'a> Knob<'a> {
             label: String::new(),
             unit: String::new(),
             format: None,
-            diameter: 24.0,
+            diameter: None,
             axis: DragAxis::Vertical,
             step: STEP,
             palette: None,
@@ -142,9 +142,9 @@ impl<'a> Knob<'a> {
         self
     }
 
-    /// The knob's diameter in points; 24 by default.
+    /// The knob's diameter in points; by default 1.92 times [`crate::em`], 24 points beside 12.5-point text.
     pub fn diameter(mut self, diameter: f32) -> Self {
-        self.diameter = diameter.max(8.0);
+        self.diameter = Some(diameter.max(8.0));
         self
     }
 
@@ -176,7 +176,8 @@ impl<'a> Knob<'a> {
 
 impl Widget for Knob<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(self.diameter), Sense::click_and_drag());
+        let diameter = self.diameter.unwrap_or_else(|| 1.92 * crate::em(ui));
+        let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(diameter), Sense::click_and_drag());
         let old = *self.value;
         let mut t = normalize(old, &self.range);
         let fine = ui.input(|i| i.modifiers.shift);

@@ -18,18 +18,19 @@ use egui::{Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::browser::SoundPayload;
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::windows::{self, WindowKind, icon_button};
 use crate::{BodoApp, control, dialogs, topbar};
 
 /// The height of a channel row, and of a compact one.
-const ROW: f32 = 26.0;
-const ROW_COMPACT: f32 = 18.0;
+const ROW: f32 = rem(2.08);
+const ROW_COMPACT: f32 = rem(1.44);
 /// The size of one step, and of a compact one.
-const STEP_SIZE: egui::Vec2 = vec2(17.0, 22.0);
-const STEP_COMPACT: egui::Vec2 = vec2(13.0, 15.0);
+const STEP_SIZE: egui::Vec2 = vec2(rem(1.2), rem(1.76));
+const STEP_COMPACT: egui::Vec2 = vec2(rem(1.04), rem(1.2));
 /// The graph editor's height.
-const GRAPH: f32 = 84.0;
+const GRAPH: f32 = rem(6.72);
 
 /// Which channels the rack shows.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -205,7 +206,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<Pat
 
     // The group filter.
     let current = app.view.rack.filter.label();
-    let combo = egui::ComboBox::from_id_salt("bodo-rack-filter").width(96.0).selected_text(current).show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt("bodo-rack-filter").width(rem(7.68)).selected_text(current).show_ui(ui, |ui| {
         let mut choices = vec![GroupFilter::All, GroupFilter::Unsorted];
         choices.extend(groups(project).into_iter().map(GroupFilter::Group));
         for choice in choices {
@@ -226,7 +227,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<Pat
     // Swing for every channel shown.
     let ids = shown(app, project);
     let mut swing = ids.first().and_then(|c| project.channels.get(c)).map_or(0.0, |c| c.swing);
-    let knob = ui.add(Knob::new(&mut swing, 0.0..=1.0).default(0.0).diameter(20.0).label("Swing").format(|v| format!("{:.0}%", v * 100.0)));
+    let knob = ui.add(Knob::new(&mut swing, 0.0..=1.0).default(0.0).diameter(rem(1.6)).label(t("Swing")).format(|v| format!("{:.0}%", v * 100.0)));
     control::record(ui, &knob, "Channel rack swing", "knob", None);
     app.hint(&knob, format!("Swing for the channels shown: {:.0}%", swing * 100.0));
     if knob.changed() && !ids.is_empty() {
@@ -247,15 +248,15 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<Pat
 
 /// The options menu: rack-wide actions on the selected channels, or on every channel shown.
 fn options_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<PatternId>) {
-    ui.set_min_width(200.0);
-    ui.menu_button("Add channel", |ui| topbar::add_channel_menu(app, ui));
+    ui.set_min_width(rem(16.0));
+    ui.menu_button(t("Add channel"), |ui| topbar::add_channel_menu(app, ui));
     ui.separator();
     let chosen = targets(app, project);
-    if ui.button("Select all").clicked() {
+    if ui.button(t("Select all")).clicked() {
         let _ = app.run("edit.select", json!({ "channels": shown(app, project) }));
         ui.close();
     }
-    if ui.button("Clone selected").clicked() {
+    if ui.button(t("Clone selected")).clicked() {
         let selected: Vec<ChannelId> = shown(app, project).into_iter().filter(|c| app.session.editor().channels.contains(c)).collect();
         let calls: Vec<Call> = selected.iter().map(|c| Call::new("channel.duplicate", json!({ "channel": c }))).collect();
         if !calls.is_empty() {
@@ -263,7 +264,7 @@ fn options_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
         }
         ui.close();
     }
-    if ui.button("Delete selected").clicked() {
+    if ui.button(t("Delete selected")).clicked() {
         let _ = app.run("channel.remove", json!({}));
         ui.close();
     }
@@ -274,17 +275,17 @@ fn options_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
             ui.close();
         }
     }
-    if ui.button("Clear steps").clicked() {
+    if ui.button(t("Clear steps")).clicked() {
         fill(app, project, pattern, &chosen, None);
         ui.close();
     }
     ui.separator();
-    ui.menu_button("Move to group", |ui| group_menu(app, ui, project, &chosen));
+    ui.menu_button(t("Move to group"), |ui| group_menu(app, ui, project, &chosen));
 }
 
 /// The groups the channels `ids` can move to: unsorted, an existing group, or a new one.
 fn group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, ids: &[ChannelId]) {
-    if ui.button("Unsorted").clicked() {
+    if ui.button(t("Unsorted")).clicked() {
         let _ = app.run("channel.set_group", json!({ "channels": ids, "group": null }));
         ui.close();
     }
@@ -294,7 +295,7 @@ fn group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, ids: &[ChannelI
             ui.close();
         }
     }
-    if ui.button("New group...").clicked() {
+    if ui.button(t("New group...")).clicked() {
         if !ids.is_empty() {
             let _ = app.run("edit.select", json!({ "channels": ids }));
         }
@@ -341,10 +342,10 @@ fn naming_dialog(app: &mut BodoApp, ctx: &egui::Context) {
         control::record(ui, &edit, "Group name", "text", None);
         edit.request_focus();
         ui.horizontal(|ui| {
-            if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if ui.button(t("OK")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 done = Some(true);
             }
-            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.button(t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 done = Some(false);
             }
         });
@@ -372,8 +373,8 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, pattern: Option<
     let ids = shown(app, project);
     let mut rows: Vec<(ChannelId, Rect)> = Vec::with_capacity(ids.len());
     egui::ScrollArea::both().auto_shrink([false, false]).show(ui, |ui| {
-        ui.add_space(6.0);
-        ui.spacing_mut().item_spacing = vec2(6.0, if app.view.rack.compact { 2.0 } else { 4.0 });
+        ui.add_space(rem(0.48));
+        ui.spacing_mut().item_spacing = vec2(rem(0.48), if app.view.rack.compact { rem(0.16) } else { rem(0.32) });
         for id in &ids {
             if let Some(channel) = project.channels.get(id) {
                 let rect = row(app, ui, project, channel, pattern, steps, paint_id);
@@ -381,9 +382,9 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, pattern: Option<
             }
         }
         if ids.is_empty() {
-            ui.add_space(12.0);
+            ui.add_space(rem(0.96));
             ui.horizontal(|ui| {
-                ui.add_space(12.0);
+                ui.add_space(rem(0.96));
                 let text = if project.rack_order.is_empty() {
                     "No channels yet. Drag a sound here from the browser, or press +."
                 } else {
@@ -392,18 +393,18 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, pattern: Option<
                 ui.label(RichText::new(text).color(tk.text_faint));
             });
         }
-        ui.add_space(4.0);
+        ui.add_space(rem(0.32));
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
+            ui.add_space(rem(0.64));
             let add = icon_button(ui, icons::PLUS, "Add channel", false);
             app.hint(&add, "Add a channel: a factory sound, an empty sampler, or a file");
             egui::Popup::menu(&add).show(|ui| topbar::add_channel_menu(app, ui));
         });
         if app.view.rack.graph {
-            ui.add_space(6.0);
+            ui.add_space(rem(0.48));
             graph_editor(app, ui, project, pattern, steps);
         }
-        ui.add_space(8.0);
+        ui.add_space(rem(0.64));
     });
     reorder(app, ui, project, &rows);
     // Painting ends when the pointer comes up.
@@ -454,7 +455,7 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
     ui.push_id(id, |ui| {
         ui.horizontal(|ui| {
             ui.set_height(if compact { ROW_COMPACT } else { ROW });
-            ui.add_space(8.0);
+            ui.add_space(rem(0.64));
             // Mute: the LED is lit while the channel plays.
             let mut on = !channel.muted;
             let led = ui.add(Led::new(&mut on).label(format!("{name} on")));
@@ -466,7 +467,7 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
             if matches!(channel.kind, ChannelKind::Automation(_)) {
                 // An automation channel plays no sound: room where the knobs and insert would be keeps the rows lined up.
                 for width in [18.0, 18.0, 26.0] {
-                    ui.allocate_exact_size(vec2(width, 18.0), Sense::hover());
+                    ui.allocate_exact_size(vec2(width, rem(1.44)), Sense::hover());
                 }
             } else {
                 knobs(app, ui, channel, compact);
@@ -547,7 +548,7 @@ fn knobs(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, compact: bool) {
 
 /// A knob's menu: an automation clip for `param` of `channel`, which becomes the playlist's clip source.
 fn automate_menu(app: &mut BodoApp, ui: &mut Ui, channel: ChannelId, param: &str) {
-    let button = ui.button("Create automation clip");
+    let button = ui.button(t("Create automation clip"));
     control::record(ui, &button, "Create automation clip", "menu item", None);
     if button.clicked()
         && let Ok(result) = app.run("automation.create_for", json!({ "target": { "channel": channel, "param": param } }))
@@ -581,7 +582,7 @@ fn insert_picker(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Ch
     let tk = Tokens::get();
     let number = channel.target.and_then(|t| bodo_engine::insert_number(project, t)).unwrap_or(0);
     let text = if number == 0 { String::from("M") } else { number.to_string() };
-    let button = ui.add(egui::Button::new(RichText::new(text).monospace().size(size::SMALL).color(tk.text_dim)).min_size(vec2(26.0, 18.0)));
+    let button = ui.add(egui::Button::new(RichText::new(text).monospace().size(size::SMALL).color(tk.text_dim)).min_size(vec2(rem(2.08), rem(1.44))));
     control::record(ui, &button, &format!("{} insert", channel.name), "button", None);
     app.hint(
         &button,
@@ -589,7 +590,7 @@ fn insert_picker(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Ch
     );
     egui::Popup::menu(&button).show(|ui| {
         egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-            if ui.selectable_label(number == 0, "Master").clicked() {
+            if ui.selectable_label(number == 0, t("Master")).clicked() {
                 let _ = app.run("channel.set_target_insert", json!({ "channel": channel.id, "insert": 0 }));
             }
             for (n, insert) in project.mixer.order.iter().filter_map(|i| project.mixer.inserts.get(i)).enumerate() {
@@ -607,7 +608,7 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chan
     let tk = Tokens::get();
     let editor = app.session.editor();
     let selected = editor.channels.contains(&channel.id) || editor.channel == Some(channel.id);
-    let (rect, response) = ui.allocate_exact_size(vec2(130.0, if compact { 16.0 } else { 22.0 }), Sense::click_and_drag());
+    let (rect, response) = ui.allocate_exact_size(vec2(rem(8.0), if compact { rem(1.28) } else { rem(1.76) }), Sense::click_and_drag());
     let fill = if selected {
         tk.accent_soft
     } else if response.hovered() {
@@ -660,27 +661,27 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chan
 /// A channel's menu: rename, open, clone, load a sample, fill its steps, color, MIDI input, group and delete.
 fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) {
     let plays_notes = plays_steps(channel);
-    if ui.button("Rename...").clicked() {
+    if ui.button(t("Rename...")).clicked() {
         dialogs::rename_channel(app, channel.id);
         ui.close();
     }
-    if plays_notes && ui.button("Open in piano roll").clicked() {
+    if plays_notes && ui.button(t("Open in piano roll")).clicked() {
         let _ = app.run("ui.open_piano_roll", json!({ "channel": channel.id }));
         ui.close();
     }
-    if ui.button("Clone").clicked() {
+    if ui.button(t("Clone")).clicked() {
         let _ = app.run("channel.duplicate", json!({ "channel": channel.id }));
         ui.close();
     }
     if plays_notes
-        && ui.button("Load sample...").clicked()
+        && ui.button(t("Load sample...")).clicked()
         && let Some(file) = app.services.pick_samples.as_ref().map(|pick| pick()).and_then(|files| files.into_iter().next())
     {
         let _ = app.run("channel.set_sample", json!({ "channel": channel.id, "sample": file.display().to_string() }));
         ui.close();
     }
     if plays_notes {
-        ui.menu_button("Fill steps", |ui| {
+        ui.menu_button(t("Fill steps"), |ui| {
             let pattern = app.session.editor().pattern;
             for every in [2, 4, 8] {
                 if ui.button(format!("Each {every} steps")).clicked() {
@@ -688,17 +689,17 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
                     ui.close();
                 }
             }
-            if ui.button("Clear").clicked() {
+            if ui.button(t("Clear")).clicked() {
                 fill(app, project, pattern, &[channel.id], None);
                 ui.close();
             }
         });
     }
-    ui.menu_button("Color", |ui| {
+    ui.menu_button(t("Color"), |ui| {
         ui.horizontal_wrapped(|ui| {
-            ui.set_max_width(140.0);
+            ui.set_max_width(rem(11.2));
             for hue in bodo_engine::palette::HUES {
-                let (rect, swatch) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+                let (rect, swatch) = ui.allocate_exact_size(vec2(rem(1.28), rem(1.28)), Sense::click());
                 ui.painter().rect_filled(rect, 3.0, theme::color(hue));
                 if hue == channel.color {
                     ui.painter().rect_stroke(rect, 3.0, Stroke::new(1.5, Tokens::get().text), StrokeKind::Outside);
@@ -711,11 +712,11 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
         });
     });
     if plays_notes {
-        ui.menu_button("MIDI input", |ui| midi_menu(app, ui, channel));
+        ui.menu_button(t("MIDI input"), |ui| midi_menu(app, ui, channel));
     }
-    ui.menu_button("Group", |ui| group_menu(app, ui, project, &[channel.id]));
+    ui.menu_button(t("Group"), |ui| group_menu(app, ui, project, &[channel.id]));
     ui.separator();
-    if ui.button("Delete").clicked() {
+    if ui.button(t("Delete")).clicked() {
         let _ = app.run("channel.remove", json!({ "channels": [channel.id] }));
         ui.close();
     }
@@ -725,17 +726,17 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
 fn midi_menu(app: &mut BodoApp, ui: &mut Ui, channel: &Channel) {
     let ports = app.view.rack.midi_ports.get_or_insert_with(bodo_kit_device::midi::input_ports).clone();
     let bound = channel.midi_in.as_ref();
-    if ui.selectable_label(bound.is_none(), "None").clicked() {
+    if ui.selectable_label(bound.is_none(), t("None")).clicked() {
         let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": null }));
         ui.close();
     }
     if ports.is_empty() {
-        ui.label(RichText::new("No MIDI inputs found").color(Tokens::get().text_faint));
+        ui.label(RichText::new(t("No MIDI inputs found")).color(Tokens::get().text_faint));
     }
     for port in ports {
         let on_port = bound.is_some_and(|b| b.port == port);
         ui.menu_button(if on_port { format!("{port} (in use)") } else { port.clone() }, |ui| {
-            if ui.selectable_label(on_port && bound.is_some_and(|b| b.channel.is_none()), "Every MIDI channel").clicked() {
+            if ui.selectable_label(on_port && bound.is_some_and(|b| b.channel.is_none()), t("Every MIDI channel")).clicked() {
                 let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": port, "midiChannel": null }));
                 ui.close();
             }
@@ -782,7 +783,7 @@ fn graph_editor(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
     let label_rect = Rect::from_min_max(pos2(rect.left() + 8.0, rect.top() + 6.0), pos2(left - 8.0, rect.top() + 28.0));
     ui.scope_builder(egui::UiBuilder::new().max_rect(label_rect), |ui| {
         let param = app.view.rack.graph_param;
-        let combo = egui::ComboBox::from_id_salt("bodo-rack-graph-param").width(100.0).selected_text(param.label()).show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt("bodo-rack-graph-param").width(rem(8.0)).selected_text(param.label()).show_ui(ui, |ui| {
             for choice in StepParam::ALL {
                 if ui.selectable_label(choice == param, choice.label()).clicked() {
                     app.view.rack.graph_param = choice;

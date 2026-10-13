@@ -39,11 +39,7 @@ fn library(name: &str) -> UserLibrary {
 /// The app with `library` as its user library, set up by `setup`, in a harness.
 fn harness(library: &UserLibrary, theme: Theme, wgpu: bool, setup: impl FnOnce(&mut BodoApp)) -> Harness<'static, BodoApp> {
     let env = bodo_engine::Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: Some(library.root().to_path_buf()) };
-    let prefs = bodo_ui::Prefs {
-        theme: if theme == Theme::Light { bodo_ui::theme::ThemePref::Light } else { bodo_ui::theme::ThemePref::Dark },
-        user_library: Some(library.root().to_path_buf()),
-        ..bodo_ui::Prefs::default()
-    };
+    let prefs = bodo_ui::Prefs { user_library: Some(library.root().to_path_buf()), ..common::prefs(theme) };
     let mut app = BodoApp::new(bodo_engine::Session::deterministic(env), prefs, bodo_ui::Services::default(), false);
     setup(&mut app);
     let mut harness = common::harness(app, theme, wgpu);
@@ -206,10 +202,14 @@ fn the_marketplace_marks_what_arrived_until_it_is_looked_at() {
         h.step();
     }
     assert!(has(&h, "Marketplace new"), "the arrival shows while Bodo runs");
+    // The Marketplace section is at the foot of the list, which may run past the panel's bottom.
+    let list = common::element(&h, "Folder Current project").center();
+    common::scroll_to(&mut h, "Folder Stems (owned) new", list);
     assert!(has(&h, "Folder Stems (owned) new"));
     click(&mut h, "Folder Stems (owned) new");
     h.run_steps(3);
     assert!(!has(&h, "Marketplace new"), "looking at it clears the mark");
+    common::scroll_to(&mut h, "Sound Rhodes Dust", list);
     assert!(has(&h, "Sound Rhodes Dust"));
 }
 

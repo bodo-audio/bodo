@@ -14,7 +14,8 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::json;
 
 use super::{Field, canvas, heading, labeled, sampler_check, sampler_combo, sampler_knob, with_channel};
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// The Sampler window's tabs.
@@ -59,7 +60,7 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
             .and_then(|s| project.samples.get(&s))
             .map_or_else(|| String::from("No sample"), |s| bodo_engine::samples::display_name(&s.path));
         ui.label(egui::RichText::new(name).size(size::BODY));
-        let load = ui.button("Load...");
+        let load = ui.button(t("Load..."));
         control::record(ui, &load, &format!("{} load sample", channel.name), "button", None);
         app.hint(&load, "Load another audio file into this sampler");
         if load.clicked()
@@ -329,7 +330,7 @@ fn waveform(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel
         let slices = preview.zones.len();
         if slices > 0 {
             let note = format!("{slices} {} from {}", if params.load_regions { "regions" } else { "slices" }, key_name(params.root_key));
-            painter.text(rect.right_top() + vec2(-6.0, 4.0), Align2::RIGHT_TOP, note, FontId::proportional(size::SMALL), tk.text_dim);
+            painter.text(rect.right_top() + vec2(-rem(0.48), rem(0.32)), Align2::RIGHT_TOP, note, FontId::proportional(size::SMALL), tk.text_dim);
         }
     } else {
         crate::windows::placeholder(ui, rect, "Reading the sample...");
@@ -351,7 +352,7 @@ fn waveform(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel
         let x = x_of(fraction);
         let top = matches!(marker, Marker::Start | Marker::End | Marker::Offset);
         let handle_y = if top { rect.top() + 6.0 } else { rect.bottom() - 6.0 };
-        let handle = Rect::from_center_size(pos2(x, handle_y), vec2(12.0, 12.0));
+        let handle = Rect::from_center_size(pos2(x, handle_y), vec2(rem(0.96), rem(0.96)));
         let stroke_color = match marker {
             Marker::Start | Marker::End => tk.accent,
             Marker::Offset => tk.text,
@@ -514,7 +515,7 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
     if let Some((on, amount, range, unit)) = modulation {
         ui.horizontal(|ui| {
             let mut on = on;
-            let check = ui.checkbox(&mut on, "On");
+            let check = ui.checkbox(&mut on, t("On"));
             let element = format!("{} {} envelope on", channel.name, name.to_lowercase());
             control::record(ui, &check, &element, "checkbox", Some(on));
             app.hint(&check, format!("Let the envelope move the {}", name.to_lowercase()));
@@ -522,7 +523,7 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
                 let _ = app.run("sampler.set", with_channel(channel, json!({ key: { "enabled": on } })));
             }
             let mut value = amount;
-            let knob = ui.add(bodo_kit_ui::knob::Knob::new(&mut value, -range..=range).default(0.0).origin(0.0).diameter(22.0).label(format!(
+            let knob = ui.add(bodo_kit_ui::knob::Knob::new(&mut value, -range..=range).default(0.0).origin(0.0).diameter(rem(1.76)).label(format!(
                 "{} {} amount",
                 channel.name,
                 name.to_lowercase()
@@ -561,8 +562,11 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
     for (index, (stage, point)) in [("release", points[4]), ("decay", points[2]), ("attack", points[1])].into_iter().enumerate() {
         painter.circle_filled(point, 4.0, line);
         let label = format!("{} {} envelope {stage} point", channel.name, name.to_lowercase());
-        let response =
-            ui.interact(Rect::from_center_size(point, vec2(14.0, 14.0)), ui.id().with(("envelope-point", channel.id, key, index)), Sense::drag());
+        let response = ui.interact(
+            Rect::from_center_size(point, vec2(rem(1.12), rem(1.12))),
+            ui.id().with(("envelope-point", channel.id, key, index)),
+            Sense::drag(),
+        );
         control::record(ui, &response, &label, "point", None);
         app.hint(
             &response,

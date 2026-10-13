@@ -6,7 +6,8 @@ use egui::{Align2, RichText, vec2};
 use serde_json::json;
 
 use crate::BodoApp;
-use crate::theme::{Tokens, size};
+use crate::i18n::t;
+use crate::theme::{Tokens, rem, size};
 
 /// What to do once unsaved changes are dealt with.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -308,7 +309,7 @@ fn modal(ctx: &egui::Context, title: &str, add: impl FnOnce(&mut egui::Ui)) {
         .id(egui::Id::new(("bodo-dialog", title)))
         .collapsible(false)
         .resizable(false)
-        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
+        .anchor(Align2::CENTER_CENTER, vec2(0.0, -rem(3.2)))
         .order(egui::Order::Foreground)
         .show(ctx, add);
 }
@@ -342,17 +343,17 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     }
     if let Some(action) = app.view.dialogs.unsaved.clone() {
         let mut choice = None;
-        modal(ctx, "Unsaved changes", |ui| {
+        modal(ctx, t("Unsaved changes"), |ui| {
             ui.label(format!("Save the changes to {} first?", app.title().trim_end_matches(" *")));
-            ui.add_space(8.0);
+            ui.add_space(rem(0.64));
             ui.horizontal(|ui| {
-                if ui.button("Save").clicked() {
+                if ui.button(t("Save")).clicked() {
                     choice = Some(1);
                 }
-                if ui.button("Don't save").clicked() {
+                if ui.button(t("Don't save")).clicked() {
                     choice = Some(2);
                 }
-                if ui.button("Cancel").clicked() {
+                if ui.button(t("Cancel")).clicked() {
                     choice = Some(0);
                 }
             });
@@ -381,14 +382,14 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
         };
         let mut done = None;
         modal(ctx, title, |ui| {
-            let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width(220.0));
+            let field = ui.add(egui::TextEdit::singleline(&mut text).desired_width(rem(17.6)));
             field.request_focus();
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
-                if ui.button("Rename").clicked() || enter {
+                if ui.button(t("Rename")).clicked() || enter {
                     done = Some(true);
                 }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ui.button(t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     done = Some(false);
                 }
             });
@@ -419,20 +420,20 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     if !app.view.dialogs.recovery.is_empty() {
         let found = app.view.dialogs.recovery.clone();
         let mut choice = None;
-        modal(ctx, "Recover your work", |ui| {
-            ui.label("Bodo didn't close properly last time. These autosaves can bring your work back:");
-            ui.add_space(6.0);
+        modal(ctx, t("Recover your work"), |ui| {
+            ui.label(t("Bodo didn't close properly last time. These autosaves can bring your work back:"));
+            ui.add_space(rem(0.48));
             for path in &found {
                 ui.horizontal(|ui| {
                     let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
                     ui.label(name);
-                    if ui.button("Recover").clicked() {
+                    if ui.button(t("Recover")).clicked() {
                         choice = Some(Some(path.clone()));
                     }
                 });
             }
-            ui.add_space(6.0);
-            if ui.button("Don't recover").clicked() {
+            ui.add_space(rem(0.48));
+            if ui.button(t("Don't recover")).clicked() {
                 choice = Some(None);
             }
         });
@@ -453,7 +454,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
         let mut done = None;
         modal(ctx, title, |ui| {
             ui.label(if dialog.renaming.is_some() { "The layout's new name:" } else { "Save the windows as they are now, under the name:" });
-            let field = ui.add(egui::TextEdit::singleline(&mut dialog.text).desired_width(240.0).hint_text("Layout name"));
+            let field = ui.add(egui::TextEdit::singleline(&mut dialog.text).desired_width(rem(19.2)).hint_text(t("Layout name")));
             field.request_focus();
             crate::control::record(ui, &field, "Layout name", "text", None);
             if let Some(error) = &dialog.error {
@@ -465,7 +466,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
                 if ui.button(label).clicked() || enter {
                     done = Some(true);
                 }
-                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                if ui.button(t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                     done = Some(false);
                 }
             });
@@ -488,14 +489,14 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
 
     if app.view.dialogs.about {
         let mut open = true;
-        egui::Window::new("About Bodo").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        egui::Window::new(t("About Bodo")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             let tk = Tokens::get();
-            ui.label(RichText::new("bodo").size(28.0).color(tk.accent).strong());
+            ui.label(RichText::new("bodo").size(rem(2.24)).color(tk.accent).strong());
             ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
-            ui.label("A free, open-source digital audio workstation written in Rust.");
-            ui.label("Licensed under the GNU GPL, version 3 or later.");
-            ui.add_space(6.0);
-            ui.label(RichText::new("The Bodo Drums factory kit is CC0: use it in your music freely.").color(tk.text_dim));
+            ui.label(t("A free, open-source digital audio workstation written in Rust."));
+            ui.label(t("Licensed under the GNU GPL, version 3 or later."));
+            ui.add_space(rem(0.48));
+            ui.label(RichText::new(t("The Bodo Drums factory kit is CC0: use it in your music freely.")).color(tk.text_dim));
         });
         app.view.dialogs.about = open;
     }
@@ -639,17 +640,17 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
 /// The interface settings (project.md section 14.7): the theme, the interface's size, the language, and the
 /// color-blind-safe colors. Every change applies at once and is kept between runs.
 fn interface_settings(app: &mut BodoApp, ctx: &egui::Context) {
-    use crate::i18n::{LanguagePref, t};
+    use crate::i18n::LanguagePref;
     let mut open = true;
     egui::Window::new(RichText::new(t("Interface settings")).size(size::HEADING))
         .id(egui::Id::new("bodo-interface-settings"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
-        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
+        .anchor(Align2::CENTER_CENTER, vec2(0.0, -rem(3.2)))
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
-            egui::Grid::new("bodo-interface-grid").num_columns(2).spacing(vec2(12.0, 8.0)).show(ui, |ui| {
+            egui::Grid::new("bodo-interface-grid").num_columns(2).spacing(vec2(rem(0.96), rem(0.64))).show(ui, |ui| {
                 ui.label(t("Theme"));
                 ui.horizontal(|ui| {
                     for theme in crate::theme::ThemePref::ALL {
@@ -665,14 +666,18 @@ fn interface_settings(app: &mut BodoApp, ctx: &egui::Context) {
 
                 ui.label(t("Interface size"));
                 ui.horizontal(|ui| {
-                    let mut percent = (app.prefs.ui_scale * 100.0).round();
+                    let mut auto = app.prefs.ui_scale.is_none();
+                    let check = ui.checkbox(&mut auto, t("Auto"));
+                    crate::control::record(ui, &check, "Interface size auto", "checkbox", Some(auto));
+                    app.hint(&check, "Auto sizes the interface from the screen's width, as a web page does");
+                    if check.changed() {
+                        app.prefs.ui_scale = if auto { None } else { Some(app.ui_scale()) };
+                    }
+                    let mut percent = (app.ui_scale() * 100.0).round();
                     let slider = ui.add(egui::Slider::new(&mut percent, 75.0..=200.0).step_by(5.0).suffix("%"));
                     crate::control::record(ui, &slider, "Interface size", "slider", None);
                     if slider.changed() {
-                        app.prefs.ui_scale = percent / 100.0;
-                    }
-                    if ui.button(t("Actual size")).clicked() {
-                        app.prefs.ui_scale = 1.0;
+                        app.prefs.ui_scale = Some(percent / 100.0);
                     }
                 });
                 ui.end_row();
@@ -698,9 +703,9 @@ fn interface_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 }
                 ui.end_row();
             });
-            ui.add_space(6.0);
+            ui.add_space(rem(0.48));
             ui.label(
-                RichText::new(t("The interface keys: Cmd or Ctrl with + and - change its size, and 0 resets it."))
+                RichText::new(t("The interface keys: Cmd or Ctrl with + and - change its size, and 0 goes back to Auto."))
                     .color(Tokens::get().text_dim)
                     .size(size::SMALL),
             );
@@ -714,13 +719,13 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
     let mut draft = app.view.dialogs.audio_draft.take().unwrap_or_else(|| app.prefs.audio.clone());
     let mut close = false;
     let mut apply = false;
-    modal(ctx, "Audio settings", |ui| {
+    modal(ctx, t("Audio settings"), |ui| {
         let hosts = bodo_kit_device::hosts();
-        egui::Grid::new("bodo-audio").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-            ui.label("Driver");
+        egui::Grid::new("bodo-audio").num_columns(2).spacing(vec2(rem(0.96), rem(0.48))).show(ui, |ui| {
+            ui.label(t("Driver"));
             let host_label = draft.host.clone().unwrap_or_else(|| String::from("Default"));
-            egui::ComboBox::from_id_salt("bodo-audio-host").selected_text(host_label).width(220.0).show_ui(ui, |ui| {
-                if ui.selectable_label(draft.host.is_none(), "Default").clicked() {
+            egui::ComboBox::from_id_salt("bodo-audio-host").selected_text(host_label).width(rem(17.6)).show_ui(ui, |ui| {
+                if ui.selectable_label(draft.host.is_none(), t("Default")).clicked() {
                     draft.host = None;
                     draft.output = None;
                     draft.input = None;
@@ -734,11 +739,11 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Output");
+            ui.label(t("Output"));
             let devices = bodo_kit_device::devices(draft.host.as_deref()).unwrap_or_default();
             let output_label = draft.output.clone().unwrap_or_else(|| String::from("Default"));
-            egui::ComboBox::from_id_salt("bodo-audio-output").selected_text(output_label).width(220.0).show_ui(ui, |ui| {
-                if ui.selectable_label(draft.output.is_none(), "Default").clicked() {
+            egui::ComboBox::from_id_salt("bodo-audio-output").selected_text(output_label).width(rem(17.6)).show_ui(ui, |ui| {
+                if ui.selectable_label(draft.output.is_none(), t("Default")).clicked() {
                     draft.output = None;
                 }
                 for device in devices.iter().filter(|d| d.output_channels >= 1) {
@@ -748,10 +753,10 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Input");
+            ui.label(t("Input"));
             let input_label = draft.input.clone().unwrap_or_else(|| String::from("Default"));
-            egui::ComboBox::from_id_salt("bodo-audio-input").selected_text(input_label).width(220.0).show_ui(ui, |ui| {
-                if ui.selectable_label(draft.input.is_none(), "Default").clicked() {
+            egui::ComboBox::from_id_salt("bodo-audio-input").selected_text(input_label).width(rem(17.6)).show_ui(ui, |ui| {
+                if ui.selectable_label(draft.input.is_none(), t("Default")).clicked() {
                     draft.input = None;
                 }
                 for device in devices.iter().filter(|d| d.input_channels >= 1) {
@@ -762,9 +767,9 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Buffer");
+            ui.label(t("Buffer"));
             let frames = draft.buffer_frames.unwrap_or(256);
-            egui::ComboBox::from_id_salt("bodo-audio-buffer").selected_text(format!("{frames} frames")).width(220.0).show_ui(ui, |ui| {
+            egui::ComboBox::from_id_salt("bodo-audio-buffer").selected_text(format!("{frames} frames")).width(rem(17.6)).show_ui(ui, |ui| {
                 for size in [64u32, 128, 256, 512, 1024, 2048] {
                     let ms = f64::from(size) / f64::from(app.session.project().settings.sample_rate.hz()) * 1000.0;
                     if ui.selectable_label(frames == size, format!("{size} frames ({ms:.1} ms)")).clicked() {
@@ -775,14 +780,14 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
             ui.end_row();
         });
         ui.label(RichText::new(app.audio.status()).color(Tokens::get().text_dim).size(size::SMALL));
-        ui.add_space(6.0);
+        ui.add_space(rem(0.48));
         midi_settings(app, ui, &mut draft);
-        ui.add_space(6.0);
+        ui.add_space(rem(0.48));
         ui.horizontal(|ui| {
-            if ui.button("Apply").clicked() {
+            if ui.button(t("Apply")).clicked() {
                 apply = true;
             }
-            if ui.button("Close").clicked() {
+            if ui.button(t("Close")).clicked() {
                 close = true;
             }
         });
@@ -806,19 +811,19 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
 fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio::AudioPrefs) {
     let tk = Tokens::get();
     ui.horizontal(|ui| {
-        ui.label(RichText::new("MIDI inputs").strong());
-        if ui.small_button("Refresh").clicked() {
+        ui.label(RichText::new(t("MIDI inputs")).strong());
+        if ui.small_button(t("Refresh")).clicked() {
             app.view.dialogs.midi_ports = None;
         }
     });
     let ports = app.view.dialogs.midi_ports.get_or_insert_with(bodo_kit_device::midi::input_ports).clone();
     if ports.is_empty() {
-        ui.label(RichText::new("No MIDI inputs found. Connect a keyboard and press Refresh.").color(tk.text_dim).size(size::SMALL));
+        ui.label(RichText::new(t("No MIDI inputs found. Connect a keyboard and press Refresh.")).color(tk.text_dim).size(size::SMALL));
         return;
     }
     let project = std::sync::Arc::clone(app.session.project());
     let open: Vec<String> = app.audio.midi_inputs().into_iter().map(str::to_owned).collect();
-    egui::Grid::new("bodo-midi-inputs").num_columns(3).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+    egui::Grid::new("bodo-midi-inputs").num_columns(3).spacing(vec2(rem(0.96), rem(0.48))).show(ui, |ui| {
         for port in &ports {
             let mut on = draft.midi_inputs.as_ref().is_none_or(|names| names.contains(port));
             let suffix = if open.contains(port) { "" } else { " (closed)" };
@@ -843,8 +848,8 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
             } else {
                 bound.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
             };
-            egui::ComboBox::from_id_salt(("bodo-midi-plays", port)).selected_text(shown).width(160.0).show_ui(ui, |ui| {
-                if ui.selectable_label(bound.is_empty(), "Selected channel").clicked() {
+            egui::ComboBox::from_id_salt(("bodo-midi-plays", port)).selected_text(shown).width(rem(12.8)).show_ui(ui, |ui| {
+                if ui.selectable_label(bound.is_empty(), t("Selected channel")).clicked() {
                     for channel in &bound {
                         let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": null }));
                     }
@@ -861,7 +866,7 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
             let listening = bound.first().and_then(|c| c.midi_in.as_ref()).and_then(|b| b.channel);
             ui.add_enabled_ui(!bound.is_empty(), |ui| {
                 let text = listening.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {}", n + 1));
-                egui::ComboBox::from_id_salt(("bodo-midi-channel", port)).selected_text(text).width(130.0).show_ui(ui, |ui| {
+                egui::ComboBox::from_id_salt(("bodo-midi-channel", port)).selected_text(text).width(rem(10.4)).show_ui(ui, |ui| {
                     let choices = std::iter::once(None).chain((1..=16u8).map(Some));
                     for choice in choices {
                         let label = choice.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {n}"));
@@ -877,7 +882,7 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
         }
     });
     ui.label(
-        RichText::new("Unticked inputs stay closed after Apply. A port bound to channels plays them; any other port plays the selected channel.")
+        RichText::new(t("Unticked inputs stay closed after Apply. A port bound to channels plays them; any other port plays the selected channel."))
             .color(tk.text_dim)
             .size(size::SMALL),
     );

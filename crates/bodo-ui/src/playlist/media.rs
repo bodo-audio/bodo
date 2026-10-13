@@ -15,9 +15,10 @@ use serde_json::{Value, json};
 
 use super::Scale;
 use super::peaks::Waveform;
+use crate::theme::rem;
 
 /// Half the size of a handle, in points.
-pub(crate) const HANDLE: f32 = 3.5;
+pub(crate) const HANDLE: f32 = rem(0.28);
 
 /// What dragging a handle changes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

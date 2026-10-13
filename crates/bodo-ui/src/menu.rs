@@ -7,6 +7,7 @@ use std::path::PathBuf;
 
 use serde_json::{Value, json};
 
+use crate::i18n::en;
 use crate::theme::ThemePref;
 use crate::windows::WindowKind;
 use crate::{BodoApp, dialogs, layouts, shortcuts};
@@ -192,8 +193,8 @@ fn file(app: &BodoApp) -> Menu {
 }
 
 fn edit(app: &BodoApp) -> Menu {
-    let undo = app.session.undo_labels().last().map(|l| format!("Undo {l}"));
-    let redo = app.session.redo_labels().next().map(|l| format!("Redo {l}"));
+    let undo = app.session.undo_labels().last().map(|l| tf!("Undo {step}", step = l));
+    let redo = app.session.redo_labels().next().map(|l| tf!("Redo {step}", step = l));
     Menu {
         title: "Edit",
         items: vec![
@@ -201,7 +202,7 @@ fn edit(app: &BodoApp) -> Menu {
                 command(
                     app,
                     "edit.undo",
-                    undo.clone().unwrap_or_else(|| String::from("Undo")),
+                    undo.clone().unwrap_or_else(|| String::from(en("Undo"))),
                     "edit.undo",
                     Action::Command(String::from("edit.undo")),
                 ),
@@ -211,7 +212,7 @@ fn edit(app: &BodoApp) -> Menu {
                 command(
                     app,
                     "edit.redo",
-                    redo.clone().unwrap_or_else(|| String::from("Redo")),
+                    redo.clone().unwrap_or_else(|| String::from(en("Redo"))),
                     "edit.redo",
                     Action::Command(String::from("edit.redo")),
                 ),
@@ -337,27 +338,23 @@ fn options(app: &BodoApp) -> Menu {
     let autosave = [0, 1, 5, 10, 30]
         .iter()
         .map(|m| {
-            let label = if *m == 0 { String::from("Off") } else { format!("Every {m} minutes") };
+            let label = if *m == 0 { String::from(en("Off")) } else { tf!("Every {minutes} minutes", minutes = m) };
             checked(item(&format!("options.autosave.{m}"), label, Action::Autosave(*m)), app.prefs.autosave_minutes == *m)
         })
         .collect();
-    let mut sizes: Vec<Item> = crate::UI_SCALES
-        .iter()
-        .map(|scale| {
-            let percent = (scale * 100.0).round();
-            let on = (app.prefs.ui_scale - scale).abs() < 1e-3;
-            checked(
-                item(
-                    &format!("options.size.{percent}"),
-                    format!("{percent}%"),
-                    Action::Run(String::from("ui.set_ui_scale"), json!({ "scale": scale })),
-                ),
-                on,
-            )
-        })
-        .collect();
+    let auto_label = tf!("Auto ({percent}%)", percent = (app.ui_scale() * 100.0).round());
+    let auto = Action::Run(String::from("ui.set_ui_scale"), json!({ "scale": "auto" }));
+    let mut sizes: Vec<Item> = vec![checked(item("options.size.auto", auto_label, auto), app.prefs.ui_scale.is_none()), Item::Separator];
+    sizes.extend(crate::UI_SCALES.iter().map(|scale| {
+        let percent = (scale * 100.0).round();
+        let on = app.prefs.ui_scale.is_some_and(|s| (s - scale).abs() < 1e-3);
+        checked(
+            item(&format!("options.size.{percent}"), format!("{percent}%"), Action::Run(String::from("ui.set_ui_scale"), json!({ "scale": scale }))),
+            on,
+        )
+    }));
     sizes.push(Item::Separator);
-    for (id, label) in [("ui.zoom_in", "Larger"), ("ui.zoom_out", "Smaller"), ("ui.zoom_reset", "Actual size")] {
+    for (id, label) in [("ui.zoom_in", en("Larger")), ("ui.zoom_out", en("Smaller")), ("ui.zoom_reset", en("Automatic size"))] {
         let keys = shortcuts::command_keys(app, id, shortcuts::ui_command_keys(id));
         sizes.push(with_keys(item(&format!("options.size.{id}"), label, Action::Command(id.to_owned())), keys));
     }

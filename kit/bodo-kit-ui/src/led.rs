@@ -9,14 +9,14 @@ use crate::palette::Palette;
 pub struct Led<'a> {
     on: &'a mut bool,
     label: String,
-    size: f32,
+    size: Option<f32>,
     palette: Option<Palette>,
 }
 
 impl<'a> Led<'a> {
     /// An LED showing and toggling `on`.
     pub fn new(on: &'a mut bool) -> Self {
-        Self { on, label: String::new(), size: 14.0, palette: None }
+        Self { on, label: String::new(), size: None, palette: None }
     }
 
     /// What the LED switches, for the tooltip and screen readers.
@@ -25,9 +25,10 @@ impl<'a> Led<'a> {
         self
     }
 
-    /// The clickable size in points; the light is a little smaller. 14 by default.
+    /// The clickable size in points; the light is a little smaller. By default 1.12 times [`crate::em`], 14 points
+    /// beside 12.5-point text.
     pub fn size(mut self, size: f32) -> Self {
-        self.size = size.max(6.0);
+        self.size = Some(size.max(6.0));
         self
     }
 
@@ -40,7 +41,8 @@ impl<'a> Led<'a> {
 
 impl Widget for Led<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(self.size), Sense::click());
+        let side = self.size.unwrap_or_else(|| 1.12 * crate::em(ui));
+        let (rect, mut response) = ui.allocate_exact_size(Vec2::splat(side), Sense::click());
         if response.clicked() {
             *self.on = !*self.on;
             response.mark_changed();
@@ -53,7 +55,7 @@ impl Widget for Led<'_> {
             let palette = self.palette.unwrap_or_else(|| Palette::get(ui.ctx()));
             let painter = ui.painter();
             let center = rect.center();
-            let radius = self.size * 0.32;
+            let radius = side * 0.32;
             if on {
                 painter.circle_filled(center, radius * 1.6, palette.led_on.gamma_multiply(0.18));
             }

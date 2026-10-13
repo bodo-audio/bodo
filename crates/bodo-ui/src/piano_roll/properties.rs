@@ -6,6 +6,8 @@ use bodo_model::{Note, NoteId, Pattern, Project};
 use egui::{RichText, Ui};
 use serde_json::json;
 
+use crate::i18n::t;
+use crate::theme::rem;
 use crate::{BodoApp, control};
 
 /// The dialog's values while they are edited.
@@ -73,7 +75,7 @@ pub(super) fn dialog(app: &mut BodoApp, ctx: &egui::Context, project: &Project, 
     };
     egui::Modal::new(egui::Id::new("bodo-note-properties")).show(ctx, |ui| {
         ui.label(RichText::new(format!("Note {}", key_name(editing.key))).strong());
-        ui.add_space(4.0);
+        ui.add_space(rem(0.32));
         egui::Grid::new("bodo-note-properties-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             row(ui, "Key", "Note key", |ui| ui.add(egui::DragValue::new(&mut editing.key).range(0..=127).custom_formatter(|v, _| key_name(v as u8))));
             row(ui, "Start (ticks)", "Note start", |ui| ui.add(egui::DragValue::new(&mut editing.start).range(0..=i64::MAX).speed(10.0)));
@@ -85,18 +87,18 @@ pub(super) fn dialog(app: &mut BodoApp, ctx: &egui::Context, project: &Project, 
             row(ui, "Mod X", "Note Mod X", |ui| ui.add(egui::Slider::new(&mut editing.mod_x, 0.0..=1.0)));
             row(ui, "Mod Y", "Note Mod Y", |ui| ui.add(egui::Slider::new(&mut editing.mod_y, 0.0..=1.0)));
             row(ui, "Color", "Note color", |ui| ui.add(egui::DragValue::new(&mut editing.color).range(0..=15)));
-            row(ui, "Slide", "Note slide", |ui| ui.checkbox(&mut editing.slide, "Slide to the next note"));
-            row(ui, "Portamento", "Note portamento", |ui| ui.checkbox(&mut editing.porta, "Glide from the last note"));
-            row(ui, "Muted", "Note muted", |ui| ui.checkbox(&mut editing.muted, "Silent"));
+            row(ui, "Slide", "Note slide", |ui| ui.checkbox(&mut editing.slide, t("Slide to the next note")));
+            row(ui, "Portamento", "Note portamento", |ui| ui.checkbox(&mut editing.porta, t("Glide from the last note")));
+            row(ui, "Muted", "Note muted", |ui| ui.checkbox(&mut editing.muted, t("Silent")));
         });
-        ui.add_space(6.0);
+        ui.add_space(rem(0.48));
         ui.horizontal(|ui| {
-            let ok = ui.button("OK");
+            let ok = ui.button(t("OK"));
             control::record(ui, &ok, "Note properties OK", "button", None);
             if ok.clicked() {
                 done = Some(true);
             }
-            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.button(t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 done = Some(false);
             }
         });

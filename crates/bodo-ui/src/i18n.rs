@@ -178,6 +178,12 @@ fn unescape(text: &str) -> String {
     out
 }
 
+/// Marks English text that is translated where it shows rather than here, such as an enum's name that is also an id
+/// (`ThemePref::label`). It returns `text` unchanged; the catalog checks find the text through it.
+pub const fn en(text: &'static str) -> &'static str {
+    text
+}
+
 /// `key`, English text, in the interface's language; `key` itself when the catalog lacks it.
 ///
 /// Complexity: one hash lookup.

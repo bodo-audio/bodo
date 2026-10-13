@@ -36,10 +36,10 @@ impl ThemePref {
     /// Its name in `ui.set_theme` and the English source of its name in menus.
     pub fn label(self) -> &'static str {
         match self {
-            Self::System => "System",
-            Self::Light => "Light",
-            Self::Dark => "Dark",
-            Self::HighContrast => "High contrast",
+            Self::System => crate::i18n::en("System"),
+            Self::Light => crate::i18n::en("Light"),
+            Self::Dark => crate::i18n::en("Dark"),
+            Self::HighContrast => crate::i18n::en("High contrast"),
         }
     }
 
@@ -286,24 +286,38 @@ pub fn look() -> Look {
     ACTIVE.with(Cell::get)
 }
 
-/// Font sizes (project.md section 14.3).
+/// The base size of the interface, in points: body text. Every other size is a multiple of it, as CSS sizes are of
+/// `rem`, so the whole layout keeps its proportions when it changes. The interface size preference then scales the
+/// lot (project.md section 14.7).
+pub const REM: f32 = 14.0;
+
+/// `n` times the base size [`REM`], in whole points so edges stay on pixels: `rem(1.0)` is body text, `rem(2.0)`
+/// twice that. Sizes under a point (hairlines) are left unrounded.
+pub const fn rem(n: f32) -> f32 {
+    let points = n * REM;
+    if points.abs() < 1.0 { points } else { points.round() }
+}
+
+/// Font sizes and the heights of the interface's rows (project.md section 14.3), all in [`rem`].
 pub mod size {
+    use super::rem;
+
     /// Small labels.
-    pub const SMALL: f32 = 11.5;
+    pub const SMALL: f32 = rem(0.9);
     /// Body text.
-    pub const BODY: f32 = 12.5;
+    pub const BODY: f32 = rem(1.0);
     /// Numbers.
-    pub const MONO: f32 = 12.0;
+    pub const MONO: f32 = rem(0.96);
     /// Headings.
-    pub const HEADING: f32 = 15.0;
+    pub const HEADING: f32 = rem(1.2);
     /// The song position in the top bar.
-    pub const TIME: f32 = 20.0;
+    pub const TIME: f32 = rem(1.6);
     /// A row of the top bar.
-    pub const TOP_ROW: f32 = 32.0;
+    pub const TOP_ROW: f32 = rem(2.56);
     /// A window's title bar.
-    pub const TITLE_BAR: f32 = 26.0;
+    pub const TITLE_BAR: f32 = rem(2.08);
     /// A list row.
-    pub const ROW: f32 = 22.0;
+    pub const ROW: f32 = rem(1.76);
 }
 
 /// Makes `look` the one [`Tokens::get`] returns and styles `ctx` with it, with the color-blind-safe colors when
@@ -362,9 +376,17 @@ pub fn apply(ctx: &egui::Context, look: impl Into<Look>, color_safe: bool) {
             (TextStyle::Heading, FontId::new(size::HEADING, FontFamily::Proportional)),
         ]
         .into();
-        style.spacing.item_spacing = egui::vec2(6.0, 4.0);
-        style.spacing.button_padding = egui::vec2(6.0, 3.0);
-        style.spacing.interact_size.y = 20.0;
+        style.spacing.item_spacing = egui::vec2(rem(0.48), rem(0.32));
+        style.spacing.button_padding = egui::vec2(rem(0.48), rem(0.24));
+        style.spacing.interact_size = egui::vec2(rem(3.2), rem(1.6));
+        style.spacing.icon_width = rem(1.1);
+        style.spacing.icon_width_inner = rem(0.64);
+        style.spacing.icon_spacing = rem(0.32);
+        style.spacing.slider_width = rem(8.0);
+        style.spacing.combo_width = rem(8.0);
+        style.spacing.text_edit_width = rem(22.0);
+        style.spacing.menu_margin = egui::Margin::same(rem(0.48) as i8);
+        style.spacing.window_margin = egui::Margin::same(rem(0.64) as i8);
         style.animation_time = 0.12;
     });
     palette_for(look, color_safe).install(ctx);

@@ -4,8 +4,9 @@
 
 use egui::{RichText, Sense, Ui, vec2};
 
+use crate::i18n::t;
 use crate::shortcuts::{self, Binding, Group};
-use crate::theme::{Tokens, size};
+use crate::theme::{Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// The dialog's state between frames.
@@ -49,30 +50,30 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     let mut change = None;
     let mut open = true;
     let mut filter_text = app.view.dialogs.shortcut_editor.filter.clone();
-    egui::Window::new("Keyboard shortcuts")
+    egui::Window::new(t("Keyboard shortcuts"))
         .id(egui::Id::new("bodo-shortcuts-dialog"))
         .open(&mut open)
         .collapsible(false)
         .resizable(true)
-        .default_size(vec2(560.0, 520.0))
+        .default_size(vec2(rem(44.8), rem(41.6)))
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                let search = ui.add(egui::TextEdit::singleline(&mut filter_text).hint_text("Search shortcuts").desired_width(260.0));
+                let search = ui.add(egui::TextEdit::singleline(&mut filter_text).hint_text(t("Search shortcuts")).desired_width(rem(20.8)));
                 control::record(ui, &search, "Search shortcuts", "text", None);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    let reset = ui.button("Reset all");
+                    let reset = ui.button(t("Reset all"));
                     control::record(ui, &reset, "Reset all shortcuts", "button", None);
-                    if reset.on_hover_text("Put every shortcut back to Bodo's keys").clicked() {
+                    if reset.on_hover_text(t("Put every shortcut back to Bodo's keys")).clicked() {
                         change = Some(Change::Reset(None));
                     }
                 });
             });
             ui.label(
-                RichText::new("Click a shortcut's keys, then press the new ones. Escape stops listening; right-click removes a shortcut.")
+                RichText::new(t("Click a shortcut's keys, then press the new ones. Escape stops listening; right-click removes a shortcut."))
                     .color(tk.text_dim)
                     .size(size::SMALL),
             );
-            ui.add_space(4.0);
+            ui.add_space(rem(0.32));
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 for group in [Group::App, Group::Windows, Group::Tools, Group::Commands] {
                     let rows: Vec<&Binding> = all
@@ -83,9 +84,9 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
                     if rows.is_empty() {
                         continue;
                     }
-                    ui.add_space(6.0);
-                    ui.label(RichText::new(group.label()).strong().color(tk.text));
-                    egui::Grid::new(("bodo-shortcuts", group)).num_columns(3).striped(true).spacing(vec2(12.0, 4.0)).show(ui, |ui| {
+                    ui.add_space(rem(0.48));
+                    ui.label(RichText::new(crate::i18n::t(group.label())).strong().color(tk.text));
+                    egui::Grid::new(("bodo-shortcuts", group)).num_columns(3).striped(true).spacing(vec2(rem(0.96), rem(0.32))).show(ui, |ui| {
                         for binding in rows {
                             if let Some(c) = row(ui, ctx, binding, listening.as_deref(), conflict.as_ref()) {
                                 change = Some(c);
@@ -131,33 +132,33 @@ fn row(ui: &mut Ui, ctx: &egui::Context, binding: &Binding, listening: Option<&s
     ui.label(&binding.title).on_hover_text(&binding.id);
     let is_listening = listening == Some(binding.id.as_str());
     let text = if is_listening {
-        RichText::new("Press keys...").color(tk.accent)
+        RichText::new(t("Press keys...")).color(tk.accent)
     } else {
         match &binding.keys {
             Some(keys) => RichText::new(shortcuts::display(ctx, keys)).monospace().color(tk.text),
-            None => RichText::new("None").color(tk.text_faint),
+            None => RichText::new(t("None")).color(tk.text_faint),
         }
     };
-    let keys = ui.add(egui::Button::new(text).selected(is_listening).min_size(vec2(120.0, 0.0)));
+    let keys = ui.add(egui::Button::new(text).selected(is_listening).min_size(vec2(rem(9.6), rem(0.0))));
     control::record(ui, &keys, &format!("Shortcut {}", binding.id), "button", Some(is_listening));
     if keys.clicked() {
         change = Some(Change::Listen(if is_listening { None } else { Some(binding.id.clone()) }));
     }
     keys.context_menu(|ui| {
-        if ui.button("Remove shortcut").clicked() {
+        if ui.button(t("Remove shortcut")).clicked() {
             change = Some(Change::Assign { binding: binding.id.clone(), keys: String::new(), steal: false });
             ui.close();
         }
     });
     if binding.changed() {
         let default = binding.default.as_deref().map_or_else(|| String::from("none"), |d| shortcuts::display(ctx, d));
-        let reset = ui.add(egui::Button::new(RichText::new("Reset").size(size::SMALL)).small());
+        let reset = ui.add(egui::Button::new(RichText::new(t("Reset")).size(size::SMALL)).small());
         control::record(ui, &reset, &format!("Reset shortcut {}", binding.id), "button", None);
         if reset.on_hover_text(format!("Bodo's keys: {default}")).clicked() {
             change = Some(Change::Reset(Some(binding.id.clone())));
         }
     } else {
-        ui.allocate_exact_size(vec2(1.0, 1.0), Sense::hover());
+        ui.allocate_exact_size(vec2(rem(0.08), rem(0.08)), Sense::hover());
     }
     if let Some(conflict) = conflict.filter(|c| c.binding == binding.id) {
         ui.end_row();
@@ -165,12 +166,12 @@ fn row(ui: &mut Ui, ctx: &egui::Context, binding: &Binding, listening: Option<&s
         ui.horizontal(|ui| {
             let keys = shortcuts::display(ctx, &conflict.keys);
             ui.label(RichText::new(format!("{keys} is used by {}.", conflict.others.join(", "))).color(tk.warn).size(size::SMALL));
-            let replace = ui.small_button("Use it here");
+            let replace = ui.small_button(t("Use it here"));
             control::record(ui, &replace, "Use the keys here", "button", None);
             if replace.clicked() {
                 change = Some(Change::Assign { binding: conflict.binding.clone(), keys: conflict.keys.clone(), steal: true });
             }
-            let cancel = ui.small_button("Cancel");
+            let cancel = ui.small_button(t("Cancel"));
             control::record(ui, &cancel, "Keep the keys there", "button", None);
             if cancel.clicked() {
                 change = Some(Change::Listen(None));

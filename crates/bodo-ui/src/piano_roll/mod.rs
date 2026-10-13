@@ -29,19 +29,20 @@ use egui::{Align2, FontId, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 pub use self::lanes::Lane;
+use crate::i18n::t;
 use crate::playlist::Tool;
-use crate::theme::{self, Tokens, size};
+use crate::theme::{self, Tokens, rem, size};
 use crate::windows::{self, WindowKind, icon_button};
 use crate::{BodoApp, control};
 
 /// The keyboard's width.
-const KEYS: f32 = 46.0;
+const KEYS: f32 = rem(3.68);
 /// The ruler's height.
-const RULER: f32 = 20.0;
+const RULER: f32 = rem(1.6);
 /// How close to a note's right edge a drag resizes it.
-const EDGE: f32 = 5.0;
+const EDGE: f32 = rem(0.4);
 /// The height of the bar between the notes and the lanes.
-const SPLIT: f32 = 5.0;
+const SPLIT: f32 = rem(0.4);
 
 /// The tools the piano roll has: the playlist's, less Slip.
 pub const TOOLS: [Tool; 8] = [Tool::Draw, Tool::Paint, Tool::Delete, Tool::Mute, Tool::Slice, Tool::Select, Tool::Zoom, Tool::Playback];
@@ -207,15 +208,15 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<&Pa
     // Two notes, one faint behind the other.
     let ghosts = windows::painted_button(ui, "Ghost notes", app.view.piano.ghosts, |painter, rect, color| {
         let c = rect.center();
-        painter.rect_filled(Rect::from_center_size(c + vec2(-2.0, -2.5), vec2(9.0, 3.5)), 1.0, theme::faded(color, 0.4));
-        painter.rect_filled(Rect::from_center_size(c + vec2(2.0, 2.5), vec2(9.0, 3.5)), 1.0, color);
+        painter.rect_filled(Rect::from_center_size(c + vec2(-2.0, -2.5), vec2(rem(0.72), rem(0.28))), 1.0, theme::faded(color, 0.4));
+        painter.rect_filled(Rect::from_center_size(c + vec2(rem(0.16), rem(0.2)), vec2(rem(0.72), rem(0.28))), 1.0, color);
     });
     app.hint(&ghosts, "Ghost notes: show the other channels' notes faintly behind this channel's");
     if ghosts.clicked() {
         app.view.piano.ghosts = !app.view.piano.ghosts;
     }
     let name = channel.and_then(|c| project.channels.get(&c)).map(|c| c.name.clone()).unwrap_or_else(|| String::from("No channel"));
-    let combo = egui::ComboBox::from_id_salt("bodo-piano-channel").width(90.0).selected_text(name).show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt("bodo-piano-channel").width(rem(7.2)).selected_text(name).show_ui(ui, |ui| {
         for id in project.rack_order.iter() {
             if let Some(c) = project.channels.get(id)
                 && ui.selectable_label(channel == Some(*id), &c.name).clicked()
@@ -236,8 +237,8 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
     // Each randomize gives new notes, but the same ones for the same project history, so tests can repeat it.
     let seed = app.session.revision() + 1;
     let mut chosen: Option<(&str, Value)> = None;
-    let menu = ui.menu_button("Tools", |ui| {
-        ui.set_min_width(180.0);
+    let menu = ui.menu_button(t("Tools"), |ui| {
+        ui.set_min_width(rem(14.4));
         let mut item = |ui: &mut Ui, label: &str, id: &'static str, params: Value| {
             if ui.button(label).clicked() {
                 chosen = Some((id, params));
@@ -255,14 +256,14 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         item(ui, "Legato", "note.legato", json!({ "notes": notes }));
         item(ui, "Chop to the snap", "note.chop", json!({ "notes": notes, "length": step }));
         item(ui, "Glue", "note.glue", json!({ "notes": notes }));
-        ui.menu_button("Articulate", |ui| {
+        ui.menu_button(t("Articulate"), |ui| {
             for (label, amount) in [("Staccato", 0.25), ("Half", 0.5), ("Tenuto", 0.9), ("Full length", 1.0)] {
                 item(ui, label, "note.articulate", json!({ "notes": notes, "amount": amount }));
             }
         });
         item(ui, "Strum up", "note.strum", json!({ "notes": notes, "direction": "up" }));
         item(ui, "Strum down", "note.strum", json!({ "notes": notes, "direction": "down" }));
-        ui.menu_button("Arpeggiate", |ui| {
+        ui.menu_button(t("Arpeggiate"), |ui| {
             for (label, order) in [
                 ("Up", "up"),
                 ("Down", "down"),
@@ -285,7 +286,7 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
                 item(ui, &format!("Limit to {} {}", scale.root.name(), scale.kind.name()), "note.limit_to_scale", params);
             }
             None => {
-                ui.add_enabled(false, egui::Button::new("Limit to scale")).on_disabled_hover_text("Choose a scale first");
+                ui.add_enabled(false, egui::Button::new(t("Limit to scale"))).on_disabled_hover_text(t("Choose a scale first"));
             }
         }
         ui.separator();
@@ -293,12 +294,12 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         item(ui, "Make portamento", "note.set_props", json!({ "notes": notes, "porta": true }));
         item(ui, "Make plain notes", "note.set_props", json!({ "notes": notes, "slide": false, "porta": false }));
         ui.separator();
-        ui.menu_button("Stamp", |ui| stamp_menu(app, ui));
-        ui.menu_button("Scale", |ui| scale_menu(app, ui));
+        ui.menu_button(t("Stamp"), |ui| stamp_menu(app, ui));
+        ui.menu_button(t("Scale"), |ui| scale_menu(app, ui));
         ui.separator();
         // The properties of the first selected note, or of the channel's first note.
         if let Some(first) = notes.first()
-            && ui.button("Properties...").clicked()
+            && ui.button(t("Properties...")).clicked()
         {
             app.view.piano.properties = Some(NoteId(*first));
             app.view.piano.editing = None;
@@ -315,7 +316,7 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
 /// The stamp's chords: Draw lays down the chosen one, its root on the key clicked.
 fn stamp_menu(app: &mut BodoApp, ui: &mut Ui) {
     let current = app.view.piano.stamp;
-    if ui.selectable_label(current.is_none(), "Single note").clicked() {
+    if ui.selectable_label(current.is_none(), t("Single note")).clicked() {
         app.view.piano.stamp = None;
     }
     for (quality, name) in STAMPS {
@@ -328,12 +329,12 @@ fn stamp_menu(app: &mut BodoApp, ui: &mut Ui) {
 /// The scale whose keys are highlighted, and that "Limit to scale" uses: its root, then its kind.
 fn scale_menu(app: &mut BodoApp, ui: &mut Ui) {
     let current = app.view.piano.scale;
-    if ui.selectable_label(current.is_none(), "No scale").clicked() {
+    if ui.selectable_label(current.is_none(), t("No scale")).clicked() {
         app.view.piano.scale = None;
     }
     let root = current.map_or(PitchClass::new(0), |s| s.root);
     ui.horizontal_wrapped(|ui| {
-        ui.set_max_width(190.0);
+        ui.set_max_width(rem(15.2));
         for n in 0..12 {
             let class = PitchClass::new(n);
             if ui.selectable_label(current.is_some_and(|s| s.root == class), class.name()).clicked() {
@@ -536,10 +537,10 @@ fn draw_note(ui: &Ui, painter: &egui::Painter, project: &Project, note: &Note, r
         painter.line_segment([a, b], Stroke::new(1.2, mark));
     }
     if note.porta && rect.width() > 8.0 {
-        painter.circle_filled(rect.left_center() + vec2(4.0, 0.0), 2.0, mark);
+        painter.circle_filled(rect.left_center() + vec2(rem(0.32), rem(0.0)), 2.0, mark);
     }
     if rect.width() > 26.0 && rect.height() >= 9.0 {
-        painter.text(rect.left_center() + vec2(3.0, 0.0), Align2::LEFT_CENTER, key_name(note.key), FontId::proportional(8.5), mark);
+        painter.text(rect.left_center() + vec2(rem(0.24), rem(0.0)), Align2::LEFT_CENTER, key_name(note.key), FontId::proportional(rem(0.68)), mark);
     }
     let what = if note.muted { "Muted note" } else { "Note" };
     control::record_rect(
@@ -576,16 +577,16 @@ fn rows_and_keyboard(app: &mut BodoApp, ui: &mut Ui, painter: &egui::Painter, gr
         let key_rect = Rect::from_min_size(pos2(keys.left(), y), vec2(keys.width(), grid.key_height));
         let base = if is_black(key) { tk.key_black } else { tk.key_white };
         let sounding = app.view.piano.sounding == Some((channel, key));
-        board.rect_filled(key_rect.shrink2(vec2(0.0, 0.5)), 0.0, if sounding { tk.accent } else { base });
+        board.rect_filled(key_rect.shrink2(vec2(rem(0.0), rem(0.04))), 0.0, if sounding { tk.accent } else { base });
         if scale.is_some_and(|s| PitchClass::of(key) == s.root) {
             board.rect_filled(Rect::from_min_size(key_rect.min, vec2(3.0, key_rect.height())), 0.0, tk.accent);
         }
         if key % 12 == 0 {
             board.text(
-                key_rect.right_center() - vec2(3.0, 0.0),
+                key_rect.right_center() - vec2(rem(0.24), rem(0.0)),
                 Align2::RIGHT_CENTER,
                 key_name(key),
-                FontId::proportional(9.5),
+                FontId::proportional(rem(0.76)),
                 theme::text_on(tk.key_white),
             );
         }

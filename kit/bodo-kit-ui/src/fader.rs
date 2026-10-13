@@ -71,7 +71,7 @@ pub struct Fader<'a> {
     db: &'a mut f32,
     default: f32,
     label: String,
-    size: Vec2,
+    size: Option<Vec2>,
     ticks: bool,
     palette: Option<Palette>,
 }
@@ -79,7 +79,7 @@ pub struct Fader<'a> {
 impl<'a> Fader<'a> {
     /// A fader for the level `db`, which may be `f32::NEG_INFINITY`.
     pub fn new(db: &'a mut f32) -> Self {
-        Self { db, default: 0.0, label: String::new(), size: vec2(24.0, 140.0), ticks: false, palette: None }
+        Self { db, default: 0.0, label: String::new(), size: None, ticks: false, palette: None }
     }
 
     /// The level a double-click resets to; 0 dB by default.
@@ -94,9 +94,9 @@ impl<'a> Fader<'a> {
         self
     }
 
-    /// The fader's size in points; 24 by 140 by default.
+    /// The fader's size in points; by default 1.92 by 11.2 times [`crate::em`], 24 by 140 beside 12.5-point text.
     pub fn size(mut self, size: Vec2) -> Self {
-        self.size = vec2(size.x.max(10.0), size.y.max(40.0));
+        self.size = Some(vec2(size.x.max(10.0), size.y.max(40.0)));
         self
     }
 
@@ -122,7 +122,9 @@ const HANDLE: f32 = 14.0;
 
 impl Widget for Fader<'_> {
     fn ui(self, ui: &mut Ui) -> Response {
-        let (rect, mut response) = ui.allocate_exact_size(self.size, Sense::click_and_drag());
+        let em = crate::em(ui);
+        let size = self.size.unwrap_or_else(|| vec2(1.92 * em, 11.2 * em));
+        let (rect, mut response) = ui.allocate_exact_size(size, Sense::click_and_drag());
         let travel = (rect.height() - HANDLE).max(1.0);
         let old = *self.db;
         let fine = ui.input(|i| i.modifiers.shift);

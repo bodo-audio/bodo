@@ -14,7 +14,8 @@ use imbl::Vector;
 use serde_json::json;
 
 use super::{canvas, heading, labeled};
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// The clips on the playlist that play `channel`.
@@ -44,7 +45,7 @@ pub(super) fn audio_clip(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
             StretchMode::Stretch => "Stretch to the tempo",
         };
         let mut chosen = None;
-        let combo = egui::ComboBox::from_id_salt(("audio-stretch", channel.id)).width(170.0).selected_text(current).show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt(("audio-stretch", channel.id)).width(rem(13.6)).selected_text(current).show_ui(ui, |ui| {
             for (label, mode) in [("Its own speed", "none"), ("Resample to the tempo", "resample"), ("Stretch to the tempo", "stretch")] {
                 if ui.selectable_label(label == current, label).clicked() {
                     chosen = Some(mode);
@@ -75,7 +76,7 @@ pub(super) fn audio_clip(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
     heading(ui, "Clips");
     let clips = clips_of(project, channel.id);
     if clips.is_empty() {
-        ui.label(RichText::new("No clips yet: double-click the channel to draw it on the playlist").size(size::SMALL).color(tk.text_dim));
+        ui.label(RichText::new(t("No clips yet: double-click the channel to draw it on the playlist")).size(size::SMALL).color(tk.text_dim));
         return;
     }
     ui.label(
@@ -172,14 +173,14 @@ pub(super) fn automation(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
             .color(tk.text_dim),
     );
     ui.horizontal(|ui| {
-        let draw = ui.button("Draw on the playlist");
+        let draw = ui.button(t("Draw on the playlist"));
         control::record(ui, &draw, &format!("{} draw on the playlist", channel.name), "button", None);
         app.hint(&draw, "Make this the clip the playlist's draw and paint tools place, and edit its points there");
         if draw.clicked() {
             app.view.playlist.source = Some(channel.id);
             let _ = app.run("ui.open_window", json!({ "window": "playlist" }));
         }
-        let clear = ui.button("Clear points");
+        let clear = ui.button(t("Clear points"));
         control::record(ui, &clear, &format!("{} clear points", channel.name), "button", None);
         app.hint(&clear, "Remove every point");
         if clear.clicked() {
@@ -196,15 +197,15 @@ pub(super) fn layer(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: 
         let _ = app.run("channel.set_layer", json!({ "channel": channel.id, "children": children }));
     };
     if children.is_empty() {
-        ui.label(RichText::new("Nothing yet: add channels below").size(size::SMALL).color(tk.text_dim));
+        ui.label(RichText::new(t("Nothing yet: add channels below")).size(size::SMALL).color(tk.text_dim));
     }
     for child in children {
         let Some(c) = project.channels.get(child) else { continue };
         ui.horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(6.0, 16.0), egui::Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(rem(0.48), rem(1.28)), egui::Sense::hover());
             ui.painter().rect_filled(rect, 2.0, theme::color(c.color));
             ui.label(RichText::new(&c.name).size(size::BODY));
-            let remove = ui.small_button("Remove");
+            let remove = ui.small_button(t("Remove"));
             control::record(ui, &remove, &format!("{} remove {}", channel.name, c.name), "button", None);
             app.hint(&remove, format!("Stop playing {} from this layer", c.name));
             if remove.clicked() {
@@ -221,7 +222,7 @@ pub(super) fn layer(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: 
         .map(|c| (c.id, c.name.clone()))
         .collect();
     let mut chosen = None;
-    let combo = egui::ComboBox::from_id_salt(("layer-add", channel.id)).width(160.0).selected_text("Add a channel").show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt(("layer-add", channel.id)).width(rem(12.8)).selected_text(t("Add a channel")).show_ui(ui, |ui| {
         for (id, name) in &candidates {
             if ui.selectable_label(false, name).clicked() {
                 chosen = Some(*id);
@@ -244,7 +245,7 @@ pub(super) fn midi_out(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, port: 
             ports.insert(0, port.to_owned());
         }
         let mut chosen = None;
-        let combo = egui::ComboBox::from_id_salt(("midi-out-port", channel.id)).width(200.0).selected_text(port).show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt(("midi-out-port", channel.id)).width(rem(16.0)).selected_text(port).show_ui(ui, |ui| {
             for name in &ports {
                 if ui.selectable_label(name == port, name).clicked() {
                     chosen = Some(name.clone());
@@ -274,7 +275,7 @@ pub(super) fn instrument(ui: &mut Ui, plugin: &PluginRef) {
     heading(ui, "Plugin");
     ui.label(RichText::new(format!("{} ({:?})", plugin.uid, plugin.format)).size(size::BODY));
     ui.label(
-        RichText::new("Bodo keeps this plugin and its state with the project; it plays and shows its editor once plugin hosting arrives.")
+        RichText::new(t("Bodo keeps this plugin and its state with the project; it plays and shows its editor once plugin hosting arrives."))
             .size(size::SMALL)
             .color(tk.text_dim),
     );

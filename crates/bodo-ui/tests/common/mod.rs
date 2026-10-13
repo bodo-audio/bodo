@@ -7,12 +7,17 @@ use bodo_ui::{BodoApp, Prefs, Services};
 use egui::{Event, Modifiers, PointerButton, Pos2, Rect, Theme, vec2};
 use egui_kittest::Harness;
 
-/// The app on a deterministic session with the factory content, without audio.
+/// The app on a deterministic session with the factory content, without audio, at 100% so snapshots don't depend on
+/// the screen.
 pub fn app(theme: Theme) -> BodoApp {
     let env = Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None };
-    let prefs =
-        Prefs { theme: if theme == Theme::Light { bodo_ui::theme::ThemePref::Light } else { bodo_ui::theme::ThemePref::Dark }, ..Prefs::default() };
-    BodoApp::new(Session::deterministic(env), prefs, Services::default(), false)
+    BodoApp::new(Session::deterministic(env), prefs(theme), Services::default(), false)
+}
+
+/// Preferences for tests: `theme`, and the interface pinned at 100%.
+pub fn prefs(theme: Theme) -> Prefs {
+    let theme = if theme == Theme::Light { bodo_ui::theme::ThemePref::Light } else { bodo_ui::theme::ThemePref::Dark };
+    Prefs { theme, ui_scale: Some(1.0), ..Prefs::default() }
 }
 
 /// A harness that draws `app` at 1440 by 900 points, with frames of a sixtieth of a second.
@@ -119,4 +124,29 @@ pub fn snapshot_options(name: &str) -> egui_kittest::SnapshotOptions {
     let options =
         SnapshotOptions::new().threshold(OsThreshold::new(1.5).windows(2.0)).max_failed_pixels(OsThreshold::new(400).windows(2000).linux(1500));
     if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
+}
+
+/// Scrolls with the mouse wheel over `over`, as a person would, until the element labeled `label` shows whole enough
+/// to click: for content below the fold of a window or panel.
+pub fn scroll_to(harness: &mut Harness<'_, BodoApp>, label: &str, over: Pos2) {
+    let tall_enough = |harness: &Harness<'_, BodoApp>| {
+        bodo_ui::control::elements(&harness.ctx).iter().any(|e| e.label == label && e.rect.height() >= 8.0 && e.rect.width() >= 8.0)
+    };
+    let scroll = |harness: &mut Harness<'_, BodoApp>| {
+        harness.event(Event::PointerMoved(over));
+        let delta = vec2(0.0, -48.0);
+        harness.event(Event::MouseWheel { unit: egui::MouseWheelUnit::Point, delta, phase: egui::TouchPhase::Move, modifiers: Modifiers::NONE });
+        harness.step();
+    };
+    for _ in 0..80 {
+        if tall_enough(harness) {
+            break;
+        }
+        scroll(harness);
+    }
+    // A little further, so the element isn't right on the edge, where its control may be cut off.
+    for _ in 0..2 {
+        scroll(harness);
+    }
+    harness.run_steps(2);
 }

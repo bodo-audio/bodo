@@ -37,22 +37,23 @@ use bodo_model::{ChannelId, ClipId, PatternId, PlaylistTrack, Project, SampleRoo
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::windows::{self, WindowKind, icon_button};
 use crate::{BodoApp, control};
 
 /// The pattern list's width.
-const PATTERNS: f32 = 112.0;
+const PATTERNS: f32 = rem(8.96);
 /// The track headers' width.
-const HEADERS: f32 = 108.0;
+const HEADERS: f32 = rem(8.64);
 /// The ruler's height.
-const RULER: f32 = 22.0;
+const RULER: f32 = rem(1.76);
 /// How close to a clip's right edge a drag resizes it, in points.
-const EDGE: f32 = 6.0;
+const EDGE: f32 = rem(0.48);
 /// The height of a clip's name strip.
-const HEADER_STRIP: f32 = 13.0;
+const HEADER_STRIP: f32 = rem(1.04);
 /// The height of a track group's header.
-const GROUP_BAND: f32 = 22.0;
+const GROUP_BAND: f32 = rem(1.76);
 
 /// A playlist tool.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -529,10 +530,10 @@ fn source_row(ui: &mut Ui, name: &str, color: Color32, icon: Option<Icon>, curre
         Color32::TRANSPARENT
     };
     ui.painter().rect_filled(row, 4.0, fill);
-    ui.painter().rect_filled(Rect::from_min_size(row.min + vec2(3.0, 5.0), vec2(4.0, 10.0)), 1.0, color);
+    ui.painter().rect_filled(Rect::from_min_size(row.min + vec2(rem(0.24), rem(0.4)), vec2(rem(0.32), rem(0.8))), 1.0, color);
     let mut text_left = row.left() + 12.0;
     if let Some(icon) = icon {
-        icon.paint(ui.painter(), Rect::from_min_size(pos2(text_left, row.center().y - 5.5), vec2(11.0, 11.0)), tk.text_faint);
+        icon.paint(ui.painter(), Rect::from_min_size(pos2(text_left, row.center().y - rem(0.44)), vec2(rem(0.88), rem(0.88))), tk.text_faint);
         text_left += 15.0;
     }
     ui.painter().with_clip_rect(row).text(
@@ -550,7 +551,8 @@ fn source_row(ui: &mut Ui, name: &str, color: Color32, icon: Option<Icon>, curre
 fn pattern_list(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect) {
     let tk = Tokens::get();
     let current = current_source(app, project);
-    let mut list = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(4.0, 4.0))).layout(egui::Layout::top_down(egui::Align::Min)));
+    let mut list =
+        ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(rem(0.32), rem(0.32)))).layout(egui::Layout::top_down(egui::Align::Min)));
     list.set_clip_rect(rect);
     egui::ScrollArea::vertical().id_salt("bodo-pattern-list").auto_shrink([false, false]).show(&mut list, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
@@ -576,8 +578,8 @@ fn pattern_list(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect) {
                 _ => continue,
             };
             if !heading {
-                ui.add_space(6.0);
-                ui.label(egui::RichText::new("Audio and automation").size(size::SMALL).color(tk.text_faint));
+                ui.add_space(rem(0.48));
+                ui.label(egui::RichText::new(t("Audio and automation")).size(size::SMALL).color(tk.text_faint));
                 heading = true;
             }
             let chosen = current == Some(source);
@@ -698,7 +700,7 @@ fn header_toggle(ui: &mut Ui, rect: Rect, text: &str, on: bool, id: egui::Id) ->
         tk.control
     };
     ui.painter().rect_filled(rect, 3.0, fill);
-    ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(9.5), if on { tk.on_accent } else { tk.text_dim });
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(rem(0.76)), if on { tk.on_accent } else { tk.text_dim });
     response
 }
 
@@ -717,19 +719,19 @@ fn group_bands(app: &mut BodoApp, ui: &mut Ui, project: &Project, headers: Rect,
         painter.rect_filled(strip, 0.0, theme::faded(tk.chrome_dark, 0.6));
         painter.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, tk.border));
         let arrow = if band.collapsed { icons::CHEVRON_RIGHT } else { icons::CHEVRON_DOWN };
-        arrow.paint(&painter, Rect::from_min_size(head.left_top() + vec2(4.0, 5.0), vec2(12.0, 12.0)), tk.text_dim);
-        painter.text(head.left_center() + vec2(19.0, 0.0), Align2::LEFT_CENTER, &band.name, FontId::proportional(size::SMALL), tk.text);
+        arrow.paint(&painter, Rect::from_min_size(head.left_top() + vec2(rem(0.32), rem(0.4)), vec2(rem(0.96), rem(0.96))), tk.text_dim);
+        painter.text(head.left_center() + vec2(rem(1.52), rem(0.0)), Align2::LEFT_CENTER, &band.name, FontId::proportional(size::SMALL), tk.text);
         let members: Vec<&Arc<PlaylistTrack>> = band.tracks.iter().filter_map(|t| project.tracks.get(t)).collect();
         let all_muted = members.iter().all(|t| t.muted);
         let all_solo = !members.is_empty() && members.iter().all(|t| t.solo);
-        let solo_rect = Rect::from_min_size(pos2(head.right() - 40.0, head.top() + 4.0), vec2(14.0, 14.0)).intersect(headers);
+        let solo_rect = Rect::from_min_size(pos2(head.right() - rem(3.2), head.top() + rem(0.32)), vec2(rem(1.12), rem(1.12))).intersect(headers);
         let solo = header_toggle(ui, solo_rect, "S", all_solo, ui.id().with(("group-solo", band.name.as_str())));
         control::record(ui, &solo, &format!("Group {} solo", band.name), "button", Some(all_solo));
         app.hint(&solo, format!("Solo the {} group", band.name));
         if solo.clicked() {
             let _ = app.run("playlist.set_group_props", json!({ "group": band.name, "solo": !all_solo }));
         }
-        let led_rect = Rect::from_min_size(pos2(head.right() - 22.0, head.top() + 4.0), vec2(14.0, 14.0));
+        let led_rect = Rect::from_min_size(pos2(head.right() - rem(1.76), head.top() + rem(0.32)), vec2(rem(1.12), rem(1.12)));
         if led_rect.intersects(headers) {
             let mut on = !all_muted;
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(led_rect).id_salt(("group-led", band.name.as_str())));
@@ -754,11 +756,11 @@ fn group_bands(app: &mut BodoApp, ui: &mut Ui, project: &Project, headers: Rect,
             }
         }
         fold.context_menu(|ui| {
-            if ui.button("Rename group...").clicked() {
+            if ui.button(t("Rename group...")).clicked() {
                 app.view.playlist.naming = Some(GroupNaming { renaming: Some(band.name.clone()), tracks: Vec::new(), text: band.name.clone() });
                 ui.close();
             }
-            if ui.button("Ungroup").clicked() {
+            if ui.button(t("Ungroup")).clicked() {
                 let _ = app.run("playlist.ungroup_tracks", json!({ "group": band.name }));
                 app.view.playlist.collapsed.remove(&band.name);
                 ui.close();
@@ -778,10 +780,10 @@ fn naming_dialog(app: &mut BodoApp, ctx: &egui::Context) {
         control::record(ui, &edit, "Track group name", "text", None);
         edit.request_focus();
         ui.horizontal(|ui| {
-            if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            if ui.button(t("OK")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                 done = Some(true);
             }
-            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            if ui.button(t("Cancel")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                 done = Some(false);
             }
         });
@@ -805,7 +807,7 @@ fn track_group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, track: &P
     groups.dedup();
     let above = project.track_order.index_of(&track.id).and_then(|i| i.checked_sub(1)).and_then(|i| project.track_order.get(i)).copied();
     if let Some(above) = above.and_then(|a| project.tracks.get(&a))
-        && ui.button("Group with track above").clicked()
+        && ui.button(t("Group with track above")).clicked()
     {
         match &above.group {
             Some(name) => {
@@ -818,19 +820,19 @@ fn track_group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, track: &P
         }
         ui.close();
     }
-    ui.menu_button("Add to group", |ui| {
+    ui.menu_button(t("Add to group"), |ui| {
         for name in &groups {
             if ui.button(name).clicked() {
                 let _ = app.run("playlist.group_tracks", json!({ "tracks": [track.id], "name": name }));
                 ui.close();
             }
         }
-        if ui.button("New group...").clicked() {
+        if ui.button(t("New group...")).clicked() {
             app.view.playlist.naming = Some(GroupNaming { renaming: None, tracks: vec![track.id], text: String::from("Group") });
             ui.close();
         }
     });
-    if track.group.is_some() && ui.button("Remove from group").clicked() {
+    if track.group.is_some() && ui.button(t("Remove from group")).clicked() {
         let _ = app.run("playlist.ungroup_tracks", json!({ "tracks": [track.id] }));
         ui.close();
     }
@@ -849,16 +851,16 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
         let header = ui.interact(area.intersect(rect), ui.id().with(("track-header", row.id)), Sense::click());
         painter.hline(area.x_range(), area.bottom() - 0.5, Stroke::new(1.0, tk.border));
         painter.text(
-            area.left_top() + vec2(8.0, 6.0),
+            area.left_top() + vec2(rem(0.64), rem(0.48)),
             Align2::LEFT_TOP,
             &track.name,
             FontId::proportional(size::SMALL),
             if track.muted { tk.text_faint } else { tk.text },
         );
         if track.locked {
-            icons::LOCK.paint(&painter, Rect::from_min_size(area.left_top() + vec2(8.0, 22.0), vec2(11.0, 11.0)), tk.text_faint);
+            icons::LOCK.paint(&painter, Rect::from_min_size(area.left_top() + vec2(rem(0.64), rem(1.76)), vec2(rem(0.88), rem(0.88))), tk.text_faint);
         }
-        let led_rect = Rect::from_min_size(pos2(area.right() - 22.0, area.top() + 6.0), vec2(14.0, 14.0));
+        let led_rect = Rect::from_min_size(pos2(area.right() - rem(1.76), area.top() + rem(0.48)), vec2(rem(1.12), rem(1.12)));
         if led_rect.intersects(rect) {
             let mut on = !track.muted;
             let mut child = ui.new_child(egui::UiBuilder::new().max_rect(led_rect).id_salt(("track-led", row.id)));
@@ -869,7 +871,7 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
                 let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "muted": !on }));
             }
         }
-        let solo_rect = Rect::from_min_size(pos2(area.right() - 40.0, area.top() + 6.0), vec2(14.0, 14.0));
+        let solo_rect = Rect::from_min_size(pos2(area.right() - rem(3.2), area.top() + rem(0.48)), vec2(rem(1.12), rem(1.12)));
         if solo_rect.intersects(rect) {
             let solo = header_toggle(ui, solo_rect.intersect(rect), "S", track.solo, ui.id().with(("track-solo", row.id)));
             control::record(ui, &solo, &format!("{} solo", track.name), "button", Some(track.solo));
@@ -898,7 +900,7 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
             if ui.button(if track.locked { "Unlock" } else { "Lock" }).clicked() {
                 let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "locked": !track.locked }));
             }
-            if ui.button("Insert track above").clicked() {
+            if ui.button(t("Insert track above")).clicked() {
                 let position = project.track_order.index_of(&row.id).map_or(1, |i| i + 1);
                 let _ = app.run("playlist.add_track", json!({ "at": position }));
             }
@@ -908,7 +910,7 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
             ui.separator();
             track_group_menu(app, ui, project, track);
             ui.separator();
-            if ui.button("Delete track").clicked() {
+            if ui.button(t("Delete track")).clicked() {
                 let _ = app.run("playlist.remove_track", json!({ "track": row.id }));
             }
         });
@@ -924,7 +926,7 @@ fn first_starting_after(clips: &imbl::Vector<bodo_model::Clip>, tick: f64) -> us
 
 /// The part of clip `rect` below its name strip `header`, where its content shows.
 fn content_rect(rect: Rect, header: Rect) -> Rect {
-    Rect::from_min_max(pos2(rect.left(), header.bottom() + 2.0), rect.max - vec2(0.0, 2.0))
+    Rect::from_min_max(pos2(rect.left(), header.bottom() + 2.0), rect.max - vec2(rem(0.0), rem(0.16)))
 }
 
 /// Draws the visible clips and returns them, and the handles drawn on them, for hit testing.
@@ -965,10 +967,10 @@ fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale:
             let header = Rect::from_min_max(rect.min, pos2(rect.right(), (rect.top() + HEADER_STRIP).min(rect.bottom())));
             painter.rect_filled(header, egui::CornerRadius { nw: 3, ne: 3, sw: 0, se: 0 }, theme::faded(color, alpha));
             painter.with_clip_rect(header.intersect(canvas)).text(
-                header.left_center() + vec2(4.0, 0.0),
+                header.left_center() + vec2(rem(0.32), rem(0.0)),
                 Align2::LEFT_CENTER,
                 &name,
-                FontId::proportional(10.5),
+                FontId::proportional(rem(0.84)),
                 theme::text_on(color),
             );
             let content = content_rect(rect, header);
@@ -1099,12 +1101,12 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
     let mut chosen: Option<(&str, Value)> = None;
     let area = egui::Area::new(egui::Id::new("bodo-clip-menu")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         egui::Frame::menu(ui.style()).show(ui, |ui| {
-            ui.set_min_width(160.0);
+            ui.set_min_width(rem(12.8));
             if let ClipSource::Pattern(pattern) = source {
-                if ui.button("Make unique").clicked() {
+                if ui.button(t("Make unique")).clicked() {
                     chosen = Some(("clip.make_unique", json!({ "clip": clip })));
                 }
-                if ui.button("Split by channel").clicked() {
+                if ui.button(t("Split by channel")).clicked() {
                     chosen = Some(("pattern.split_by_channel", json!({ "pattern": pattern })));
                 }
             }
@@ -1113,7 +1115,7 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
                     bodo_model::channel::ChannelKind::AudioClip { stretch, .. } => Some(*stretch),
                     _ => None,
                 });
-                ui.menu_button("Stretch", |ui| {
+                ui.menu_button(t("Stretch"), |ui| {
                     use bodo_model::channel::StretchMode;
                     for (label, id, value) in [
                         ("Its own speed", "none", StretchMode::None),
@@ -1125,36 +1127,36 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
                         }
                     }
                 });
-                if ui.button("Remove fades").clicked() {
+                if ui.button(t("Remove fades")).clicked() {
                     chosen = Some(("clip.set_fades", json!({ "clips": [clip], "fadeIn": 0, "fadeOut": 0 })));
                 }
             }
-            if !matches!(source, ClipSource::Automation(_)) && ui.button("Consolidate to audio").clicked() {
+            if !matches!(source, ClipSource::Automation(_)) && ui.button(t("Consolidate to audio")).clicked() {
                 // The selected clips, when this one is among them; otherwise this clip alone.
                 let selected = &app.session.editor().clips;
                 let clips: Vec<ClipId> = if selected.contains(&clip) { selected.iter().copied().collect() } else { vec![clip] };
                 chosen = Some(("clip.consolidate", json!({ "clips": clips })));
             }
-            if ui.button("Mute or unmute").clicked() {
+            if ui.button(t("Mute or unmute")).clicked() {
                 chosen = Some(("clip.mute", json!({ "clips": [clip] })));
             }
-            ui.menu_button("Color", |ui| {
+            ui.menu_button(t("Color"), |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    ui.set_max_width(140.0);
+                    ui.set_max_width(rem(11.2));
                     for hue in bodo_engine::palette::HUES {
-                        let (rect, swatch) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
+                        let (rect, swatch) = ui.allocate_exact_size(vec2(rem(1.28), rem(1.28)), Sense::click());
                         ui.painter().rect_filled(rect, 3.0, theme::color(hue));
                         if swatch.clicked() {
                             chosen = Some(("clip.set_color", json!({ "clips": [clip], "color": hue.to_string() })));
                         }
                     }
                 });
-                if ui.button("Default").clicked() {
+                if ui.button(t("Default")).clicked() {
                     chosen = Some(("clip.set_color", json!({ "clips": [clip], "color": null })));
                 }
             });
             ui.separator();
-            if ui.button("Delete").clicked() {
+            if ui.button(t("Delete")).clicked() {
                 chosen = Some(("clip.remove", json!({ "clips": [clip] })));
             }
         });
@@ -1234,7 +1236,7 @@ fn selection_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
     let length = end - start;
     let area = egui::Area::new(egui::Id::new("bodo-selection-menu")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
         egui::Frame::menu(ui.style()).show(ui, |ui| {
-            ui.set_min_width(170.0);
+            ui.set_min_width(rem(13.6));
             let span = format!(
                 "{} to {}",
                 bodo_engine::params::format_position(project, Tick(start)),
@@ -1255,7 +1257,7 @@ fn selection_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
             ui.separator();
             item(ui, "Loop the selection", "transport.set_loop", json!({ "start": start, "end": end }), false);
             item(ui, "Add a marker", "project.add_marker", json!({ "at": start }), false);
-            if ui.button("Clear the selection").clicked() {
+            if ui.button(t("Clear the selection")).clicked() {
                 chosen = Some(("", Value::Null, true));
             }
         });
@@ -1286,10 +1288,10 @@ fn markers(app: &mut BodoApp, ui: &mut Ui, project: &Project, ruler: Rect, scale
         }
         let color = marker.color.map_or(tk.warn, theme::color);
         painter.vline(x, ruler.y_range(), Stroke::new(1.5, color));
-        let galley = painter.layout_no_wrap(marker.name.clone(), FontId::proportional(10.5), tk.text);
-        let flag = Rect::from_min_size(pos2(x, ruler.top() + 2.0), vec2(galley.size().x + 8.0, ruler.height() - 4.0));
+        let galley = painter.layout_no_wrap(marker.name.clone(), FontId::proportional(rem(0.84)), tk.text);
+        let flag = Rect::from_min_size(pos2(x, ruler.top() + 2.0), vec2(galley.size().x + rem(0.64), ruler.height() - rem(0.32)));
         painter.rect_filled(flag, 2.0, theme::tint(color, 0.45));
-        painter.galley(flag.left_center() + vec2(4.0, -galley.size().y / 2.0), galley, tk.text);
+        painter.galley(flag.left_center() + vec2(rem(0.32), -galley.size().y / 2.0), galley, tk.text);
         let response = ui.interact(flag, ui.id().with(("marker", index)), Sense::click());
         control::record(ui, &response, &format!("Marker {}", marker.name), "marker", None);
         app.hint(&response, format!("Marker {}: click to go there, right-click to remove it", marker.name));

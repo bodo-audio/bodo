@@ -14,6 +14,7 @@ use egui::{Key, KeyboardShortcut, Modifiers};
 use serde_json::json;
 
 use crate::BodoApp;
+use crate::i18n::{en, t};
 use crate::playlist::Tool;
 use crate::windows::WindowKind;
 
@@ -95,9 +96,9 @@ impl Group {
     pub fn label(self) -> &'static str {
         match self {
             Self::App => "Bodo",
-            Self::Windows => "Windows",
-            Self::Tools => "Tools",
-            Self::Commands => "Commands",
+            Self::Windows => crate::i18n::en("Windows"),
+            Self::Tools => crate::i18n::en("Tools"),
+            Self::Commands => crate::i18n::en("Commands"),
         }
     }
 }
@@ -162,15 +163,22 @@ pub fn bindings(app: &BodoApp) -> Vec<Binding> {
         let keys = effective(overrides, &id, default.as_deref());
         out.push(Binding { id, title, group, action, default: default.as_deref().and_then(normalize), keys });
     };
-    push(String::from("app:palette"), String::from("Command palette"), Group::App, Action::Palette, Some(String::from("Mod+K")));
-    push(String::from("app:quit"), String::from("Quit Bodo"), Group::App, Action::Quit, Some(String::from("Mod+Q")));
+    // Titles show in the dialog in the interface's language.
+    push(String::from("app:palette"), String::from(t("Command palette")), Group::App, Action::Palette, Some(String::from("Mod+K")));
+    push(String::from("app:quit"), String::from(t("Quit Bodo")), Group::App, Action::Quit, Some(String::from("Mod+Q")));
     for kind in WindowKind::ALL {
         let default = Some(kind.key().name().to_owned());
-        push(format!("window:{}", kind.id()), format!("Show or hide the {}", kind.title()), Group::Windows, Action::Window(kind), default);
+        let title = tf!("Show or hide the {window}", window = t(kind.title()));
+        push(format!("window:{}", kind.id()), title, Group::Windows, Action::Window(kind), default);
     }
     for tool in Tool::ALL {
-        let title = format!("{} tool", capitalized(tool.label()));
-        push(format!("tool:{}", tool.label()), title, Group::Tools, Action::Tool(tool), Some(tool.key().name().to_owned()));
+        push(
+            format!("tool:{}", tool.label()),
+            String::from(t(tool_title(tool))),
+            Group::Tools,
+            Action::Tool(tool),
+            Some(tool.key().name().to_owned()),
+        );
     }
     let mut commands: Vec<(String, String, Option<String>)> =
         app.session.registry().iter().map(|c| (c.id.to_owned(), c.title.to_owned(), c.shortcut.map(str::to_owned))).collect();
@@ -178,6 +186,7 @@ pub fn bindings(app: &BodoApp) -> Vec<Binding> {
         .extend(BodoApp::ui_commands().iter().map(|(id, title, _)| ((*id).to_owned(), (*title).to_owned(), ui_command_keys(id).map(str::to_owned))));
     commands.sort_by(|a, b| a.0.cmp(&b.0));
     for (id, title, default) in commands {
+        let title = crate::i18n::tr(&title);
         push(format!("command:{id}"), title, Group::Commands, Action::Command(id), default);
     }
     out
@@ -196,9 +205,19 @@ pub(crate) fn ui_command_keys(id: &str) -> Option<&'static str> {
     }
 }
 
-fn capitalized(text: &str) -> String {
-    let mut chars = text.chars();
-    chars.next().map_or_else(String::new, |first| first.to_uppercase().chain(chars).collect())
+/// A tool's name in the shortcuts dialog, in English.
+fn tool_title(tool: Tool) -> &'static str {
+    match tool {
+        Tool::Draw => en("Draw tool"),
+        Tool::Paint => en("Paint tool"),
+        Tool::Delete => en("Delete tool"),
+        Tool::Mute => en("Mute tool"),
+        Tool::Slip => en("Slip tool"),
+        Tool::Slice => en("Slice tool"),
+        Tool::Select => en("Select tool"),
+        Tool::Zoom => en("Zoom tool"),
+        Tool::Playback => en("Playback tool"),
+    }
 }
 
 /// The keys of command `id` now, whose default is `default`.

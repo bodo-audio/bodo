@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::sync::mpsc::{Receiver, channel};
 
 use bodo_ui::BodoApp;
+use bodo_ui::i18n::t;
 use bodo_ui::menu::{self, Action, Item, Menu};
 use muda::accelerator::Accelerator;
 use muda::{CheckMenuItem, MenuEvent, MenuItem, PredefinedMenuItem, Submenu};
@@ -96,8 +97,8 @@ impl NativeMenu {
         let bar = muda::Menu::new();
         let mut handles = HashMap::new();
         let app_menu = Submenu::with_id("app", "Bodo", true);
-        let about = MenuItem::with_id(ABOUT, "About Bodo", true, None);
-        let quit = MenuItem::with_id(QUIT, "Quit Bodo", true, accelerator(quit_keys.as_deref(), listening));
+        let about = MenuItem::with_id(ABOUT, t("About Bodo"), true, None);
+        let quit = MenuItem::with_id(QUIT, t("Quit Bodo"), true, accelerator(quit_keys.as_deref(), listening));
         let appended = app_menu.append_items(&[
             &about,
             &PredefinedMenuItem::separator(),
@@ -112,10 +113,10 @@ impl NativeMenu {
         if let Err(error) = appended.and_then(|()| bar.append(&app_menu)) {
             tracing::warn!(%error, "the app menu could not be built");
         }
-        let shown_quit = Shown { label: String::from("Quit Bodo"), keys: quit_keys.clone(), enabled: true, checked: None };
+        let shown_quit = Shown { label: String::from(t("Quit Bodo")), keys: quit_keys.clone(), enabled: true, checked: None };
         handles.insert(String::from(QUIT), (Handle::Item(quit), shown_quit));
         for top in model {
-            let submenu = Submenu::with_id(format!("menu.{}", top.title), top.title, true);
+            let submenu = Submenu::with_id(format!("menu.{}", top.title), t(top.title), true);
             for item in &top.items {
                 add(&submenu, item, listening, &mut handles);
             }
@@ -170,12 +171,18 @@ fn structure_of(model: &[Menu]) -> Vec<String> {
             }
         }
     }
-    let mut out = Vec::new();
+    // A new language rebuilds the menu bar, so the menus' own titles follow it.
+    let mut out = vec![format!("language:{}", bodo_ui::i18n::language().code())];
     for top in model {
         out.push(format!("m:{}", top.title));
         walk(&top.items, &mut out);
     }
     out
+}
+
+/// A menu label, English in the model, as the interface's language shows it.
+fn shown(label: &str) -> String {
+    bodo_ui::i18n::lookup(label).map_or_else(|| label.to_owned(), str::to_owned)
 }
 
 /// An item's id, what it shows, and its children if it is a submenu.
@@ -185,10 +192,10 @@ fn shown_of(item: &Item) -> Option<(String, Shown, Option<&[Item]>)> {
         Item::Action { id, label, keys, enabled, checked, .. } => {
             // File > Quit shows no keys: the app menu's Quit has them.
             let keys = if id == "file.quit" { None } else { keys.clone() };
-            Some((id.clone(), Shown { label: label.clone(), keys, enabled: *enabled, checked: *checked }, None))
+            Some((id.clone(), Shown { label: shown(label), keys, enabled: *enabled, checked: *checked }, None))
         }
-        Item::Submenu { id, label, items, enabled } => {
-            Some((id.clone(), Shown { label: label.clone(), keys: None, enabled: *enabled, checked: None }, Some(items.as_slice())))
+        Item::Submenu { id, label, items, enabled, .. } => {
+            Some((id.clone(), Shown { label: shown(label), keys: None, enabled: *enabled, checked: None }, Some(items.as_slice())))
         }
     }
 }
