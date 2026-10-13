@@ -76,6 +76,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "bodo-kit-dsp"
+version = "0.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "bodo-kit-core",
+ "proptest",
+ "serde",
+]
+
+[[package]]
 name = "bodo-kit-macros"
 version = "0.0.0"
 dependencies = [

@@ -15,6 +15,7 @@ publish = false
 [workspace.dependencies]
 # Bodo Kit
 bodo-kit-core = { path = "kit/bodo-kit-core" }
+bodo-kit-dsp = { path = "kit/bodo-kit-dsp" }
 bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
