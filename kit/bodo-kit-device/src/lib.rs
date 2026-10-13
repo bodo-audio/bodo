@@ -101,8 +101,20 @@ pub struct AudioStream {
 }
 
 pub(crate) enum StreamInner {
-    Hardware { _output: cpal::Stream, _input: Option<cpal::Stream> },
-    Virtual { stop: Arc<AtomicBool>, handle: Option<JoinHandle<()>> },
+    /// Boxed: cpal's streams are large on some platforms.
+    Hardware {
+        _streams: Box<HardwareStreams>,
+    },
+    Virtual {
+        stop: Arc<AtomicBool>,
+        handle: Option<JoinHandle<()>>,
+    },
+}
+
+/// The cpal streams of a hardware stream, kept alive until the stream is dropped.
+pub(crate) struct HardwareStreams {
+    pub(crate) _output: cpal::Stream,
+    pub(crate) _input: Option<cpal::Stream>,
 }
 
 impl std::fmt::Debug for AudioStream {

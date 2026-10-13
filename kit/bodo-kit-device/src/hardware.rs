@@ -13,7 +13,7 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use crate::driver::{AudioCallback, Driver, Stats};
-use crate::{AudioStream, DeviceConfig, DeviceError, StreamInner};
+use crate::{AudioStream, DeviceConfig, DeviceError, HardwareStreams, StreamInner};
 
 /// An audio host (driver API) on this machine.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -190,7 +190,12 @@ pub(crate) fn open<C: AudioCallback>(config: &DeviceConfig, callback: C) -> Resu
         stream.play().map_err(cpal_error)?;
     }
     // Input latency is measured by the input stream and merged in when the status is read.
-    Ok(AudioStream { stats, input_stats, inner: StreamInner::Hardware { _output: output_stream, _input: input_stream }, rate })
+    Ok(AudioStream {
+        stats,
+        input_stats,
+        inner: StreamInner::Hardware { _streams: Box::new(HardwareStreams { _output: output_stream, _input: input_stream }) },
+        rate,
+    })
 }
 
 fn find_host(name: Option<&str>) -> Result<cpal::Host, DeviceError> {
