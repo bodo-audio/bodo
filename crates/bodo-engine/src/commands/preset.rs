@@ -261,8 +261,10 @@ fn load_channel(ctx: &mut Ctx<'_>, p: LoadChannel) -> Result<Value, CommandError
     };
     let mut channel = instantiate(ctx, &preset, id, target)?;
     channel.midi_in = midi_in;
+    // The channel takes the preset's name, as the file is called.
+    let base = path.file_stem().map_or_else(|| channel.name.clone(), |s| s.to_string_lossy().into_owned());
     let others = ctx.project.channels.values().filter(|c| c.id != id).map(|c| c.name.as_str());
-    channel.name = unique_name(channel.name.trim(), others);
+    channel.name = unique_name(base.trim(), others);
     if !replaced {
         channel.color = palette::channel_color(ctx.project.channels.len());
         ctx.project.rack_order.push_back(id);

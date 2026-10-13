@@ -48,7 +48,7 @@ fn a_channel_preset_carries_its_sample_and_settings_into_another_project() {
     let loaded = run(&mut b, "preset.load_channel", json!({ "path": "Deep Kick" }));
     insta::assert_json_snapshot!("load_channel", loaded);
     assert_eq!(b.undo_labels().count(), steps + 1, "one undo step");
-    let kick = sampler_of(&b, "Kick 2");
+    let kick = sampler_of(&b, "Deep Kick");
     assert_eq!((kick.pan, kick.volume), (-0.5, 0.6));
     assert_eq!(sample_path(&b, kick), "factory:Packs/Bodo Drums/Kick.wav");
     assert_eq!(b.editor().channel, Some(kick.id), "the new channel is selected");
