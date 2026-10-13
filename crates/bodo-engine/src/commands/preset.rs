@@ -242,11 +242,12 @@ fn save_channel(ctx: &mut Ctx<'_>, p: SaveChannel) -> Result<Value, CommandError
 fn load_channel(ctx: &mut Ctx<'_>, p: LoadChannel) -> Result<Value, CommandError> {
     let path = preset_file(ctx, &p.path, PresetFolder::ChannelPresets, CHANNEL_PRESET_EXTENSION)?;
     let preset = read_channel_preset(&path).map_err(|e| io_error(&e))?;
-    let (id, target, midi_in, replaced) = match &p.channel {
+    // A channel the preset replaces keeps its place in the project: its insert, MIDI input and rack group.
+    let (id, target, midi_in, group, replaced) = match &p.channel {
         Some(r) => {
             let id = ctx.channel(Some(r))?;
             let old = ctx.project.channels.get(&id).ok_or_else(|| CommandError::not_found("channel", &id.to_string()))?;
-            (id, old.target, old.midi_in.clone(), true)
+            (id, old.target, old.midi_in.clone(), old.group.clone(), true)
         }
         None => {
             let target = match &p.target {
@@ -256,11 +257,12 @@ fn load_channel(ctx: &mut Ctx<'_>, p: LoadChannel) -> Result<Value, CommandError
                     ctx.project.mixer.order.iter().copied().find(|i| !used.contains(i))
                 }
             };
-            (ctx.ids().channel(), target, None, false)
+            (ctx.ids().channel(), target, None, None, false)
         }
     };
     let mut channel = instantiate(ctx, &preset, id, target)?;
     channel.midi_in = midi_in;
+    channel.group = group;
     // The channel takes the preset's name, as the file is called.
     let base = path.file_stem().map_or_else(|| channel.name.clone(), |s| s.to_string_lossy().into_owned());
     let others = ctx.project.channels.values().filter(|c| c.id != id).map(|c| c.name.as_str());
