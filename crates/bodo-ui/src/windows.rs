@@ -4,6 +4,12 @@
 //! one moves by its title bar, resizes from its edges, maximizes to fill the workspace (double-click the title bar),
 //! minimizes to its title bar and closes. Where they sit is kept as fractions of the workspace, so the arrangement
 //! survives resizing the main window. A [`Layout`] records it all and belongs to the user, not the project.
+//!
+//! Every free window but the Channel Rack can also be detached into its own OS window: an egui viewport, which
+//! eframe shows as a native window that can go to another monitor or full screen (ADR 0032). A detached window draws
+//! with the same app state and handles the keyboard there too, so shortcuts work in it. Its Attach button puts it
+//! back. Where the backend can't show more than one native window, as in tests, a detached window stays in the
+//! workspace with its Attach button.
 
 use std::collections::BTreeMap;
 
@@ -95,12 +101,27 @@ pub struct WindowState {
     pub maximized: bool,
     /// Whether only its title bar shows.
     pub minimized: bool,
+    /// Whether it is detached into its own OS window.
+    #[serde(default)]
+    pub detached: bool,
+    /// Where its OS window was last while detached: left, top, width and height in points on the desktop, so it
+    /// comes back on the same monitor.
+    #[serde(default)]
+    pub screen: Option<[f32; 4]>,
 }
 
 impl WindowState {
-    const fn at(open: bool, frame: [f32; 4]) -> Self {
-        Self { open, frame, maximized: false, minimized: false }
+    /// A window at `frame` (fractions of the workspace), open or not, attached.
+    pub const fn at(open: bool, frame: [f32; 4]) -> Self {
+        Self { open, frame, maximized: false, minimized: false, detached: false, screen: None }
     }
+}
+
+/// What a free window's host does for it beyond drawing: handling the keyboard of a detached window, which the main
+/// window's frame never sees.
+pub trait WindowHost {
+    /// Runs the shortcuts and the typing keyboard for the keys pressed in a detached window this frame.
+    fn detached_keys(&mut self, ctx: &egui::Context);
 }
 
 /// A saved arrangement of the main window.
@@ -121,6 +142,16 @@ impl Default for Layout {
     }
 }
 
+/// A layout the user saved under a name.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedLayout {
+    /// Its name, unique among the saved layouts and different from every preset's.
+    pub name: String,
+    /// The arrangement.
+    pub layout: Layout,
+}
+
 /// The layouts Bodo ships with (project.md section 14.1).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -133,11 +164,13 @@ pub enum Preset {
     Arrange,
     /// Mixer large.
     Mix,
+    /// The mixer filling the workspace with the master selected, for mastering.
+    Master,
 }
 
 impl Preset {
     /// Every preset, in menu order.
-    pub const ALL: [Self; 4] = [Self::Default, Self::Compose, Self::Arrange, Self::Mix];
+    pub const ALL: [Self; 5] = [Self::Default, Self::Compose, Self::Arrange, Self::Mix, Self::Master];
 
     /// Its name in menus.
     pub fn label(self) -> &'static str {
@@ -146,6 +179,7 @@ impl Preset {
             Self::Compose => "Compose",
             Self::Arrange => "Arrange",
             Self::Mix => "Mix",
+            Self::Master => "Master",
         }
     }
 
@@ -181,6 +215,12 @@ impl Layout {
             Preset::Mix => [
                 (Mixer, WindowState::at(true, [0.0, 0.3, 1.0, 0.7])),
                 (Playlist, WindowState::at(true, [0.0, 0.0, 1.0, 0.3])),
+                (ChannelRack, WindowState::at(false, [0.01, 0.015, 0.47, 0.42])),
+                (PianoRoll, WindowState::at(false, [0.22, 0.2, 0.6, 0.6])),
+            ],
+            Preset::Master => [
+                (Mixer, WindowState { maximized: true, ..WindowState::at(true, [0.0, 0.0, 1.0, 1.0]) }),
+                (Playlist, WindowState::at(false, [0.0, 0.0, 1.0, 0.3])),
                 (ChannelRack, WindowState::at(false, [0.01, 0.015, 0.47, 0.42])),
                 (PianoRoll, WindowState::at(false, [0.22, 0.2, 0.6, 0.6])),
             ],
@@ -271,7 +311,7 @@ pub fn painted_button(ui: &mut Ui, label: &str, selected: bool, paint: impl FnOn
 /// Shows window `kind` inside `workspace` with `title`. `header` draws extra controls into the title bar after the
 /// title; `body` draws the contents. Both get `state`, usually the app.
 #[allow(clippy::too_many_arguments, reason = "a window needs its place, title, state and both parts")]
-pub fn show<T>(
+pub fn show<T: WindowHost>(
     ctx: &egui::Context,
     layout: &mut Layout,
     kind: WindowKind,
@@ -285,7 +325,9 @@ pub fn show<T>(
     if !state.open {
         return WindowEvents::default();
     }
-    let (new_state, events) = show_frame(ctx, area_id(kind), kind.icon(), state, workspace, title, state_of, header, body);
+    // The Channel Rack never leaves the main window (ADR 0012).
+    let detachable = kind != WindowKind::ChannelRack;
+    let (new_state, events) = show_frame(ctx, area_id(kind), kind.icon(), state, workspace, title, detachable, state_of, header, body);
     if new_state != state {
         layout.windows.insert(kind, new_state);
     }
@@ -293,21 +335,26 @@ pub fn show<T>(
 }
 
 /// Shows a free window with egui id `id`, its title bar showing `icon` and `title`, at `state` inside `workspace`.
-/// `header` draws extra controls into the title bar; `body` draws the contents. Returns the window's state after
+/// `header` draws extra controls into the title bar; `body` draws the contents. A `detachable` window has a button
+/// that detaches it into its own OS window, and while detached it shows there. Returns the window's state after
 /// this frame's moves, resizes and button clicks, and what happened. Windows that come and go, such as channel
 /// windows, keep their own state; the main windows keep theirs in the [`Layout`].
 #[allow(clippy::too_many_arguments, reason = "a window needs its place, title, state and both parts")]
-pub fn show_frame<T>(
+pub fn show_frame<T: WindowHost>(
     ctx: &egui::Context,
     id: Id,
     icon: Icon,
     state: WindowState,
     workspace: Rect,
     title: &str,
+    detachable: bool,
     state_of: &mut T,
     header: impl FnOnce(&mut T, &mut Ui),
     body: impl FnOnce(&mut T, &mut Ui),
 ) -> (WindowState, WindowEvents) {
+    if state.detached && detachable && !ctx.embed_viewports() {
+        return show_detached(ctx, id, icon, state, workspace, title, state_of, header, body);
+    }
     let tk = Tokens::get();
     let full = if state.maximized { workspace } else { frame_rect(state.frame, workspace) };
     let rect = if state.minimized { Rect::from_min_size(full.min, vec2(full.width().min(300.0), size::TITLE_BAR)) } else { full };
@@ -363,6 +410,16 @@ pub fn show_frame<T>(
         if icon_button(&mut buttons, icons::MINUS, &format!("Minimize {title}"), state.minimized).clicked() {
             new_state.minimized = !state.minimized;
         }
+        if detachable {
+            if state.detached {
+                // Only where the backend can't open more windows: the window stays here, ready to go back.
+                if icon_button(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), true).clicked() {
+                    new_state.detached = false;
+                }
+            } else if icon_button(&mut buttons, icons::EXTERNAL_LINK, &format!("Detach {title}"), false).clicked() {
+                new_state = detach(ctx, new_state, full);
+            }
+        }
 
         if !state.minimized {
             let body_rect = Rect::from_min_max(pos2(rect.left() + 1.0, title_rect.bottom()), rect.max - vec2(1.0, 1.0));
@@ -375,6 +432,91 @@ pub fn show_frame<T>(
             }
         }
     });
+    (new_state, events)
+}
+
+/// `state` detached into its own OS window, placed where the window is now: `rect`, in the main window's points.
+/// A window detached before goes back where it was.
+fn detach(ctx: &egui::Context, state: WindowState, rect: Rect) -> WindowState {
+    let origin = ctx.input(|i| i.viewport().inner_rect.map(|r| r.min)).unwrap_or(Pos2::ZERO);
+    let here = [origin.x + rect.left(), origin.y + rect.top(), rect.width(), (rect.height() - size::TITLE_BAR).max(MIN_SIZE.y)];
+    WindowState { detached: true, minimized: false, maximized: false, screen: Some(state.screen.unwrap_or(here)), ..state }
+}
+
+/// Shows a detached window in its own OS window. It opens where `state.screen` says, keeps track of where the user
+/// moves it, closes with its OS window, and goes back into the main window with its Attach button.
+#[allow(clippy::too_many_arguments, reason = "a window needs its place, title, state and both parts")]
+fn show_detached<T: WindowHost>(
+    ctx: &egui::Context,
+    id: Id,
+    icon: Icon,
+    state: WindowState,
+    workspace: Rect,
+    title: &str,
+    state_of: &mut T,
+    header: impl FnOnce(&mut T, &mut Ui),
+    body: impl FnOnce(&mut T, &mut Ui),
+) -> (WindowState, WindowEvents) {
+    let tk = Tokens::get();
+    // The OS window opens where it was saved. After that the user moves it, and the builder stays as it was, or
+    // egui would move the window back.
+    let fallback = {
+        let rect = frame_rect(state.frame, workspace);
+        [rect.left(), rect.top(), rect.width(), rect.height()]
+    };
+    let spawn_key = id.with("spawn");
+    let [x, y, w, h] = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(spawn_key, || state.screen.unwrap_or(fallback)));
+    let builder = egui::ViewportBuilder::default()
+        .with_title(format!("{title} - Bodo"))
+        .with_position([x, y])
+        .with_inner_size([w.max(MIN_SIZE.x), h.max(MIN_SIZE.y)])
+        .with_min_inner_size(MIN_SIZE);
+    let mut new_state = state;
+    let mut events = WindowEvents::default();
+    let (mut header, mut body) = (Some(header), Some(body));
+    ctx.show_viewport_immediate(egui::ViewportId::from_hash_of(id), builder, |ui, _class| {
+        let ctx = ui.ctx().clone();
+        state_of.detached_keys(&ctx);
+        let (close, outer, inner) = ctx.input(|i| (i.viewport().close_requested(), i.viewport().outer_rect, i.viewport().inner_rect));
+        if close {
+            new_state.open = false;
+            events.closed = true;
+        }
+        if let (Some(outer), Some(inner)) = (outer, inner) {
+            new_state.screen = Some([outer.left(), outer.top(), inner.width(), inner.height()]);
+        }
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(tk.panel)).show(ui, |ui| {
+            let rect = ui.max_rect();
+            events.hovered = ui.rect_contains_pointer(rect);
+            let title_rect = Rect::from_min_size(rect.min, vec2(rect.width(), size::TITLE_BAR));
+            ui.painter().rect_filled(title_rect, 0.0, tk.chrome);
+            let mut bar =
+                ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(6.0, 3.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
+            icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(0.0, 3.0), vec2(14.0, 14.0)), tk.text_dim);
+            bar.add_space(18.0);
+            bar.label(egui::RichText::new(title).color(tk.text).size(size::BODY));
+            bar.add_space(10.0);
+            if let Some(header) = header.take() {
+                header(state_of, &mut bar);
+            }
+            let mut buttons =
+                ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(4.0, 3.0))).layout(egui::Layout::right_to_left(egui::Align::Center)));
+            if icon_button(&mut buttons, icons::ARROW_BACK_UP, &format!("Attach {title}"), true).clicked() {
+                new_state.detached = false;
+            }
+            let body_rect = Rect::from_min_max(pos2(rect.left(), title_rect.bottom()), rect.max);
+            let mut body_ui =
+                ui.new_child(UiBuilder::new().id_salt(id.with("body")).max_rect(body_rect).layout(egui::Layout::top_down(egui::Align::Min)));
+            body_ui.set_clip_rect(body_rect);
+            if let Some(body) = body.take() {
+                body(state_of, &mut body_ui);
+            }
+        });
+    });
+    if !new_state.detached || !new_state.open {
+        // The next detach opens where the window was last.
+        ctx.data_mut(|d| d.remove::<[f32; 4]>(spawn_key));
+    }
     (new_state, events)
 }
 

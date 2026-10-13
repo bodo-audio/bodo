@@ -1,8 +1,6 @@
 //! The top bar (project.md section 14.1): the menu and transport on the first row; the hint bar, layouts, window
 //! buttons, snap and the pattern selector on the second.
 
-use std::path::PathBuf;
-
 use bodo_engine::PlayMode;
 use bodo_engine::params::STEP;
 use bodo_kit_core::Tick;
@@ -11,8 +9,8 @@ use egui::{Align, FontId, Layout, Rect, RichText, Sense, Ui, UiBuilder, vec2};
 use serde_json::json;
 
 use crate::theme::{self, Tokens, size};
-use crate::windows::{Preset, WindowKind, icon_button, painted_button};
-use crate::{BodoApp, Snap, control, dialogs};
+use crate::windows::{WindowKind, icon_button, painted_button};
+use crate::{BodoApp, Snap, control, dialogs, menu};
 
 /// Draws the top bar.
 pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
@@ -32,151 +30,51 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
     });
 }
 
+/// The menu bar, drawn from the same model as the native macOS menu.
 fn menus(app: &mut BodoApp, ui: &mut Ui) {
-    ui.menu_button("File", |ui| {
-        if ui.button("New").clicked() {
-            dialogs::guard_unsaved(app, dialogs::Pending::New);
-        }
-        if ui.button("Open...").clicked() {
-            dialogs::guard_unsaved(app, dialogs::Pending::Open(None));
-        }
-        let recent: Vec<PathBuf> = app.prefs.recent.clone();
-        ui.add_enabled_ui(!recent.is_empty(), |ui| {
-            ui.menu_button("Open recent", |ui| {
-                for path in recent {
-                    let name = path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned());
-                    if ui.button(name).on_hover_text(path.display().to_string()).clicked() {
-                        dialogs::guard_unsaved(app, dialogs::Pending::Open(Some(path)));
-                    }
-                }
-            });
+    let model = menu::menus(app);
+    let mut chosen = None;
+    for top in &model {
+        let opened = ui.menu_button(top.title, |ui| {
+            ui.set_min_width(200.0);
+            menu_items(ui, &top.items, &mut chosen);
         });
-        ui.separator();
-        if ui.button("Save").clicked() {
-            dialogs::save(app, false);
-        }
-        if ui.button("Save as...").clicked() {
-            dialogs::save(app, true);
-        }
-        ui.separator();
-        if ui.button("Import MIDI file...").clicked() {
-            dialogs::import_midi(app);
-        }
-        if ui.button("Export song as MIDI...").clicked() {
-            dialogs::export_midi(app, false);
-        }
-        if ui.button("Export pattern as MIDI...").clicked() {
-            dialogs::export_midi(app, true);
-        }
-        ui.separator();
-        if ui.button("Quit").clicked() {
-            dialogs::guard_unsaved(app, dialogs::Pending::Quit);
-        }
-    });
-    ui.menu_button("Edit", |ui| {
-        let undo = app.session.undo_labels().last().map(|l| format!("Undo {l}"));
-        if ui.add_enabled(undo.is_some(), egui::Button::new(undo.unwrap_or_else(|| "Undo".into()))).clicked() {
-            let _ = app.run("edit.undo", json!({}));
-        }
-        let redo = app.session.redo_labels().next().map(|l| format!("Redo {l}"));
-        if ui.add_enabled(redo.is_some(), egui::Button::new(redo.unwrap_or_else(|| "Redo".into()))).clicked() {
-            let _ = app.run("edit.redo", json!({}));
-        }
-        ui.separator();
-        if ui.button("Select all clips").clicked() {
-            let _ = app.run("edit.select_all", json!({ "what": "clips" }));
-        }
-        if ui.button("Deselect").clicked() {
-            let _ = app.run("edit.deselect", json!({}));
-        }
-        ui.separator();
-        if ui.button("Command palette...").clicked() {
-            let _ = app.run("ui.palette", json!({}));
-        }
-    });
-    ui.menu_button("Add", |ui| {
-        add_channel_menu(app, ui);
-        if ui.button("Pattern").clicked() {
-            let _ = app.run("pattern.new", json!({}));
-        }
-        if ui.button("Playlist track").clicked() {
-            let _ = app.run("playlist.add_track", json!({}));
-        }
-        if ui.button("Mixer insert").clicked() {
-            let _ = app.run("mixer.add_insert", json!({}));
-        }
-    });
-    ui.menu_button("Patterns", |ui| {
-        if ui.button("New pattern").clicked() {
-            let _ = app.run("pattern.new", json!({}));
-        }
-        if ui.button("Clone pattern").clicked() {
-            let _ = app.run("pattern.clone", json!({}));
-        }
-        if ui.button("Rename pattern...").clicked() {
-            dialogs::rename_pattern(app);
-        }
-        if ui.button("Delete pattern").clicked() {
-            let _ = app.run("pattern.delete", json!({}));
-        }
-        ui.separator();
-        if ui.button("Next pattern").clicked() {
-            let _ = app.run("ui.select_pattern", json!({ "offset": 1 }));
-        }
-        if ui.button("Previous pattern").clicked() {
-            let _ = app.run("ui.select_pattern", json!({ "offset": -1 }));
-        }
-    });
-    ui.menu_button("View", |ui| {
-        for kind in WindowKind::ALL {
-            let mut open = app.prefs.layout.is_open(kind);
-            if ui.checkbox(&mut open, kind.title()).clicked() {
-                let _ = app.run("ui.toggle_window", json!({ "window": kind.id() }));
+        control::record(ui, &opened.response, &format!("Menu {}", top.title), "menu", None);
+    }
+    if let Some(action) = chosen {
+        menu::perform(app, action);
+    }
+}
+
+/// Draws menu `items`, putting the one clicked in `chosen`.
+pub(crate) fn menu_items(ui: &mut Ui, items: &[menu::Item], chosen: &mut Option<menu::Action>) {
+    let tk = Tokens::get();
+    for item in items {
+        match item {
+            menu::Item::Separator => {
+                ui.separator();
             }
-        }
-        let mut browser = app.prefs.layout.browser;
-        if ui.checkbox(&mut browser, "Browser").clicked() {
-            let _ = app.run("ui.toggle_browser", json!({}));
-        }
-        ui.separator();
-        ui.menu_button("Layout", |ui| layout_menu(app, ui));
-        ui.menu_button("Theme", |ui| {
-            for theme in crate::theme::ThemePref::ALL {
-                if ui.radio(app.prefs.theme == theme, theme.label()).clicked() {
-                    let _ = app.run("ui.set_theme", json!({ "theme": theme.label() }));
+            menu::Item::Submenu { label, items, enabled, .. } => {
+                ui.add_enabled_ui(*enabled, |ui| {
+                    ui.menu_button(label, |ui| menu_items(ui, items, chosen));
+                });
+            }
+            menu::Item::Action { label, action, keys, enabled, checked, .. } => {
+                // A checked item shows selected, in the accent color.
+                let text = if *checked == Some(true) { RichText::new(label.as_str()).color(tk.accent) } else { RichText::new(label.as_str()) };
+                let mut button = egui::Button::new(text).selected(*checked == Some(true));
+                if let Some(keys) = keys {
+                    button = button.shortcut_text(crate::shortcuts::display(ui.ctx(), keys));
+                }
+                let response = ui.add_enabled(*enabled, button);
+                control::record(ui, &response, label, "menu-item", *checked);
+                if response.clicked() {
+                    *chosen = Some(action.clone());
+                    ui.close();
                 }
             }
-        });
-    });
-    ui.menu_button("Options", |ui| {
-        if ui.button("Audio settings...").clicked() {
-            app.view.dialogs.audio = true;
         }
-        if ui.button("Add sample folder...").clicked() {
-            dialogs::add_sample_folder(app);
-        }
-        ui.menu_button("Autosave", |ui| {
-            for minutes in [0, 1, 5, 10, 30] {
-                let label = if minutes == 0 { String::from("Off") } else { format!("Every {minutes} minutes") };
-                if ui.radio(app.prefs.autosave_minutes == minutes, label).clicked() {
-                    app.prefs.autosave_minutes = minutes;
-                }
-            }
-        });
-    });
-    ui.menu_button("Tools", |ui| {
-        if ui.button("Command palette...").clicked() {
-            let _ = app.run("ui.palette", json!({}));
-        }
-    });
-    ui.menu_button("Help", |ui| {
-        if ui.button("Keyboard shortcuts").clicked() {
-            app.view.dialogs.shortcuts = true;
-        }
-        if ui.button("About Bodo").clicked() {
-            app.view.dialogs.about = true;
-        }
-    });
+    }
 }
 
 /// The Add > Channel menu: the factory drum kit, the user's folders, or a file.
@@ -199,11 +97,14 @@ pub(crate) fn add_channel_menu(app: &mut BodoApp, ui: &mut Ui) {
     });
 }
 
+/// The layouts menu of the Layouts button: the same as View > Layout.
 fn layout_menu(app: &mut BodoApp, ui: &mut Ui) {
-    for preset in Preset::ALL {
-        if ui.button(preset.label()).clicked() {
-            let _ = app.run("ui.set_layout", json!({ "layout": preset.label() }));
-        }
+    ui.set_min_width(180.0);
+    let items = menu::layout_items(app);
+    let mut chosen = None;
+    menu_items(ui, &items, &mut chosen);
+    if let Some(action) = chosen {
+        menu::perform(app, action);
     }
 }
 
@@ -468,7 +369,8 @@ fn tools(app: &mut BodoApp, ui: &mut Ui) {
     for kind in WindowKind::ALL {
         let open = app.prefs.layout.is_open(kind);
         let button = icon_button(ui, kind.icon(), kind.title(), open);
-        app.hint(&button, format!("Show or hide the {} ({:?})", kind.title(), kind.key()));
+        let keys = crate::shortcuts::window_keys(app, kind).map_or_else(String::new, |k| format!(" ({})", crate::shortcuts::display(ui.ctx(), &k)));
+        app.hint(&button, format!("Show or hide the {}{keys}", kind.title()));
         if button.clicked() {
             let _ = app.run("ui.toggle_window", json!({ "window": kind.id() }));
         }

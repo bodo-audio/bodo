@@ -64,7 +64,8 @@ pub struct Typing {
 ///
 /// Complexity: O(e) in this frame's events.
 pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
-    if !app.view.typing.on || ctx.egui_wants_keyboard_input() {
+    // Keys typed into a field, or pressed while the shortcuts dialog listens for new ones, aren't notes.
+    if !app.view.typing.on || ctx.egui_wants_keyboard_input() || app.view.dialogs.recording_shortcut() {
         release_all(app);
         return;
     }

@@ -44,14 +44,46 @@ pub struct Dialogs {
     pub(crate) audio_draft: Option<crate::audio::AudioPrefs>,
     /// The MIDI inputs the system listed when the audio settings opened.
     pub(crate) midi_ports: Option<Vec<String>>,
-    /// The keyboard shortcuts list.
+    /// The keyboard shortcuts dialog.
     pub shortcuts: bool,
+    /// The shortcuts dialog's filter, the shortcut listening for new keys, and a conflict waiting for an answer.
+    pub(crate) shortcut_editor: crate::shortcut_editor::EditorState,
+    /// The layout name dialog: saving the windows as a layout, or renaming a saved one.
+    pub(crate) layout_name: Option<LayoutName>,
     /// The about box.
     pub about: bool,
     /// Autosaves found after a crash, offered for recovery.
     pub recovery: Vec<PathBuf>,
     /// The song position shows minutes and seconds instead of bars, steps and ticks.
     pub clock_seconds: bool,
+}
+
+/// The layout name dialog's purpose and what has been typed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LayoutName {
+    /// The saved layout being renamed, or `None` to save the windows as a new layout.
+    pub(crate) renaming: Option<String>,
+    /// The name typed so far.
+    pub(crate) text: String,
+    /// Why the last attempt didn't work.
+    pub(crate) error: Option<String>,
+}
+
+impl Dialogs {
+    /// Whether the shortcuts dialog is listening for new keys, which then belong to it alone.
+    pub fn recording_shortcut(&self) -> bool {
+        self.shortcuts && self.shortcut_editor.listening.is_some()
+    }
+
+    /// Opens the dialog that saves the windows as a new layout.
+    pub fn save_layout(&mut self) {
+        self.layout_name = Some(LayoutName { renaming: None, text: String::new(), error: None });
+    }
+
+    /// Opens the dialog that renames saved layout `name`.
+    pub fn rename_layout(&mut self, name: &str) {
+        self.layout_name = Some(LayoutName { renaming: Some(name.to_owned()), text: name.to_owned(), error: None });
+    }
 }
 
 /// Does `action` now if there are no unsaved changes; otherwise asks first.
@@ -268,28 +300,45 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     }
 
     if app.view.dialogs.shortcuts {
-        let mut open = true;
-        egui::Window::new("Keyboard shortcuts").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-            egui::Grid::new("bodo-shortcuts").num_columns(2).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-                let mut rows: Vec<(String, String)> = app
-                    .session
-                    .registry()
-                    .iter()
-                    .filter_map(|c| c.shortcut.map(|s| (crate::shortcuts::display(ctx, s), c.title.to_owned())))
-                    .collect();
-                for kind in crate::windows::WindowKind::ALL {
-                    rows.push((format!("{:?}", kind.key()), format!("Show or hide the {}", kind.title())));
+        crate::shortcut_editor::show(app, ctx);
+    }
+
+    if let Some(mut dialog) = app.view.dialogs.layout_name.take() {
+        let title = if dialog.renaming.is_some() { "Rename layout" } else { "Save layout" };
+        let mut done = None;
+        modal(ctx, title, |ui| {
+            ui.label(if dialog.renaming.is_some() { "The layout's new name:" } else { "Save the windows as they are now, under the name:" });
+            let field = ui.add(egui::TextEdit::singleline(&mut dialog.text).desired_width(240.0).hint_text("Layout name"));
+            field.request_focus();
+            crate::control::record(ui, &field, "Layout name", "text", None);
+            if let Some(error) = &dialog.error {
+                ui.label(RichText::new(error).color(Tokens::get().error).size(size::SMALL));
+            }
+            let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.horizontal(|ui| {
+                let label = if dialog.renaming.is_some() { "Rename" } else { "Save" };
+                if ui.button(label).clicked() || enter {
+                    done = Some(true);
                 }
-                rows.push((crate::shortcuts::display(ctx, "Mod+K"), String::from("Command palette")));
-                rows.push((String::from("P / D / T"), String::from("Playlist tools: draw, delete, mute")));
-                for (keys, what) in rows {
-                    ui.label(RichText::new(keys).monospace());
-                    ui.label(what);
-                    ui.end_row();
+                if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    done = Some(false);
                 }
             });
         });
-        app.view.dialogs.shortcuts = open;
+        match done {
+            Some(true) => {
+                let result = match &dialog.renaming {
+                    Some(old) => app.run("ui.rename_layout", json!({ "layout": old, "name": dialog.text })),
+                    None => app.run("ui.save_layout", json!({ "name": dialog.text })),
+                };
+                if let Err(error) = result {
+                    dialog.error = Some(error);
+                    app.view.dialogs.layout_name = Some(dialog);
+                }
+            }
+            Some(false) => {}
+            None => app.view.dialogs.layout_name = Some(dialog),
+        }
     }
 
     if app.view.dialogs.about {

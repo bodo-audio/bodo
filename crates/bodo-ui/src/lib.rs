@@ -18,7 +18,9 @@ mod browser;
 pub mod channel_window;
 pub mod control;
 mod dialogs;
+pub mod layouts;
 pub mod library;
+pub mod menu;
 mod midi_out;
 mod mixer;
 mod palette;
@@ -27,12 +29,14 @@ mod playlist;
 mod rack;
 pub mod remote;
 pub mod screenshot;
-mod shortcuts;
+mod shortcut_editor;
+pub mod shortcuts;
 pub mod theme;
 mod topbar;
 mod typing;
 pub mod windows;
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -47,7 +51,7 @@ pub use crate::playlist::{PlaylistView, Tool};
 pub use crate::rack::{GroupFilter, RackView, StepParam};
 use crate::theme::{ThemePref, Tokens};
 pub use crate::typing::Typing;
-use crate::windows::{Layout, Preset, WindowKind};
+use crate::windows::{Layout, Preset, SavedLayout, WindowKind};
 
 /// The storage key of the preferences.
 pub const PREFS_KEY: &str = "bodo.prefs";
@@ -91,6 +95,13 @@ pub struct Prefs {
     pub theme: ThemePref,
     /// The window layout.
     pub layout: Layout,
+    /// The layouts the user saved, by name, besides the presets.
+    pub layouts: Vec<SavedLayout>,
+    /// The name of the layout chosen or saved last, a preset's or the user's, which the menus mark.
+    pub layout_name: Option<String>,
+    /// Keyboard shortcuts the user changed: binding id, such as `command:project.save`, to keys such as `Mod+S`, or
+    /// an empty string for no shortcut. Everything else keeps its default.
+    pub shortcuts: BTreeMap<String, String>,
     /// Folders of the user's own sounds.
     pub library: Vec<PathBuf>,
     /// Recently opened or saved projects, newest first.
@@ -109,6 +120,9 @@ impl Default for Prefs {
         Self {
             theme: ThemePref::Dark,
             layout: Layout::default(),
+            layouts: Vec::new(),
+            layout_name: Some(String::from(Preset::Default.label())),
+            shortcuts: BTreeMap::new(),
             library: Vec::new(),
             recent: Vec::new(),
             user_library: None,
@@ -409,14 +423,32 @@ impl BodoApp {
                 self.prefs.layout.browser = !self.prefs.layout.browser;
                 Ok(json!({ "browser": self.prefs.layout.browser }))
             }
-            "ui.set_layout" => match Preset::from_id(&text("layout")) {
-                Some(preset) => {
-                    self.prefs.layout =
-                        Layout { browser: self.prefs.layout.browser, browser_width: self.prefs.layout.browser_width, ..Layout::preset(preset) };
-                    Ok(json!({ "layout": preset.label() }))
+            "ui.set_layout" => layouts::switch(self, &text("layout")),
+            "ui.save_layout" => layouts::save(self, &text("name")),
+            "ui.rename_layout" => layouts::rename(self, &text("layout"), &text("name")),
+            "ui.delete_layout" => layouts::delete(self, &text("layout")),
+            "ui.detach_window" => match WindowKind::from_id(&text("window")) {
+                Some(WindowKind::ChannelRack) => Err(String::from("the channel rack stays in the main window")),
+                Some(kind) => {
+                    let mut state = self.prefs.layout.state(kind);
+                    state.detached = params.get("detached").and_then(Value::as_bool).unwrap_or(!state.detached);
+                    state.open = true;
+                    state.minimized = false;
+                    self.prefs.layout.windows.insert(kind, state);
+                    Ok(json!({ "window": kind.id(), "detached": state.detached }))
                 }
-                None => Err(String::from("layout must be Default, Compose, Arrange or Mix")),
+                None => Err(String::from("window must be playlist, pianoRoll or mixer")),
             },
+            "ui.set_shortcut" => {
+                let steal = params.get("replace").and_then(Value::as_bool).unwrap_or(false);
+                shortcuts::assign(self, &text("binding"), &text("keys"), steal)
+                    .map(|unbound| json!({ "binding": text("binding"), "unbound": unbound }))
+            }
+            "ui.reset_shortcuts" => {
+                let binding = params.get("binding").and_then(Value::as_str);
+                shortcuts::reset(self, binding);
+                Ok(json!({ "reset": binding.unwrap_or("all") }))
+            }
             "ui.set_snap" => match Snap::ALL.into_iter().find(|s| s.label().eq_ignore_ascii_case(&text("snap"))) {
                 Some(snap) => {
                     self.view.snap = snap;
@@ -495,7 +527,25 @@ impl BodoApp {
             ("ui.toggle_window", "Show or hide a window", "Shows or hides the channel rack, playlist, piano roll or mixer: {\"window\": \"mixer\"}."),
             ("ui.open_window", "Open a window", "Opens and brings a window to the front: {\"window\": \"playlist\"}."),
             ("ui.toggle_browser", "Show or hide the browser", "Shows or hides the browser on the left."),
-            ("ui.set_layout", "Switch layout", "Arranges the windows: {\"layout\": \"Default\" | \"Compose\" | \"Arrange\" | \"Mix\"}."),
+            (
+                "ui.set_layout",
+                "Switch layout",
+                "Arranges the windows: {\"layout\": \"Default\" | \"Compose\" | \"Arrange\" | \"Mix\" | \"Master\"}, or a layout the user saved by its name.",
+            ),
+            ("ui.save_layout", "Save layout", "Saves the windows as they are now as a layout: {\"name\": \"Two screens\"}."),
+            ("ui.rename_layout", "Rename layout", "Renames a saved layout: {\"layout\": \"Two screens\", \"name\": \"Studio\"}."),
+            ("ui.delete_layout", "Delete layout", "Deletes a saved layout: {\"layout\": \"Studio\"}."),
+            (
+                "ui.detach_window",
+                "Detach window",
+                "Moves a window into its own OS window, or back: {\"window\": \"mixer\", \"detached\": true}. The channel rack stays in.",
+            ),
+            (
+                "ui.set_shortcut",
+                "Set shortcut",
+                "Gives a shortcut new keys: {\"binding\": \"command:project.save\", \"keys\": \"Mod+Shift+S\"}; \"\" removes it, and \"replace\": true takes the keys from another.",
+            ),
+            ("ui.reset_shortcuts", "Reset shortcuts", "Puts a shortcut back to Bodo's keys, {\"binding\": \"tool:draw\"}, or every one."),
             (
                 "ui.set_snap",
                 "Set snap",
@@ -627,6 +677,13 @@ impl BodoApp {
         if response.hovered() {
             self.view.hint = Some(text.into());
         }
+    }
+}
+
+impl windows::WindowHost for BodoApp {
+    fn detached_keys(&mut self, ctx: &egui::Context) {
+        typing::handle(self, ctx);
+        shortcuts::handle(self, ctx);
     }
 }
 

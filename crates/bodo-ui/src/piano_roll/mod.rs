@@ -192,7 +192,8 @@ fn targets(app: &BodoApp, pattern: &Pattern, channel: ChannelId) -> Vec<u32> {
 fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<&Pattern>, channel: Option<ChannelId>) {
     for tool in TOOLS {
         let button = icon_button(ui, tool.icon(), &format!("Piano roll tool {}", tool.label()), app.view.piano.tool == tool);
-        app.hint(&button, tool_hint(tool));
+        let hint = crate::shortcuts::tool_hint(app, ui.ctx(), tool, tool_hint(tool));
+        app.hint(&button, hint);
         if button.clicked() {
             app.view.piano.tool = tool;
             app.view.editor = WindowKind::PianoRoll;

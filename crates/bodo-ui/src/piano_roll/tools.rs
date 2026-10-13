@@ -70,7 +70,7 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
     control::record(ui, &response, "Piano roll grid", "canvas", None);
     let tool = app.view.piano.tool;
     if response.hovered() {
-        app.view.hint = Some(tool_hint(tool).to_owned());
+        app.view.hint = Some(crate::shortcuts::tool_hint(app, ui.ctx(), tool, tool_hint(tool)));
     }
     let pointer = ui.input(|i| {
         i.pointer.latest_pos().map(|at| Pointer {

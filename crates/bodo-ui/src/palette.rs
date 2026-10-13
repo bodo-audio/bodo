@@ -50,7 +50,7 @@ fn entries(app: &BodoApp, ctx: &egui::Context) -> Vec<Entry> {
                 id: spec.id.to_owned(),
                 title: spec.title.to_owned(),
                 summary: spec.summary.to_owned(),
-                shortcut: spec.shortcut.map(|s| crate::shortcuts::display(ctx, s)),
+                shortcut: crate::shortcuts::command_keys(app, spec.id, spec.shortcut).map(|s| crate::shortcuts::display(ctx, &s)),
                 required,
                 fields,
             }
@@ -60,7 +60,7 @@ fn entries(app: &BodoApp, ctx: &egui::Context) -> Vec<Entry> {
         id: (*id).to_owned(),
         title: (*title).to_owned(),
         summary: (*summary).to_owned(),
-        shortcut: None,
+        shortcut: crate::shortcuts::command_keys(app, id, None).map(|s| crate::shortcuts::display(ctx, &s)),
         required: Vec::new(),
         fields: Vec::new(),
     }));

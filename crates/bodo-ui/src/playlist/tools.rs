@@ -78,7 +78,7 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
     drop_sound(app, ui, project, canvas, &response);
     let tool = app.view.playlist.tool;
     if response.hovered() {
-        app.view.hint = Some(tool.hint().to_owned());
+        app.view.hint = Some(crate::shortcuts::tool_hint(app, ui.ctx(), tool, tool.hint()));
     }
     let pointer = ui.input(|i| {
         i.pointer.latest_pos().map(|at| Pointer {

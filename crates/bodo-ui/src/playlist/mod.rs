@@ -324,7 +324,8 @@ pub(crate) fn window(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, pr
 fn header(app: &mut BodoApp, ui: &mut Ui) {
     for tool in Tool::ALL {
         let button = icon_button(ui, tool.icon(), &format!("Playlist tool {}", tool.label()), app.view.playlist.tool == tool);
-        app.hint(&button, tool.hint());
+        let hint = crate::shortcuts::tool_hint(app, ui.ctx(), tool, tool.hint());
+        app.hint(&button, hint);
         if button.clicked() {
             app.view.playlist.tool = tool;
         }

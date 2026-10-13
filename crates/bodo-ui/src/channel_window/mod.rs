@@ -71,11 +71,7 @@ pub(crate) fn open(app: &mut BodoApp, ctx: Option<&egui::Context>, channel: Chan
         // Each new window cascades a little from the last, right of the channel rack so its name buttons stay in reach.
         let n = windows.open.len() as f32;
         let frame = [0.44 + 0.02 * (n % 5.0), 0.04 + 0.03 * (n % 5.0), 0.5, 0.82];
-        windows.open.push(ChannelWindow {
-            channel,
-            state: WindowState { open: true, frame, maximized: false, minimized: false },
-            tab: SamplerTab::Sample,
-        });
+        windows.open.push(ChannelWindow { channel, state: WindowState::at(true, frame), tab: SamplerTab::Sample });
     }
     if let Some(ctx) = ctx {
         ctx.move_to_top(egui::LayerId::new(egui::Order::Middle, area_id(channel)));
@@ -107,6 +103,7 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
             window.state,
             workspace,
             &title,
+            true,
             app,
             |app, ui| {
                 if matches!(channel.kind, ChannelKind::Sampler(_)) {
