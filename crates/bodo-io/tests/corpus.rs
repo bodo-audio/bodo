@@ -1,8 +1,10 @@
-//! The migration corpus (project.md section 18.1): every fixture in `tests/corpus` must load. A file of the current
-//! version must also come back byte for byte when written again, so the format never drifts by accident.
+//! The migration corpus (project.md section 18.1): every fixture in `tests/corpus` must load, validate, and survive
+//! being saved and loaded again.
 //!
-//! `v1-full.json` is generated from [`common::full`]. After a deliberate model change, regenerate it with
-//! `BODO_BLESS=1 cargo test -p bodo-io --test corpus`, and add a migration if older files need one.
+//! `v1-full.json` is generated from [`common::full`] and must come back byte for byte, so the format never drifts by
+//! accident. After a deliberate model change, regenerate it with `BODO_BLESS=1 cargo test -p bodo-io --test corpus`,
+//! keep the previous file in the corpus under a name that says what it predates, and add a migration if older files
+//! need one. The other files are frozen history: files real users may have.
 
 #![allow(clippy::unwrap_used, clippy::panic, reason = "test helpers outside #[test] functions")]
 
@@ -45,10 +47,23 @@ fn every_corpus_file_loads() {
         let project = from_json(&text).unwrap_or_else(|err| panic!("{}: {err}", path.display()));
         project.validate().unwrap();
         let version: serde_json::Value = serde_json::from_str(&text).unwrap();
-        if version["format_version"] == FORMAT_VERSION {
+        if version["format_version"] == FORMAT_VERSION && path.ends_with("v1-full.json") {
             assert_eq!(to_json(&project).unwrap(), text, "{} does not round-trip", path.display());
         }
+        assert_eq!(from_json(&to_json(&project).unwrap()).unwrap(), project, "{} changes when saved again", path.display());
         count += 1;
     }
     assert!(count >= 1, "the corpus is empty");
+}
+
+#[test]
+fn samplers_saved_before_one_shot_play_one_shots() {
+    let text = std::fs::read_to_string(corpus().join("v1-before-one-shot.json")).unwrap();
+    assert!(!text.contains("oneShot"));
+    let project = from_json(&text).unwrap();
+    let one_shots = project.channels.values().filter_map(|c| match &c.kind {
+        bodo_model::channel::ChannelKind::Sampler(params) => Some(params.one_shot),
+        _ => None,
+    });
+    assert!(one_shots.into_iter().all(|on| on), "a missing field takes its default");
 }

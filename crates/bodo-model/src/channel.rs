@@ -132,6 +132,9 @@ pub struct SamplerParams {
     pub loop_end: f32,
     /// Plays the sample backwards.
     pub reverse: bool,
+    /// Plays the whole sample on every note, however short the note is, as drum one-shots should. A looping sample
+    /// always stops with its note.
+    pub one_shot: bool,
     /// Streams the sample from disk rather than loading it into memory.
     pub keep_on_disk: bool,
     /// The most voices it plays at once.
@@ -150,6 +153,7 @@ impl Default for SamplerParams {
             loop_start: 0.0,
             loop_end: 1.0,
             reverse: false,
+            one_shot: true,
             keep_on_disk: false,
             polyphony: 32,
         }

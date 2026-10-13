@@ -63,6 +63,7 @@
         "loopStart": 0.25,
         "loopEnd": 0.75,
         "reverse": true,
+        "oneShot": true,
         "keepOnDisk": true,
         "polyphony": 4
       },
@@ -97,6 +98,7 @@
         "loopStart": 0.0,
         "loopEnd": 1.0,
         "reverse": false,
+        "oneShot": true,
         "keepOnDisk": false,
         "polyphony": 32
       },

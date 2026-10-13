@@ -164,3 +164,26 @@ fn fader_changes_apply_without_a_new_plan() {
     assert!((after / before - 0.5).abs() < 0.05, "{after} vs {before}");
     assert_eq!(control.status().frame, 768);
 }
+
+#[test]
+fn one_shots_play_to_the_end_of_the_sample_and_other_notes_stop() {
+    let dir = temp_dir("one-shot");
+    write_tone(&dir);
+    let make = |one_shot: bool| {
+        let mut b = Builder::new();
+        let sample = b.sample("tone.wav");
+        let channel = b.sampler(sample, None, SamplerParams { root_key: 60, one_shot, ..SamplerParams::default() });
+        // One step at 120 BPM: an eighth of a second.
+        let pattern = b.pattern(Some(3840), &[(channel, 60, 0, 240)]);
+        b.clip(pattern, 0, 3840, 0);
+        b.build()
+    };
+    let options = OfflineOptions { end: Tick(3840), tail: Seconds(0.0), ..OfflineOptions::default() };
+    let energy = |out: &[Vec<f32>], from: usize, to: usize| out[0][from..to].iter().map(|s| s * s).sum::<f32>();
+    let (one_shot, gated) = (render(&make(true), &dir, options), render(&make(false), &dir, options));
+    // From 0.2 s to 1.5 s, well after the note ended and its 10 ms release.
+    let later = (9_600, 72_000);
+    assert!(energy(&one_shot, later.0, later.1) > 1.0, "a one-shot keeps playing after its note");
+    assert_eq!(energy(&gated, later.0, later.1), 0.0, "a gated note stops with its release");
+    assert_eq!(one_shot[0][..5_000], gated[0][..5_000], "both start alike");
+}

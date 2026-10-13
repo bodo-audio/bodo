@@ -43,6 +43,8 @@ pub struct SamplerNode {
     loop_start: f32,
     loop_end: f32,
     reverse: bool,
+    /// Note-offs don't stop the sample, unless it loops.
+    one_shot: bool,
     voices: Vec<Voice>,
     live: Arc<ChannelLive>,
     pan_law: PanLaw,
@@ -71,6 +73,7 @@ impl SamplerNode {
             loop_start: params.loop_start.clamp(0.0, 1.0),
             loop_end: params.loop_end.clamp(0.0, 1.0),
             reverse: params.reverse,
+            one_shot: params.one_shot,
             voices: vec![voice; usize::from(params.polyphony.max(1))],
             live,
             pan_law,
@@ -102,6 +105,8 @@ impl SamplerNode {
     fn apply(&mut self, event: &NoteEvent) {
         match event.kind {
             EventKind::AllOff => self.voices.iter_mut().for_each(|v| v.envelope.gate_off()),
+            // A one-shot plays to the end of its sample; only stopping the transport cuts it.
+            EventKind::Off if self.one_shot && self.loop_mode == LoopMode::Off => {}
             EventKind::Off => {
                 if let Some(voice) = self.voices.iter_mut().find(|v| v.active && v.voice == event.voice) {
                     voice.envelope.gate_off();

@@ -119,6 +119,7 @@ pub fn full() -> (Project, PluginIds) {
         loop_start: 0.25,
         loop_end: 0.75,
         reverse: true,
+        one_shot: true,
         keep_on_disk: true,
         polyphony: 4,
     };
