@@ -655,9 +655,7 @@ Example:
 
 ```json
 {
-  "clips": [
-    "Verse"
-  ]
+  "name": "Verse audio"
 }
 ```
 

@@ -452,7 +452,7 @@ pub(super) fn register(r: &mut Registry) {
         Effects { undoable: true, destructive: false, disk: true, network: false },
         consolidate,
     )
-    .example(json!({ "clips": ["Verse"] }));
+    .example(json!({ "name": "Verse audio" }));
     r.edit(
         "channel.add_audio",
         "Add audio clip channel",
