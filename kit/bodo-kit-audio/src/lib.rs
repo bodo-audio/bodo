@@ -4,6 +4,8 @@
 //! - [`mod@resample`]: converting to the project's sample rate on load.
 //! - [`wav`]: writing WAV files.
 //! - [`peaks`]: the peaks pyramid for drawing waveforms.
+//! - [`markers`]: cue points, regions and loops stored in WAV files.
+//! - [`edit`]: edits rendered into decoded audio, such as fades, normalizing and loop crossfades.
 //! - [`stream`]: streaming long files from disk to the audio thread.
 //!
 //! Everything here except [`stream::StreamReader`] runs off the audio thread.
@@ -15,12 +17,15 @@ use std::path::PathBuf;
 use bodo_kit_core::SampleRate;
 
 pub mod decode;
+pub mod edit;
+pub mod markers;
 pub mod peaks;
 pub mod resample;
 pub mod stream;
 pub mod wav;
 
 pub use decode::{AudioInfo, Decoder, decode_file};
+pub use markers::{SampleMarkers, read_markers};
 pub use peaks::ChannelPeaks;
 pub use resample::resample;
 pub use stream::{DiskThread, StreamConfig, StreamReader};
