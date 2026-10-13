@@ -59,6 +59,28 @@ fn one_pattern_renders_one_pass() {
 }
 
 #[test]
+fn stems_sum_back_to_the_mix() {
+    let dir = common::temp_dir("render-stems");
+    let (_, project) = common::saved_beat(&dir, "Beat.bodo");
+    let options = RenderOptions { pattern: Some("Verse".into()), end: None };
+    let mix = render(&project, &dir.join("verse.wav"), &options).unwrap();
+    let files = bodo_cli::render::render_stems(&project, &dir.join("stems"), &options).unwrap();
+    assert!(files.len() >= 4, "one stem per insert the beat plays through: {files:?}");
+    let mut sum = vec![vec![0.0f32; mix.audio.frames()]; 2];
+    for file in &files {
+        let stem = bodo_kit_audio::decode_file(file).unwrap();
+        assert_eq!(stem.frames(), mix.audio.frames(), "{}", file.display());
+        for (total, channel) in sum.iter_mut().zip(&stem.channels) {
+            total.iter_mut().zip(channel).for_each(|(t, s)| *t += s);
+        }
+    }
+    // With the master at its defaults the stems add up to the mix, to float rounding.
+    let worst = sum.iter().zip(&mix.audio.channels).flat_map(|(a, b)| a.iter().zip(b).map(|(a, b)| (a - b).abs())).fold(0.0f32, f32::max);
+    assert!(worst < 1e-5, "stems differ from the mix by {worst}");
+    std::fs::remove_dir_all(dir).unwrap();
+}
+
+#[test]
 fn an_empty_playlist_asks_for_a_pattern() {
     let dir = common::temp_dir("render-empty");
     let mut session = common::session();

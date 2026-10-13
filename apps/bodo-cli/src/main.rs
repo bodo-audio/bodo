@@ -8,7 +8,7 @@ use std::process::ExitCode;
 
 use anyhow::{Context, Result, bail};
 use bodo_cli::link::{self, Target};
-use bodo_cli::render::{RenderOptions, render};
+use bodo_cli::render::{RenderOptions, render, render_stems};
 use bodo_cli::session;
 use bodo_engine::{Registry, inspect};
 
@@ -19,6 +19,7 @@ commands:
   mcp [project.bodo]          serve Bodo's MCP tools over stdio on a project (a new one by default)
   mcp --connect [port]        serve the tools over stdio, acting on the running Bodo app
   render <project> <out.wav>  render the song to a 32-bit float WAV file
+      --stems <folder>        also render one WAV file per insert there (the out.wav may then be left out)
       --pattern <pattern>     loop one pattern instead (by name, number or id)
       --end <bar:beat:tick>   stop there instead of at the end of the song or pattern
   inspect <project>           print the project as text
@@ -117,19 +118,32 @@ fn mcp(args: &[String]) -> Result<()> {
 }
 
 fn render_command(args: &[String]) -> Result<()> {
+    const RENDER_USAGE: &str = "usage: bodo-cli render <project> [<out.wav>] [--stems <folder>] [--pattern <pattern>] [--end <position>]";
     let mut paths = Vec::new();
+    let mut stems = None;
     let mut options = RenderOptions::default();
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--pattern" => options.pattern = Some(rest.next().context("--pattern needs a pattern")?.clone()),
             "--end" => options.end = Some(rest.next().context("--end needs a position such as 9:1:0")?.clone()),
+            "--stems" => stems = Some(PathBuf::from(rest.next().context("--stems needs a folder")?)),
             flag if flag.starts_with("--") => bail!("unknown option `{flag}`"),
             path => paths.push(PathBuf::from(path)),
         }
     }
-    let [project, wav] = paths.as_slice() else { bail!("usage: bodo-cli render <project> <out.wav> [--pattern <pattern>] [--end <position>]") };
-    let rendered = render(project, wav, &options)?;
-    let _ = writeln!(std::io::stderr(), "rendered {:.2} s to {}, peak {:.1} dBFS", rendered.seconds(), wav.display(), rendered.peak_db);
+    let (project, wav) = match paths.as_slice() {
+        [project] if stems.is_some() => (project, None),
+        [project, wav] => (project, Some(wav)),
+        _ => bail!(RENDER_USAGE),
+    };
+    if let Some(wav) = wav {
+        let rendered = render(project, wav, &options)?;
+        let _ = writeln!(std::io::stderr(), "rendered {:.2} s to {}, peak {:.1} dBFS", rendered.seconds(), wav.display(), rendered.peak_db);
+    }
+    if let Some(folder) = stems {
+        let files = render_stems(project, &folder, &options)?;
+        let _ = writeln!(std::io::stderr(), "rendered {} stems to {}", files.len(), folder.display());
+    }
     Ok(())
 }

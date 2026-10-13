@@ -1,7 +1,7 @@
-//! `bodo-cli render`: a project's song, or one pattern, to a WAV file through the offline engine
-//! (project.md section 6.8). The render is deterministic: the same project gives the same samples.
+//! `bodo-cli render`: a project's song, or one pattern, to a WAV file or to one WAV file per insert, through the
+//! offline engine (project.md section 6.8). The render is deterministic: the same project gives the same samples.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use bodo_engine::params::{PatternRef, Position};
@@ -88,4 +88,22 @@ pub fn render(project: &Path, out: &Path, options: &RenderOptions) -> Result<Ren
     let rendered = render_session(&session, options)?;
     write_wav(&rendered.audio, out).with_context(|| format!("cannot write {}", out.display()))?;
     Ok(rendered)
+}
+
+/// Renders the project at `project` to one 32-bit float WAV file per insert in `folder`, through the
+/// `render.export_stems` command, and returns the files written.
+///
+/// Does I/O. Complexity: proportional to the rendered length times the number of stems.
+pub fn render_stems(project: &Path, folder: &Path, options: &RenderOptions) -> Result<Vec<PathBuf>> {
+    let mut session = crate::session::open(Some(project))?;
+    let mut params = serde_json::json!({ "folder": folder.display().to_string() });
+    if let Some(pattern) = &options.pattern {
+        params["pattern"] = pattern.as_str().into();
+    }
+    if let Some(end) = &options.end {
+        params["end"] = end.as_str().into();
+    }
+    let output = session.execute("render.export_stems", params).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let files = output.result["stems"].as_array().map(|stems| stems.iter().filter_map(|s| s["path"].as_str()).map(PathBuf::from).collect());
+    files.context("the stem export returned no files")
 }
