@@ -720,13 +720,16 @@ fn ruler_input(app: &mut BodoApp, ui: &mut Ui, project: &Project, ruler: Rect, s
     let at = app.view.snap.floor(project, scale.tick(pointer.x)).max(0);
     let shift = ui.input(|i| i.modifiers.shift);
     if response.drag_started() && shift {
-        app.view.playlist.ruler_drag = Some((at as f64, true));
+        // The loop starts where the press began, not where the drag was recognized.
+        let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pointer);
+        let start = app.view.snap.round(project, scale.tick(origin.x)).max(0);
+        app.view.playlist.ruler_drag = Some((start as f64, true));
     }
     if let Some((start, true)) = app.view.playlist.ruler_drag {
         if response.dragged() || response.drag_stopped() {
             let (a, b) = (start as i64, app.view.snap.round(project, scale.tick(pointer.x)).max(0));
             let (from, to) = (a.min(b), a.max(b));
-            if to > from && app.session.registry().get("transport.set_loop").is_some() {
+            if to > from {
                 let _ = app.run("transport.set_loop", json!({ "start": from, "end": to }));
             }
         }

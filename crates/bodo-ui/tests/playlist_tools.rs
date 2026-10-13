@@ -186,3 +186,15 @@ fn playback_plays_from_the_pointer_while_held() {
     let text = inspect::project(&h.state().session).text;
     assert!(text.contains("Drums: Intro at 1:1:0"), "nothing was edited: {text}");
 }
+
+#[test]
+fn shift_dragging_the_ruler_sets_the_song_loop() {
+    let (mut h, canvas) = setup("draw");
+    let ruler = element(&h, "Playlist ruler");
+    let y = ruler.center().y;
+    let (from, to) = (pos2(canvas.left() + 2.0 * BAR + 1.0, y), pos2(canvas.left() + 4.0 * BAR + 1.0, y));
+    let before = steps(&h);
+    drag(&mut h, PointerButton::Primary, from, &line(from, to, 6), Modifiers::SHIFT);
+    assert_eq!(h.state().session.transport().loop_region, Some((Tick(7680), Tick(15_360))), "bars 3 to 5");
+    assert_eq!(steps(&h), before, "the loop is transport state, not an edit");
+}
