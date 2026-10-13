@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
 use bodo_kit_core::handoff::{self, Receiver, Sender};
-use bodo_kit_core::pool::{RtPoolConfig, RtPriority};
+use bodo_kit_core::pool::{RtPoolConfig, RtPriority, ThreadGroup, ThreadGroupSlot};
 use bodo_kit_core::queue::{Consumer, Producer, spsc};
 use bodo_kit_core::{MAX_BLOCK_FRAMES, SampleRate, Tick, rt_safe};
 use bodo_kit_device::{AudioCallback, Block};
@@ -79,6 +79,7 @@ pub struct Engine {
     shared: Arc<Shared>,
     song: SongIndex,
     rate: SampleRate,
+    thread_group: ThreadGroupSlot,
 }
 
 impl std::fmt::Debug for Engine {
@@ -119,6 +120,7 @@ pub fn engine(project: &Project, base: &Path, config: EngineConfig) -> Result<(E
         ..RtPoolConfig::new(config.workers)
     };
     let (graph, plans) = runner(plan, BlockContext::new(rate), pool)?;
+    let thread_group = graph.thread_group();
     let song = SongIndex::build(project);
     let (songs_tx, songs_rx) = handoff::handoff(4);
     let (commands_tx, commands_rx) = spsc(64);
@@ -133,6 +135,7 @@ pub fn engine(project: &Project, base: &Path, config: EngineConfig) -> Result<(E
         shared: Arc::clone(&shared),
         song: song.clone(),
         rate,
+        thread_group,
     };
     let audio = AudioEngine {
         runner: graph,
@@ -200,6 +203,12 @@ impl Engine {
     /// Plays the playlist, or loops one pattern.
     pub fn set_mode(&mut self, mode: PlayMode) {
         self.command(Command::Mode(mode));
+    }
+
+    /// Puts the RT workers in the device's thread group, from `AudioStream::thread_group`, so the OS schedules
+    /// them with the audio thread. Call it after opening a device, and with `None` when switching to one without a group.
+    pub fn set_thread_group(&self, group: Option<Arc<dyn ThreadGroup>>) {
+        self.thread_group.set(group);
     }
 
     fn command(&mut self, command: Command) {

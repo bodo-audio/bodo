@@ -28,7 +28,7 @@ Progress per milestone ([project.md section 20](../project.md#20-roadmap)). Upda
 ### Deferred
 
 - **`#[rt_safe]` attribute** (project.md section 19.3): it needs a proc-macro crate, so it lands with the first audio-thread code in M1. Until then RT-safe functions carry the `RT-safe` doc line, and `kit/bodo-kit-core/tests/rt_safety.rs` runs them under `assert_no_alloc`.
-- **OS audio workgroup and MMCSS for RT workers**: they need the device layer (M1). Workers can already be promoted to real-time priority.
+- **OS audio workgroup and MMCSS for RT workers**: done in M1.
 - **Denormal flushing on RT threads**: M1, with the first DSP.
 - **rtsan job, fuzzing, benchmarks, agent evals**: nightly CI jobs, added as the code they cover lands.
 
@@ -47,7 +47,7 @@ Started 2026-10-13.
 | `bodo-model` v1 | Done | the project document and `Project::validate()` |
 | `bodo-mix` | Done | realtime and offline engine, built-in sampler, sequencer, insert strips |
 | WASAPI exclusive mode | Next | low latency on Windows without an ASIO audio interface, like FL Studio ASIO |
-| macOS audio workgroup | Next | RT workers join the device's `os_workgroup` |
+| macOS audio workgroup | Done | RT workers join the device's IO `os_workgroup` through `Engine::set_thread_group`; checked on an Apple Silicon Mac |
 
 ### Exit criteria
 

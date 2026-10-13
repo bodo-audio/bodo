@@ -263,7 +263,9 @@ pub(crate) fn open<C: AudioCallback>(config: &DeviceConfig, callback: C) -> Resu
         })
         .map_err(DeviceError::Thread)?;
     match ready_rx.recv() {
-        Ok(Ok(stats)) => Ok(AudioStream { stats, input_stats: None, inner: StreamInner::Thread { stop, handle: Some(handle) }, rate }),
+        Ok(Ok(stats)) => {
+            Ok(AudioStream { stats, input_stats: None, thread_group: None, inner: StreamInner::Thread { stop, handle: Some(handle) }, rate })
+        }
         Ok(Err(err)) => {
             let _ = handle.join();
             Err(err)

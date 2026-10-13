@@ -11,17 +11,19 @@
 //! reported late), measures load and reports latency through [`AudioStream::status`]. A device that disappears
 //! marks its stream disconnected; the project is unaffected and the stream can be reopened.
 
-#![forbid(unsafe_code)]
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use bodo_kit_core::SampleRate;
+use bodo_kit_core::pool::ThreadGroup;
 
 mod driver;
 #[cfg(windows)]
 mod exclusive;
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+mod ffi;
 mod hardware;
 mod virtual_device;
 
@@ -101,6 +103,7 @@ pub struct AudioStream {
     input_stats: Option<Arc<Stats>>,
     inner: StreamInner,
     rate: SampleRate,
+    thread_group: Option<Arc<dyn ThreadGroup>>,
 }
 
 pub(crate) enum StreamInner {
@@ -135,6 +138,12 @@ impl AudioStream {
     /// The sample rate the stream runs at.
     pub fn rate(&self) -> SampleRate {
         self.rate
+    }
+
+    /// The group of threads the OS schedules with the device's audio thread, which RT workers should join: the
+    /// device's IO workgroup on macOS, `None` elsewhere.
+    pub fn thread_group(&self) -> Option<Arc<dyn ThreadGroup>> {
+        self.thread_group.clone()
     }
 }
 

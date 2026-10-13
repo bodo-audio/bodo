@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use atomic_refcell::AtomicRefCell;
 use bodo_kit_core::handoff;
-use bodo_kit_core::pool::{Participant, RtJob, RtPool, RtPoolConfig, RtPoolError};
+use bodo_kit_core::pool::{Participant, RtJob, RtPool, RtPoolConfig, RtPoolError, ThreadGroupSlot};
 use bodo_kit_core::queue::Full;
 use bodo_kit_core::rt_safe;
 use bodo_kit_dsp::AudioBuffer;
@@ -270,5 +270,10 @@ impl<P: Processor<C>, C: Send + Sync + 'static> GraphRunner<P, C> {
     /// The number of threads that run nodes: the caller plus the workers.
     pub fn participants(&self) -> usize {
         self.pool.participants()
+    }
+
+    /// The slot that says which thread group the workers join. Take it before moving the runner to the audio thread.
+    pub fn thread_group(&self) -> ThreadGroupSlot {
+        self.pool.thread_group()
     }
 }

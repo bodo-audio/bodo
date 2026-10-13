@@ -164,3 +164,14 @@ fn plays_a_tone_in_wasapi_exclusive_mode() {
     assert!(hosts().iter().any(|h| Some(&h.name) == exclusive.host.as_ref()));
     play_tone(&exclusive);
 }
+
+/// On macOS a helper thread can join the default output device's IO workgroup, as the RT workers do. Plays silence.
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "needs an audio device"]
+fn a_thread_joins_the_device_workgroup() {
+    let stream = open(&DeviceConfig::default(), |block: &mut Block<'_>| block.output.clear()).unwrap();
+    let group = stream.thread_group().expect("CoreAudio devices have an IO workgroup");
+    let joined = std::thread::spawn(move || group.join().is_some()).join().unwrap();
+    assert!(joined, "the OS let the thread join");
+}

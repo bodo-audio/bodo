@@ -214,7 +214,22 @@ pub(crate) fn open<C: AudioCallback>(config: &DeviceConfig, callback: C) -> Resu
         input_stats,
         inner: StreamInner::Hardware { _streams: Box::new(HardwareStreams { _output: output_stream, _input: input_stream }) },
         rate,
+        thread_group: thread_group(&output),
     })
+}
+
+/// The thread group of the device's audio thread: its IO workgroup on macOS.
+#[cfg(target_os = "macos")]
+fn thread_group(device: &cpal::Device) -> Option<Arc<dyn bodo_kit_core::pool::ThreadGroup>> {
+    // CoreAudio device ids in cpal are the device UIDs.
+    let id = device.id().ok()?;
+    crate::ffi::device_workgroup(id.id())
+}
+
+/// The thread group of the device's audio thread: none outside macOS.
+#[cfg(not(target_os = "macos"))]
+fn thread_group(_device: &cpal::Device) -> Option<Arc<dyn bodo_kit_core::pool::ThreadGroup>> {
+    None
 }
 
 fn find_host(name: Option<&str>) -> Result<cpal::Host, DeviceError> {

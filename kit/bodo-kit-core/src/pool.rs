@@ -9,12 +9,14 @@
 //! After a region, workers spin for [`RtPoolConfig::spin`], then park. [`RtPool::run`] only unparks workers that are
 //! parked, so back-to-back blocks need no syscalls.
 //!
-//! Workers can be promoted to real-time priority when they start, and they run with denormals flushed to zero.
-//! Joining the audio device's OS workgroup comes with the device layer.
+//! Workers can be promoted to real-time priority when they start, and they run with denormals flushed to zero. They
+//! also join whatever [`ThreadGroup`] the pool's [`ThreadGroupSlot`] holds, such as the workgroup of a macOS audio
+//! device's IO thread, so the OS schedules them against the same deadline as the audio thread. They follow changes
+//! to the slot between regions, never inside one.
 
 use crate::rt_safe;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, mpsc};
+use std::sync::{Arc, Mutex, PoisonError, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -54,6 +56,76 @@ pub struct RtPriority {
     pub buffer_frames: u32,
     /// The stream's sample rate.
     pub sample_rate: SampleRate,
+}
+
+/// A set of threads the OS schedules together against one deadline, such as the workgroup of a macOS audio device's
+/// IO thread.
+pub trait ThreadGroup: Send + Sync {
+    /// Adds the calling thread to the group, or returns `None` when the OS refuses.
+    ///
+    /// Talks to the OS; call it outside parallel regions.
+    fn join(&self) -> Option<Membership>;
+}
+
+/// A thread's place in a [`ThreadGroup`]. Dropping it takes the thread out of the group again, so it stays on the
+/// thread that joined.
+pub struct Membership {
+    leave: Option<Box<dyn FnOnce()>>,
+}
+
+impl Membership {
+    /// A membership that runs `leave` when dropped.
+    pub fn new(leave: impl FnOnce() + 'static) -> Self {
+        Self { leave: Some(Box::new(leave)) }
+    }
+}
+
+impl std::fmt::Debug for Membership {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Membership").finish_non_exhaustive()
+    }
+}
+
+impl Drop for Membership {
+    fn drop(&mut self) {
+        if let Some(leave) = self.leave.take() {
+            leave();
+        }
+    }
+}
+
+/// Which [`ThreadGroup`] an [`RtPool`]'s workers belong to. Take it from [`RtPool::thread_group`] before handing the
+/// pool to the audio thread, and set it whenever the audio device changes.
+#[derive(Clone, Default)]
+pub struct ThreadGroupSlot(Arc<SlotInner>);
+
+#[derive(Default)]
+struct SlotInner {
+    group: Mutex<Option<Arc<dyn ThreadGroup>>>,
+    /// Bumped on every change, so workers notice without taking the lock.
+    epoch: AtomicU64,
+}
+
+impl std::fmt::Debug for ThreadGroupSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ThreadGroupSlot").field("epoch", &self.epoch()).finish_non_exhaustive()
+    }
+}
+
+impl ThreadGroupSlot {
+    /// Moves the workers to `group`, or out of any group with `None`. Each worker switches after its next region.
+    pub fn set(&self, group: Option<Arc<dyn ThreadGroup>>) {
+        *self.0.group.lock().unwrap_or_else(PoisonError::into_inner) = group;
+        self.0.epoch.fetch_add(1, Ordering::Release);
+    }
+
+    fn epoch(&self) -> u64 {
+        self.0.epoch.load(Ordering::Acquire)
+    }
+
+    fn current(&self) -> Option<Arc<dyn ThreadGroup>> {
+        self.0.group.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    }
 }
 
 /// How to build an [`RtPool`].
@@ -103,6 +175,7 @@ struct Shared<J> {
     parked: Box<[AtomicBool]>,
     shutdown: AtomicBool,
     spin: Duration,
+    group: ThreadGroupSlot,
 }
 
 impl<J: RtJob> Shared<J> {
@@ -155,9 +228,22 @@ fn worker_main<J: RtJob>(shared: &Shared<J>, index: usize, priority: Option<RtPr
     let Some(parked) = shared.parked.get(index) else { return };
     let participant = Participant(index + 1);
     let mut seen = shared.epoch.load(Ordering::Acquire);
+    let mut membership: Option<Membership> = None;
+    let mut group_seen = None;
     // The FPU mode is per thread, so set it once for the worker's whole life.
     crate::rt::flush_denormals(|| {
-        while shared.wait_for_region(parked, &mut seen) {
+        loop {
+            // Joining a group locks and talks to the OS, so it happens here, between regions.
+            let group_epoch = shared.group.epoch();
+            if group_seen != Some(group_epoch) {
+                group_seen = Some(group_epoch);
+                // Leave the old group first: a thread can belong to only one.
+                drop(membership.take());
+                membership = shared.group.current().and_then(|group| group.join());
+            }
+            if !shared.wait_for_region(parked, &mut seen) {
+                break;
+            }
             shared.active.fetch_add(1, Ordering::SeqCst);
             let _leave = LeaveRegion(&shared.active);
             // A worker that woke too late finds the region closed and must not touch the job.
@@ -166,6 +252,7 @@ fn worker_main<J: RtJob>(shared: &Shared<J>, index: usize, priority: Option<RtPr
             }
         }
     });
+    drop(membership);
 
     if let Some(handle) = rt_handle
         && let Err(err) = audio_thread_priority::demote_current_thread_from_real_time(handle)
@@ -197,6 +284,7 @@ impl<J: RtJob> RtPool<J> {
             parked,
             shutdown: AtomicBool::new(false),
             spin: config.spin,
+            group: ThreadGroupSlot::default(),
         });
         // If a spawn fails, dropping `pool` shuts down the workers that did start.
         let mut pool = Self { shared, handles: Vec::with_capacity(config.workers), realtime_workers: 0 };
@@ -254,6 +342,11 @@ impl<J: RtJob> RtPool<J> {
     /// How many workers reached real-time priority.
     pub fn realtime_workers(&self) -> usize {
         self.realtime_workers
+    }
+
+    /// The slot that says which [`ThreadGroup`] the workers belong to.
+    pub fn thread_group(&self) -> ThreadGroupSlot {
+        self.shared.group.clone()
     }
 }
 
@@ -379,5 +472,53 @@ mod tests {
         for _ in 0..5 {
             pool.run();
         }
+    }
+
+    /// Counts the threads in the group.
+    #[derive(Default)]
+    struct CountingGroup {
+        members: Arc<AtomicUsize>,
+        joins: AtomicUsize,
+    }
+
+    impl ThreadGroup for CountingGroup {
+        fn join(&self) -> Option<Membership> {
+            self.joins.fetch_add(1, Ordering::SeqCst);
+            self.members.fetch_add(1, Ordering::SeqCst);
+            let members = Arc::clone(&self.members);
+            Some(Membership::new(move || {
+                members.fetch_sub(1, Ordering::SeqCst);
+            }))
+        }
+    }
+
+    #[test]
+    fn workers_follow_the_thread_group_between_regions() {
+        let config = RtPoolConfig { spin: Duration::from_millis(5), ..RtPoolConfig::new(3) };
+        let mut pool = RtPool::new(config, Counting::new(64, 4, Duration::ZERO)).unwrap();
+        let first = Arc::new(CountingGroup::default());
+        let second = Arc::new(CountingGroup::default());
+        let slot = pool.thread_group();
+        let settle = |pool: &mut RtPool<Counting>, done: &dyn Fn() -> bool| {
+            // Each worker switches after a region it took part in; keep opening regions until all have.
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !done() && Instant::now() < deadline {
+                pool.job().next.store(0, Ordering::SeqCst);
+                pool.run();
+                thread::sleep(Duration::from_millis(1));
+            }
+        };
+        slot.set(Some(Arc::clone(&first) as Arc<dyn ThreadGroup>));
+        settle(&mut pool, &|| first.members.load(Ordering::SeqCst) == 3);
+        assert_eq!(first.members.load(Ordering::SeqCst), 3);
+        assert_eq!(first.joins.load(Ordering::SeqCst), 3, "each worker joins once");
+
+        slot.set(Some(Arc::clone(&second) as Arc<dyn ThreadGroup>));
+        settle(&mut pool, &|| second.members.load(Ordering::SeqCst) == 3 && first.members.load(Ordering::SeqCst) == 0);
+        assert_eq!(first.members.load(Ordering::SeqCst), 0, "workers left the old group");
+        assert_eq!(second.members.load(Ordering::SeqCst), 3);
+
+        drop(pool);
+        assert_eq!(second.members.load(Ordering::SeqCst), 0, "workers leave when the pool stops");
     }
 }
