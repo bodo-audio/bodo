@@ -7,9 +7,14 @@
 //! brush strokes. [`tools`] handles the grid's input and [`lanes`] the lanes'. Ctrl/Cmd+wheel zooms, Shift+wheel
 //! scrolls sideways, the wheel scrolls keys; the arrow keys transpose the selection, by an octave with Shift.
 //!
+//! The ghost notes button hides or shows the other channels' notes. Double-clicking a note, or Tools > Properties,
+//! opens [`properties`], which edits every property of one note at once. With auto scroll on, the view follows the
+//! pattern's playhead.
+//!
 //! Drawing is culled: only visible keys are drawn, and notes come from the sequence's overlap query, O(log n + k).
 
 mod lanes;
+mod properties;
 mod tools;
 
 use std::collections::BTreeSet;
@@ -88,6 +93,12 @@ pub struct PianoView {
     resizing_lanes: bool,
     /// The key sounding from a click on the keyboard.
     sounding: Option<(ChannelId, u8)>,
+    /// Whether the other channels' notes show behind this channel's.
+    pub ghosts: bool,
+    /// The note whose properties dialog is open.
+    pub properties: Option<NoteId>,
+    /// The properties dialog's values while they are edited.
+    editing: Option<properties::Editing>,
 }
 
 impl Default for PianoView {
@@ -107,6 +118,9 @@ impl Default for PianoView {
             brush: None,
             resizing_lanes: false,
             sounding: None,
+            ghosts: true,
+            properties: None,
+            editing: None,
         }
     }
 }
@@ -189,6 +203,16 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<&Pa
         note_tools_menu(app, ui, pattern, channel);
     }
     chips(app, ui);
+    // Two notes, one faint behind the other.
+    let ghosts = windows::painted_button(ui, "Ghost notes", app.view.piano.ghosts, |painter, rect, color| {
+        let c = rect.center();
+        painter.rect_filled(Rect::from_center_size(c + vec2(-2.0, -2.5), vec2(9.0, 3.5)), 1.0, theme::faded(color, 0.4));
+        painter.rect_filled(Rect::from_center_size(c + vec2(2.0, 2.5), vec2(9.0, 3.5)), 1.0, color);
+    });
+    app.hint(&ghosts, "Ghost notes: show the other channels' notes faintly behind this channel's");
+    if ghosts.clicked() {
+        app.view.piano.ghosts = !app.view.piano.ghosts;
+    }
     let name = channel.and_then(|c| project.channels.get(&c)).map(|c| c.name.clone()).unwrap_or_else(|| String::from("No channel"));
     let combo = egui::ComboBox::from_id_salt("bodo-piano-channel").width(90.0).selected_text(name).show_ui(ui, |ui| {
         for id in project.rack_order.iter() {
@@ -270,6 +294,15 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         ui.separator();
         ui.menu_button("Stamp", |ui| stamp_menu(app, ui));
         ui.menu_button("Scale", |ui| scale_menu(app, ui));
+        ui.separator();
+        // The properties of the first selected note, or of the channel's first note.
+        if let Some(first) = notes.first()
+            && ui.button("Properties...").clicked()
+        {
+            app.view.piano.properties = Some(NoteId(*first));
+            app.view.piano.editing = None;
+            ui.close();
+        }
     });
     control::record(ui, &menu.response, "Piano roll tools", "menu", None);
     app.hint(&menu.response, "Note tools: they act on the selected notes, or on all of the channel's notes when none are selected");
@@ -411,6 +444,7 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: &Pattern, ch
     let ruler = Rect::from_min_max(pos2(keys.right(), rect.top()), pos2(rect.right(), rect.top() + RULER));
     let canvas = Rect::from_min_max(pos2(keys.right(), ruler.bottom()), pos2(rect.right(), split.top()));
     navigate(app, ui, canvas.union(ruler).union(keys));
+    follow_playhead(app, canvas);
     let view = &app.view.piano;
     let grid = Grid { rect: canvas, zoom: view.zoom, scroll: view.scroll, top_key: view.top_key, key_height: view.key_height };
     let painter = ui.painter().with_clip_rect(rect);
@@ -430,7 +464,8 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: &Pattern, ch
     let mut shown = Vec::new();
     let mut ghosts = Vec::new();
     let mut in_view = Vec::new();
-    for (owner, seq) in pattern.notes.iter() {
+    let show_ghosts = app.view.piano.ghosts;
+    for (owner, seq) in pattern.notes.iter().filter(|(owner, _)| show_ghosts || **owner == channel) {
         let own = *owner == channel;
         let color = project.channels.get(owner).map_or(tk.text_faint, |c| theme::color(c.color));
         for note in seq.overlapping(view_start, view_end) {
@@ -461,6 +496,22 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: &Pattern, ch
     lanes::split(app, ui, split, rect);
     if lane_height > 0.0 {
         lanes::show(app, ui, project, lanes_rect, &grid, channel, pattern, &in_view);
+    }
+    properties::dialog(app, ui.ctx(), project, pattern);
+}
+
+/// While the pattern plays and auto-scrolling is on, keeps the playhead in view: when it passes the grid's right
+/// edge, or wraps back to the start, the view pages to it.
+fn follow_playhead(app: &mut BodoApp, canvas: Rect) {
+    let transport = app.session.transport();
+    if !app.view.auto_scroll || !transport.playing || transport.mode != PlayMode::Pattern {
+        return;
+    }
+    let view = &mut app.view.piano;
+    let at = transport.position.0 as f64;
+    let width = f64::from(canvas.width() / view.zoom);
+    if at > view.scroll + width * 0.92 || at < view.scroll {
+        view.scroll = (at - width * 0.05).max(0.0);
     }
 }
 

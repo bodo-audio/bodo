@@ -383,3 +383,68 @@ fn an_expression_lane_draws_each_notes_curve_and_right_drag_erases() {
     drag(&mut h, PointerButton::Secondary, half, &line(half, to + egui::vec2(4.0, 0.0), 4), Modifiers::NONE);
     assert!(pitch(&h, 60).iter().all(|(at, _)| *at < 480), "{:?}", pitch(&h, 60));
 }
+
+#[test]
+fn double_clicking_a_note_edits_all_its_properties_in_one_step() {
+    let (mut h, canvas) = setup("draw");
+    add(&mut h, &[(60, 0, 480)]);
+    let before = steps(&h);
+    common::double_click_at(&mut h, at(canvas, 1.2, 60));
+    h.run_steps(3);
+    assert!(h.state().view.piano.properties.is_some(), "the dialog is open");
+    let slider = element(&h, "Note velocity");
+    // A slider jumps to where it is clicked: near its start.
+    click_at(&mut h, pos2(slider.left() + 6.0, slider.center().y));
+    common::click(&mut h, "Note slide");
+    common::click(&mut h, "Note properties OK");
+    h.run_steps(3);
+    let note = &kick(&h)[0];
+    assert!(note.slide, "{note:?}");
+    assert!(f32::from(note.velocity) / f32::from(u16::MAX) < 0.3, "{note:?}");
+    assert_eq!((note.key, note.start.0, note.len.0), (60, 0, 480), "the rest stays");
+    assert_eq!(steps(&h), before + 1, "every property in one undo step");
+    assert!(h.state().view.piano.properties.is_none());
+}
+
+#[test]
+fn the_tools_menu_opens_the_selected_notes_properties() {
+    let (mut h, _) = setup("draw");
+    add(&mut h, &[(60, 0, 480), (64, 960, 480)]);
+    let second = kick(&h)[1].id;
+    h.state_mut().run("edit.select", json!({ "notes": [second.0] })).unwrap();
+    h.run_steps(2);
+    let menu = element(&h, "Piano roll tools");
+    click_at(&mut h, menu.center());
+    h.get_by_label("Properties...").click();
+    h.run_steps(3);
+    assert_eq!(h.state().view.piano.properties, Some(second));
+}
+
+#[test]
+fn hiding_ghost_notes_leaves_only_the_channels_own() {
+    let (mut h, canvas) = setup("draw");
+    h.state_mut().run("note.add_many", json!({ "channel": "Clap", "notes": [{ "key": 62, "start": 960, "length": 480 }] })).unwrap();
+    h.state_mut().run("edit.select", json!({ "channel": "Kick" })).unwrap();
+    h.run_steps(2);
+    common::click(&mut h, "Ghost notes");
+    h.run_steps(2);
+    assert!(!h.state().view.piano.ghosts);
+    // Where the Clap's note was, a double-click finds no ghost: the piano roll stays on the Kick.
+    common::double_click_at(&mut h, at(canvas, 2.2, 62));
+    assert_eq!(h.state().session.editor().channel, Some(channel(&h, "Kick")));
+}
+
+#[test]
+fn auto_scrolling_follows_the_pattern_playhead() {
+    let (mut h, canvas) = setup("draw");
+    h.state_mut().view.auto_scroll = true;
+    h.state_mut().run("pattern.set_length", json!({ "length": "16 bars" })).unwrap();
+    h.state_mut().run("transport.set_mode", json!({ "mode": "pattern" })).unwrap();
+    h.state_mut().run("transport.set_position", json!({ "at": "12:1:0" })).unwrap();
+    h.state_mut().run("transport.play", json!({})).unwrap();
+    h.run_steps(3);
+    let view = &h.state().view.piano;
+    let shown = view.scroll..view.scroll + f64::from(canvas.width() / view.zoom);
+    assert!(shown.contains(&(11.0 * 3840.0)), "{shown:?}");
+    h.state_mut().run("transport.stop", json!({})).unwrap();
+}

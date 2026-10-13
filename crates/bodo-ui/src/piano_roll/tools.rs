@@ -89,6 +89,17 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
         return;
     }
     let pressed_here = response.is_pointer_button_down_on() || response.hovered();
+    // A double-click on a note opens its properties. Its second press may have begun a move, which is dropped.
+    if pointer.double_clicked
+        && tool == Tool::Draw
+        && pressed_here
+        && let Some((shown, _)) = canvas.note_at(pointer.at)
+    {
+        app.view.piano.drag = None;
+        app.view.piano.properties = Some(shown.note.id);
+        app.view.piano.editing = None;
+        return;
+    }
     if app.view.piano.drag.is_none() && pressed_here && canvas.rect.contains(pointer.at) {
         if pointer.primary_pressed || pointer.secondary_pressed {
             app.view.editor = WindowKind::PianoRoll;
