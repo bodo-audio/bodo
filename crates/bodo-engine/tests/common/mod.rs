@@ -14,7 +14,7 @@ pub fn factory() -> PathBuf {
 
 /// A deterministic session with the factory content.
 pub fn session() -> Session {
-    Session::deterministic(Env { factory: Some(factory()), library: Vec::new() })
+    Session::deterministic(Env { factory: Some(factory()), library: Vec::new(), user: None })
 }
 
 /// Runs a command that must succeed and returns its result.

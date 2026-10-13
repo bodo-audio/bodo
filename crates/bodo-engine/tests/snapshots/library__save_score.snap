@@ -1,0 +1,8 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: saved
+---
+{
+  "notes": 4,
+  "path": "library:User data/Scores/Pattern 1 Kick.bodoscore"
+}

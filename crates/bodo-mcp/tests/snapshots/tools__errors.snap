@@ -19,7 +19,7 @@ error[unknown_command]: no command `pattern.set_step`
   hint: list_commands shows every command
 ---
 error[not_found]: no namespace matches `synth`
-  candidates: automation, browser, channel, clip, edit, mixer, note, pattern, playlist, project, recording, transport, ui
+  candidates: automation, browser, channel, clip, edit, library, mixer, note, pattern, playlist, preset, project, recording, transport, ui
 ---
 error[invalid_params]: inspect_project: unknown field `verbose`, there are no fields
   hint: see the tool's input schema

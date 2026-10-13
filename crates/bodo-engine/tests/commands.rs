@@ -22,16 +22,26 @@ fn fixture() -> Session {
     session
 }
 
-/// Commands that read or write files outside the test's control; the beat, MIDI and recording tests cover them.
-const FILE_COMMANDS: [&str; 8] = [
+/// Commands that read or write files outside the test's control; the beat, MIDI, recording and library tests cover
+/// them.
+const FILE_COMMANDS: [&str; 17] = [
     "project.open",
     "project.save",
     "project.save_as",
+    "project.save_template",
     "project.import_midi",
     "pattern.export_midi",
     "project.export_midi",
     "recording.add_takes",
     "clip.consolidate",
+    "library.list",
+    "library.tag",
+    "preset.save_channel",
+    "preset.load_channel",
+    "preset.save_mixer",
+    "preset.load_mixer",
+    "preset.save_score",
+    "preset.load_score",
 ];
 
 /// Commands whose examples act on an audio clip channel named Crash, which the fixture gets first for them.

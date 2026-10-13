@@ -1095,6 +1095,72 @@ Example:
 {}
 ```
 
+## library
+
+### `library.list`
+
+Lists a folder of the user library: sounds, projects, presets and scores.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `folder` | string, optional | The folder: one of the library's folders ("Packs", "My projects", "Templates"), a preset folder ("Channel presets", "Mixer presets", "Scores", "Plugin presets"), "Marketplace/Plugins" or "Marketplace/Stems", a `library:` key, or an absolute path. Empty lists the library's folders. |
+
+Example:
+
+```json
+{
+  "folder": "Channel presets"
+}
+```
+
+### `library.search`
+
+Finds files of any kind in the factory content, the sample folders and the user library, by words and tags.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `limit` | integer, optional | The most results, from 1 to 500; 50 by default. |
+| `query` | string, optional | Words the file's path or tags must contain, ignoring case. Empty matches everything. |
+| `tags` | array of string, optional | Tags the file must have, every one. |
+
+Example:
+
+```json
+{
+  "query": "kick",
+  "tags": [
+    "bodo drums"
+  ]
+}
+```
+
+### `library.tag`
+
+Adds tags to a library file, or removes them; the Browser filters by them.
+
+- Effects: disk
+
+| Param | Type | Description |
+|---|---|---|
+| `add` | array of string, optional | Tags to give it. |
+| `path` | string | The file: an absolute path, a `library:` key, or a `factory:` path. |
+| `remove` | array of string, optional | Tags to take from it. |
+
+Example:
+
+```json
+{
+  "add": [
+    "punchy"
+  ],
+  "path": "factory:Packs/Bodo Drums/Kick.wav"
+}
+```
+
 ## mixer
 
 ### `mixer.add_insert`
@@ -2051,7 +2117,7 @@ Writes a pattern as a MIDI file, one track per channel.
 
 | Param | Type | Description |
 |---|---|---|
-| `path` | string | Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added when the path has no extension. |
+| `path` | string, optional | Where to write the `.mid` file: an absolute path, or one relative to the project's folder (the library's Rendered folder for a project with no file yet). `.mid` is added when the path has no extension. By default a new file in the Rendered folder, named after the pattern. |
 | `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
 
 Example:
@@ -2397,6 +2463,133 @@ Example:
 }
 ```
 
+## preset
+
+### `preset.load_channel`
+
+Loads a .bodochannel file as a new channel, or into a channel to replace its sound.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | A channel to turn into the preset, keeping its place in the rack, its mixer insert and its MIDI input. By default the preset becomes a new channel. |
+| `path` | string | The `.bodochannel` file: an absolute path, a `library:` key, or a name in the library's Channel presets folder. |
+| `target` | InsertRef, optional | For a new channel, the mixer insert it plays into; the first insert no channel uses by default. |
+
+Example:
+
+```json
+{
+  "path": "Kick"
+}
+```
+
+### `preset.load_mixer`
+
+Gives a mixer insert the settings and FX slots of a .bodomixer file.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert that takes the preset's settings and FX slots; the selected insert by default. It keeps its name, routing, hardware ports, recording settings, mute and solo. |
+| `path` | string | The `.bodomixer` file: an absolute path, a `library:` key, or a name in the library's Mixer presets folder. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "path": "Insert 1"
+}
+```
+
+### `preset.load_score`
+
+Adds the notes of a .bodoscore file to a channel in a pattern.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position, optional | Where in the pattern the score starts; its start by default. |
+| `channel` | ChannelRef, optional | The channel that plays the notes; the piano roll's channel by default. |
+| `path` | string | The `.bodoscore` file: an absolute path, a `library:` key, or a name in the library's Scores folder. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `replace` | boolean, optional | Remove the channel's notes in the pattern first; false by default, which adds the score to them. |
+
+Example:
+
+```json
+{
+  "at": "1:3:0",
+  "channel": "Clap",
+  "path": "Pattern 1 Kick"
+}
+```
+
+### `preset.save_channel`
+
+Saves a channel, with its samples and plugin states, as a .bodochannel file in the library.
+
+- Effects: disk
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel; the piano roll's channel, or the one selected channel, by default. |
+| `name` | string, optional | The preset's name; the channel's name by default. |
+| `path` | string, optional | Where to write it: an absolute path or a name in the library's Channel presets folder. By default a new file there named after the preset. |
+
+Example:
+
+```json
+{
+  "channel": "Kick"
+}
+```
+
+### `preset.save_mixer`
+
+Saves a mixer insert's settings and FX slots as a .bodomixer file in the library.
+
+- Effects: disk
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `name` | string, optional | The preset's name; the insert's name by default. |
+| `path` | string, optional | Where to write it: an absolute path or a name in the library's Mixer presets folder. By default a new file there named after the preset. |
+
+Example:
+
+```json
+{
+  "insert": 1
+}
+```
+
+### `preset.save_score`
+
+Saves one channel's notes in a pattern as a .bodoscore file in the library.
+
+- Effects: disk
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel whose notes to save; the piano roll's channel by default. |
+| `name` | string, optional | The score's name; the pattern's and the channel's names by default. |
+| `path` | string, optional | Where to write it: an absolute path or a name in the library's Scores folder. By default a new file there named after the score. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "channel": "Kick"
+}
+```
+
 ## project
 
 ### `project.add_marker`
@@ -2429,7 +2622,7 @@ Writes the whole playlist as a MIDI file, every clip as it plays, one track per 
 
 | Param | Type | Description |
 |---|---|---|
-| `path` | string | Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added when the path has no extension. |
+| `path` | string, optional | Where to write the `.mid` file: an absolute path, or one relative to the project's folder (the library's Rendered folder for a project with no file yet). `.mid` is added when the path has no extension. By default a new file in the Rendered folder, named after the song. |
 
 Example:
 
@@ -2474,6 +2667,7 @@ Starts a new project from a template, replacing the current one.
 | Param | Type | Description |
 |---|---|---|
 | `discardChanges` | boolean, optional | Drop unsaved changes to the current project; without it, new refuses when there are any. |
+| `from` | string, optional | A project to start from instead, such as a template or a demo: an absolute path, a `library:` key, or a name in the library's Templates folder. The new project copies it and has no file yet, so the original stays as it was. |
 | `template` | Template, optional | "basic" (a starter drum kit) or "empty"; basic by default. |
 
 Example:
@@ -2584,6 +2778,26 @@ Example:
 ```json
 {
   "path": "My Song.bodo"
+}
+```
+
+### `project.save_template`
+
+Saves a copy of the project in the library's Templates folder, for project.new to start from.
+
+- Effects: disk
+- Acts on the session, so it can't run inside a batch.
+- Menu: File > Save as template
+
+| Param | Type | Description |
+|---|---|---|
+| `name` | string, optional | The template's name; the project's title by default. |
+
+Example:
+
+```json
+{
+  "name": "My Starter"
 }
 ```
 

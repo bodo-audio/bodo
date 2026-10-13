@@ -219,7 +219,7 @@ fn run(args: Args) -> anyhow::Result<()> {
             if args.light {
                 prefs.theme = bodo_ui::theme::ThemePref::Light;
             }
-            let env = Env { factory: locate_factory(), library: prefs.library.clone() };
+            let env = Env { factory: locate_factory(), library: prefs.library.clone(), user: None };
             let session = Session::new(env);
             let screenshot = args.screenshot.is_some();
             let mut app = BodoApp::new(session, prefs, services(), !args.no_audio && !screenshot);

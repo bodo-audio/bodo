@@ -1,6 +1,6 @@
 //! Where new ids come from: fresh ULIDs normally, or a counter so tests and snapshots are reproducible.
 
-use bodo_model::{ChannelId, ClipId, InsertId, PatternId, ProjectId, SampleId, TrackId};
+use bodo_model::{ChannelId, ClipId, InsertId, PatternId, PluginInstanceId, ProjectId, SampleId, TrackId};
 
 /// Makes new entity ids.
 #[derive(Clone, Debug, Default)]
@@ -56,5 +56,7 @@ impl IdSource {
         insert -> InsertId;
         /// A new sample id.
         sample -> SampleId;
+        /// A new plugin instance id.
+        plugin -> PluginInstanceId;
     }
 }

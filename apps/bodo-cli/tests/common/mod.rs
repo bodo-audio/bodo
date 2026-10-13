@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 /// A deterministic session with the factory content.
 pub fn session() -> Session {
-    Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new() })
+    Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None })
 }
 
 /// The 4-pattern beat of the M2 exit criterion, built with the engine.

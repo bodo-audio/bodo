@@ -1,0 +1,10 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: loaded
+---
+{
+  "channel": "ch_0000000000000000000000041C",
+  "insert": 5,
+  "name": "Kick 2",
+  "replaced": false
+}

@@ -1,0 +1,8 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: saved
+---
+{
+  "channel": "ch_00000000000000000000000415",
+  "path": "library:User data/Channel presets/Deep Kick.bodochannel"
+}

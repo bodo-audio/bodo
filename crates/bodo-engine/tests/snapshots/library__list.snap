@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: listed
+---
+{
+  "entries": [
+    {
+      "kind": "channelPreset",
+      "name": "Snare",
+      "path": "library:User data/Channel presets/Snare.bodochannel"
+    }
+  ],
+  "folder": "library:User data/Channel presets"
+}

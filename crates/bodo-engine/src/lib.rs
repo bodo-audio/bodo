@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 mod commands;
+pub mod demo;
 pub mod docs;
 pub mod error;
 mod history;

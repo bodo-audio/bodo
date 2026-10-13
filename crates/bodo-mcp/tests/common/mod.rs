@@ -9,7 +9,7 @@ use serde_json::Value;
 
 /// A deterministic session with the factory content, as the engine's own tests use.
 pub fn session() -> Session {
-    Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new() })
+    Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None })
 }
 
 /// The calls of the beat from the M2 exit criterion.

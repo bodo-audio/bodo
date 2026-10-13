@@ -29,6 +29,9 @@ pub struct Env {
     pub factory: Option<PathBuf>,
     /// Folders of the user's own sounds, which the browser lists.
     pub library: Vec<PathBuf>,
+    /// The user library, where presets, templates, recordings and exports go ([`crate::library::user`]); `None` when
+    /// there is none, as in tests.
+    pub user: Option<PathBuf>,
 }
 
 /// One command to run.
@@ -635,6 +638,15 @@ impl Session {
     /// Makes `project` current as an unsaved project with no file, for example one recovered from an autosave.
     pub fn recover(&mut self, project: Project) {
         self.replace(project, None, false);
+    }
+
+    /// Starts a new project that copies `project`, such as a template, with a new id and no file, replacing the
+    /// current one.
+    pub(crate) fn start_from(&mut self, mut project: Project) {
+        project.id = self.ids.project();
+        let created = (!self.ids.is_counting()).then(crate::template::now_rfc3339);
+        project.meta = Arc::new(bodo_model::project::Meta { created, ..(*project.meta).clone() });
+        self.replace(project, None, true);
     }
 
     /// Starts a new project from `template`, replacing the current one.

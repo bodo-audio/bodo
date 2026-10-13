@@ -51,17 +51,19 @@ struct Import {
 struct ExportPattern {
     /// The pattern; the current pattern by default.
     pattern: Option<PatternRef>,
-    /// Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added
-    /// when the path has no extension.
-    path: String,
+    /// Where to write the `.mid` file: an absolute path, or one relative to the project's folder (the library's
+    /// Rendered folder for a project with no file yet). `.mid` is added when the path has no extension. By default a
+    /// new file in the Rendered folder, named after the pattern.
+    path: Option<String>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ExportProject {
-    /// Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added
-    /// when the path has no extension.
-    path: String,
+    /// Where to write the `.mid` file: an absolute path, or one relative to the project's folder (the library's
+    /// Rendered folder for a project with no file yet). `.mid` is added when the path has no extension. By default a
+    /// new file in the Rendered folder, named after the song.
+    path: Option<String>,
 }
 
 /// Where `text` points: absolute, or relative to the project's folder (the current folder for an unsaved project).
@@ -71,9 +73,19 @@ fn locate(ctx: &Ctx<'_>, text: &str) -> PathBuf {
 }
 
 /// Where to write a MIDI file named by `text`, with `.mid` added when it has no extension.
-fn target(ctx: &Ctx<'_>, text: &str) -> PathBuf {
-    let path = locate(ctx, text);
-    if path.extension().is_none() { path.with_extension("mid") } else { path }
+/// Where an export goes: `text` when given, absolute or relative to the project's folder, or the library's Rendered
+/// folder for a project with no file; otherwise a new file named `name` in the Rendered folder.
+fn target(ctx: &Ctx<'_>, text: Option<&str>, name: &str) -> Result<PathBuf, CommandError> {
+    let rendered = crate::library::rendered_folder(ctx.env(), ctx.project_dir().as_deref());
+    let path = match text {
+        Some(text) if Path::new(text.trim()).is_absolute() || ctx.project_dir().is_some() => locate(ctx, text),
+        Some(text) => rendered.map_or_else(|| locate(ctx, text), |folder| folder.join(text.trim())),
+        None => {
+            let folder = rendered.ok_or_else(|| CommandError::invalid("the project has no folder to export into yet").with_hint("pass path"))?;
+            crate::library::user::unused_file(&folder, name, "mid")
+        }
+    };
+    Ok(if path.extension().is_none() { path.with_extension("mid") } else { path })
 }
 
 fn io_error(error: &bodo_io::IoError) -> CommandError {
@@ -240,7 +252,8 @@ fn import(ctx: &mut Ctx<'_>, p: Import) -> Result<Value, CommandError> {
 fn export_pattern(ctx: &mut Ctx<'_>, p: ExportPattern) -> Result<Value, CommandError> {
     let id = ctx.pattern(p.pattern.as_ref())?;
     let smf = bodo_io::export_pattern(&ctx.project, id).map_err(|e| io_error(&e))?;
-    write(&target(ctx, &p.path), &smf)
+    let name = ctx.project.patterns.get(&id).map_or_else(|| String::from("Pattern"), |p| p.name.clone());
+    write(&target(ctx, p.path.as_deref(), &name)?, &smf)
 }
 
 fn export_project(ctx: &mut Ctx<'_>, p: ExportProject) -> Result<Value, CommandError> {
@@ -248,7 +261,9 @@ fn export_project(ctx: &mut Ctx<'_>, p: ExportProject) -> Result<Value, CommandE
         return Err(CommandError::rejected("the playlist is empty").with_hint("place clips first, or export one pattern with pattern.export_midi"));
     }
     let smf = bodo_io::export_arrangement(&ctx.project);
-    write(&target(ctx, &p.path), &smf)
+    let title = ctx.project.meta.title.trim();
+    let name = if title.is_empty() { String::from("Song") } else { title.to_owned() };
+    write(&target(ctx, p.path.as_deref(), &name)?, &smf)
 }
 
 pub(super) fn register(r: &mut Registry) {

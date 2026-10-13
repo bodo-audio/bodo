@@ -127,7 +127,7 @@ fn folder(app: &mut BodoApp, ui: &mut Ui, name: &str, dir: &Path, depth: usize) 
         });
     }
     for entry in entries {
-        if entry.is_dir {
+        if entry.is_dir() {
             folder(app, ui, &entry.name, &entry.path, depth + 1);
         } else {
             let name = entry.path.file_stem().map_or_else(|| entry.name.clone(), |s| s.to_string_lossy().into_owned());
@@ -211,7 +211,7 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
                 Some(factory) => {
                     let packs = factory.join("Packs");
                     let entries: Vec<Entry> = app.view.browser.listing(&packs).to_vec();
-                    for entry in entries.into_iter().filter(|e| e.is_dir) {
+                    for entry in entries.into_iter().filter(|e| e.is_dir()) {
                         folder(app, ui, &entry.name, &entry.path, 0);
                     }
                 }

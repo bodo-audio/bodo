@@ -13,7 +13,7 @@ use serde_json::json;
 
 /// The same beat through the session's commands.
 fn by_commands() -> Session {
-    let mut session = Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new() });
+    let mut session = Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None });
     let calls = [
         ("pattern.set_steps", json!({ "channel": "Kick", "steps": "x.......x......." })),
         ("pattern.set_steps", json!({ "channel": "HiHat", "steps": "..x...x...x...x." })),
@@ -87,7 +87,7 @@ fn a_four_pattern_beat_built_by_clicking_saves_and_reopens_identically() {
     let path = dir.join("Clicked Beat.bodo");
     app.run("project.save", json!({ "path": path.display().to_string() })).unwrap();
     let saved = app.session.project().clone();
-    let mut reopened = Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new() });
+    let mut reopened = Session::deterministic(Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None });
     reopened.execute("project.open", json!({ "path": path.display().to_string() })).unwrap();
     assert_eq!(**reopened.project(), *saved, "the reopened project is the saved one");
     std::fs::remove_dir_all(dir).unwrap();

@@ -9,7 +9,7 @@ use serde_json::json;
 /// The environment the command line works in: the factory content where [`bodo_engine::locate_factory`] finds it,
 /// and no sample folders of the user's.
 pub fn env() -> Env {
-    Env { factory: bodo_engine::locate_factory(), library: Vec::new() }
+    Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None }
 }
 
 /// A session on the project at `path`, or on a new project from the basic template when `path` is `None`.

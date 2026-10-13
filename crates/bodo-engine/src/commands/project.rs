@@ -2,7 +2,7 @@
 //!
 //! New and open refuse to drop unsaved changes unless told to, so an agent can't lose the user's work by accident.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bodo_io::{DEFAULT_BACKUPS, SaveOptions};
@@ -14,6 +14,8 @@ use serde_json::{Value, json};
 
 use super::whole;
 use crate::error::{CommandError, ErrorCode};
+use crate::library::UserLibrary;
+use crate::library::user::{LIBRARY_PREFIX, unused_file};
 use crate::registry::{Effects, Registry};
 use crate::session::{Ctx, Session};
 use crate::template::Template;
@@ -24,6 +26,10 @@ struct New {
     /// "basic" (a starter drum kit) or "empty"; basic by default.
     #[serde(default)]
     template: Template,
+    /// A project to start from instead, such as a template or a demo: an absolute path, a `library:` key, or a name
+    /// in the library's Templates folder. The new project copies it and has no file yet, so the original stays as it
+    /// was.
+    from: Option<String>,
     /// Drop unsaved changes to the current project; without it, new refuses when there are any.
     #[serde(default)]
     discard_changes: bool,
@@ -111,10 +117,63 @@ fn summary(session: &Session) -> Value {
     })
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SaveTemplate {
+    /// The template's name; the project's title by default.
+    name: Option<String>,
+}
+
 fn new(session: &mut Session, p: New) -> Result<Value, CommandError> {
     refuse_unsaved(session, p.discard_changes, "starting a new project")?;
-    session.new_project(p.template);
+    match p.from {
+        Some(text) => {
+            let path = template_file(session, &text)?;
+            let mut project = bodo_io::load(&path).map_err(|e| io_error(&e))?;
+            // Samples stored relative to the template's folder would point nowhere from a project with no folder.
+            let folder = bodo_io::project_folder(&path);
+            let samples: Vec<_> = project.samples.values().cloned().collect();
+            for sample in samples {
+                if !bodo_io::paths::is_factory(&sample.path) && !Path::new(&sample.path).is_absolute() {
+                    let absolute = folder.join(&sample.path).display().to_string();
+                    project.samples.insert(sample.id, Arc::new(bodo_model::SampleRef { path: absolute, ..(*sample).clone() }));
+                }
+            }
+            session.start_from(project);
+        }
+        None => session.new_project(p.template),
+    }
     Ok(summary(session))
+}
+
+/// The project file `text` names: absolute, a `library:` key, or a name in the library's Templates folder.
+fn template_file(session: &Session, text: &str) -> Result<PathBuf, CommandError> {
+    let text = text.trim();
+    let library = session.env().user.as_ref().map(UserLibrary::new);
+    let path = if text.starts_with(LIBRARY_PREFIX) {
+        library.and_then(|l| l.resolve(text)).ok_or_else(|| CommandError::invalid("there is no user library"))?
+    } else if Path::new(text).is_absolute() {
+        PathBuf::from(text)
+    } else {
+        library.map(|l| l.templates().join(text)).ok_or_else(|| CommandError::invalid("there is no user library to find templates in"))?
+    };
+    let path = if path.extension().is_none() && !path.is_dir() { path.with_extension("bodo") } else { path };
+    if !path.exists() {
+        return Err(CommandError::not_found("template", text).with_hint("give a path, or the name of a project in the library's Templates folder"));
+    }
+    Ok(path)
+}
+
+/// Saves a copy of the project as a template in the user library; the project keeps its own file.
+fn save_template(session: &mut Session, p: SaveTemplate) -> Result<Value, CommandError> {
+    let library =
+        session.env().user.as_ref().map(UserLibrary::new).ok_or_else(|| CommandError::invalid("there is no user library to keep templates in"))?;
+    let title = session.project().meta.title.trim().to_owned();
+    let name = p.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| if title.is_empty() { String::from("Template") } else { title });
+    let path = unused_file(&library.templates(), &name, "bodo");
+    let options = SaveOptions { from: session.file().map(PathBuf::from), backups: 0 };
+    bodo_io::save(session.project(), &path, &options).map_err(|e| io_error(&e))?;
+    Ok(json!({ "path": library.key(&path), "name": name }))
 }
 
 fn open(session: &mut Session, p: Open) -> Result<Value, CommandError> {
@@ -240,6 +299,15 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "template": "basic" }))
         .menu("File/New")
         .shortcut("Mod+N");
+    r.session(
+        "project.save_template",
+        "Save as template",
+        "Saves a copy of the project in the library's Templates folder, for project.new to start from.",
+        Effects::DISK,
+        save_template,
+    )
+    .example(json!({ "name": "My Starter" }))
+    .menu("File/Save as template");
     r.session("project.open", "Open project", "Opens a .bodo file or .bodoproj folder, replacing the current project.", Effects::DESTRUCTIVE, open)
         .example(json!({ "path": "My Song.bodo" }))
         .menu("File/Open")

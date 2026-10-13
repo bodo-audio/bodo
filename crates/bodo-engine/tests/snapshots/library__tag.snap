@@ -1,0 +1,11 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: tagged
+---
+{
+  "path": "factory:Packs/Bodo Drums/Kick.wav",
+  "tags": [
+    "low end",
+    "punchy"
+  ]
+}

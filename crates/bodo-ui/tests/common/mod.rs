@@ -9,7 +9,7 @@ use egui_kittest::Harness;
 
 /// The app on a deterministic session with the factory content, without audio.
 pub fn app(theme: Theme) -> BodoApp {
-    let env = Env { factory: bodo_engine::locate_factory(), library: Vec::new() };
+    let env = Env { factory: bodo_engine::locate_factory(), library: Vec::new(), user: None };
     let prefs =
         Prefs { theme: if theme == Theme::Light { bodo_ui::theme::ThemePref::Light } else { bodo_ui::theme::ThemePref::Dark }, ..Prefs::default() };
     BodoApp::new(Session::deterministic(env), prefs, Services::default(), false)

@@ -1,0 +1,8 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: loaded
+---
+{
+  "insert": 2,
+  "path": "library:User data/Mixer presets/Quiet Right.bodomixer"
+}

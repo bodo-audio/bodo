@@ -1,0 +1,8 @@
+---
+source: crates/bodo-engine/tests/library.rs
+expression: saved
+---
+{
+  "name": "Starter",
+  "path": "library:Templates/Starter.bodo"
+}
