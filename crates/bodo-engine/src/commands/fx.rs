@@ -246,6 +246,61 @@ fn set_enabled(ctx: &mut Ctx<'_>, p: SlotSwitch) -> Result<Value, CommandError> 
     Ok(json!({ "insert": insert_number(&ctx.project, id), "slot": p.slot, "enabled": on }))
 }
 
+/// Where a plugin runs, as `fx.set_sandbox` takes it.
+#[derive(Clone, Copy, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+enum Sandbox {
+    /// In Bodo's process.
+    InProcess,
+    /// In the bridge process all third-party plugins share.
+    SharedBridge,
+    /// In a bridge process per vendor.
+    PerVendor,
+    /// In a bridge process of its own.
+    PerPlugin,
+}
+
+impl From<Sandbox> for SandboxMode {
+    fn from(mode: Sandbox) -> Self {
+        match mode {
+            Sandbox::InProcess => Self::InProcess,
+            Sandbox::SharedBridge => Self::SharedBridge,
+            Sandbox::PerVendor => Self::PerVendor,
+            Sandbox::PerPlugin => Self::PerPlugin,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetSandbox {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// The slot, 1 to 10.
+    slot: usize,
+    /// Where its plugin runs. Native effects always run inside Bodo; the setting applies to plugins.
+    mode: Sandbox,
+}
+
+fn set_sandbox(ctx: &mut Ctx<'_>, p: SetSandbox) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let index = slot_index(p.slot)?;
+    let slot = slot_of(ctx, id, index);
+    let Some(plugin) = slot.plugin.as_ref() else {
+        return Err(CommandError::rejected(format!("slot {} is empty", p.slot)));
+    };
+    let native = plugin.format == PluginFormat::Native;
+    let mode = SandboxMode::from(p.mode);
+    ctx.edit_insert(id, |i| {
+        if let Some(plugin) = i.slots[index].plugin.as_mut() {
+            plugin.sandbox = mode;
+        }
+    })?;
+    ctx.set_label(format!("Set where slot {} runs", p.slot));
+    let runs = if native { SandboxMode::InProcess } else { mode };
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "slot": p.slot, "sandbox": mode, "runs": runs }))
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SlotMix {
@@ -440,6 +495,14 @@ pub(super) fn register(r: &mut Registry) {
         set_enabled,
     )
     .example(json!({ "insert": 2, "slot": 1, "on": false }));
+    r.edit(
+        "fx.set_sandbox",
+        "Set plugin sandbox",
+        "Sets where an FX slot's plugin runs: in Bodo, in the shared bridge, per vendor or on its own. Native effects always run in Bodo.",
+        Effects::UNDOABLE,
+        set_sandbox,
+    )
+    .example(json!({ "insert": 2, "slot": 1, "mode": "perPlugin" }));
     r.edit("fx.set_mix", "Set effect mix", "Sets an FX slot's dry/wet mix.", Effects::UNDOABLE, set_mix)
         .example(json!({ "insert": 2, "slot": 1, "mix": 0.5 }))
         .merge(by_slot);

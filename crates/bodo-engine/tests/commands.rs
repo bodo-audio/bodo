@@ -24,7 +24,7 @@ fn fixture() -> Session {
 
 /// Commands that read or write files outside the test's control; the beat, MIDI, recording, library and render tests
 /// cover them.
-const FILE_COMMANDS: [&str; 19] = [
+const FILE_COMMANDS: [&str; 21] = [
     "project.open",
     "project.save",
     "project.save_as",
@@ -42,6 +42,8 @@ const FILE_COMMANDS: [&str; 19] = [
     "preset.load_mixer",
     "preset.save_score",
     "preset.load_score",
+    "preset.save_plugin",
+    "preset.load_plugin",
     "render.export_mix",
     "render.export_stems",
 ];

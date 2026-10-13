@@ -9,11 +9,13 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bodo_io::preset::{
-    CHANNEL_PRESET_EXTENSION, ChannelPreset, MIXER_PRESET_EXTENSION, MixerPreset, PresetSample, SCORE_EXTENSION, ScorePreset, read_channel_preset,
-    read_mixer_preset, read_score, write_channel_preset, write_mixer_preset, write_score,
+    CHANNEL_PRESET_EXTENSION, ChannelPreset, MIXER_PRESET_EXTENSION, MixerPreset, PLUGIN_PRESET_EXTENSION, PluginPreset, PresetSample,
+    SCORE_EXTENSION, ScorePreset, read_channel_preset, read_mixer_preset, read_plugin_preset, read_score, write_channel_preset, write_mixer_preset,
+    write_plugin_preset, write_score,
 };
 use bodo_kit_core::Tick;
-use bodo_model::channel::ChannelKind;
+use bodo_model::channel::{ChannelKind, PluginFormat, PluginRef, SandboxMode};
+use bodo_model::mixer::{FxSlot, ParamValue};
 use bodo_model::{Channel, ChannelId, InsertId, NoteId, SampleId};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -50,6 +52,31 @@ struct LoadChannel {
     channel: Option<ChannelRef>,
     /// For a new channel, the mixer insert it plays into; the first insert no channel uses by default.
     target: Option<InsertRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SavePlugin {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// The slot whose effect to save, 1 to 10.
+    slot: usize,
+    /// The preset's name; the effect's name by default.
+    name: Option<String>,
+    /// Where to write it: an absolute path or a name in the library's Plugin presets folder. By default a new file in
+    /// a folder named after the effect there.
+    path: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct LoadPlugin {
+    /// The preset: a `library:` key, an absolute path, or a name in the library's Plugin presets folder.
+    path: String,
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// The slot, 1 to 10. By default the first slot holding the same effect, or else the first empty slot.
+    slot: Option<usize>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -280,6 +307,75 @@ fn load_channel(ctx: &mut Ctx<'_>, p: LoadChannel) -> Result<Value, CommandError
     Ok(json!({ "channel": id, "name": name, "insert": insert, "replaced": replaced }))
 }
 
+fn save_plugin(ctx: &mut Ctx<'_>, p: SavePlugin) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let index = super::fx::slot_index(p.slot)?;
+    let slot = ctx.project.mixer.insert(id).and_then(|i| i.slots.get(index)).cloned().unwrap_or_default();
+    let plugin = slot.plugin.as_ref().ok_or_else(|| CommandError::rejected(format!("slot {} is empty", p.slot)))?;
+    let effect = super::fx::effect_in(&slot).map_or_else(|| plugin.uid.clone(), |info| info.name.to_owned());
+    let name = p.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| effect.clone());
+    let preset = PluginPreset {
+        name: name.trim().to_owned(),
+        plugin_format: plugin.format,
+        uid: plugin.uid.clone(),
+        params: slot.params.clone(),
+        states: if plugin.state.is_empty() { BTreeMap::new() } else { BTreeMap::from([(String::from("plugin"), plugin.state.to_vec())]) },
+    };
+    let path = match p.path.as_deref() {
+        Some(text) => preset_file(ctx, text, PresetFolder::PluginPresets, PLUGIN_PRESET_EXTENSION)?,
+        None => unused_file(&library(ctx)?.presets(PresetFolder::PluginPresets).join(&effect), &preset.name, PLUGIN_PRESET_EXTENSION),
+    };
+    write_plugin_preset(&path, &preset).map_err(|e| io_error(&e))?;
+    Ok(json!({ "path": shown(ctx, &path), "insert": insert_number(&ctx.project, id), "slot": p.slot, "effect": plugin.uid }))
+}
+
+fn load_plugin(ctx: &mut Ctx<'_>, p: LoadPlugin) -> Result<Value, CommandError> {
+    let path = preset_file(ctx, &p.path, PresetFolder::PluginPresets, PLUGIN_PRESET_EXTENSION)?;
+    let preset = read_plugin_preset(&path).map_err(|e| io_error(&e))?;
+    let native = preset.plugin_format == PluginFormat::Native;
+    let info = if native { Some(bodo_mix::fx::find(&preset.uid).ok_or_else(|| CommandError::not_found("effect", &preset.uid))?) } else { None };
+    let id = ctx.insert(p.insert.as_ref())?;
+    let slots = ctx.project.mixer.insert(id).map(|i| i.slots.clone()).unwrap_or_default();
+    let holds = |s: &FxSlot| s.plugin.as_ref().is_some_and(|plugin| plugin.uid == preset.uid && plugin.format == preset.plugin_format);
+    let index = match p.slot {
+        Some(number) => super::fx::slot_index(number)?,
+        None => slots
+            .iter()
+            .position(holds)
+            .or_else(|| slots.iter().position(|s| s.plugin.is_none()))
+            .ok_or_else(|| CommandError::rejected("every slot of that insert is full").with_hint("name a slot to replace its effect"))?,
+    };
+    let current = slots.get(index).and_then(|s| s.plugin.clone());
+    let same = slots.get(index).is_some_and(holds);
+    let (instance, sandbox) = match &current {
+        Some(plugin) if same => (plugin.instance, plugin.sandbox),
+        _ => (ctx.ids().plugin_instance(), if native { SandboxMode::InProcess } else { SandboxMode::default() }),
+    };
+    let state: Arc<[u8]> = preset.states.get("plugin").cloned().unwrap_or_default().into();
+    // A native effect's values are clamped to its parameters; ids it no longer has are dropped.
+    let params: Vec<ParamValue> = preset
+        .params
+        .iter()
+        .filter_map(|v| match info {
+            Some(info) => info.params.iter().find(|spec| spec.id == v.id).map(|spec| ParamValue { id: v.id, value: spec.clamp(v.value) }),
+            None => Some(*v),
+        })
+        .collect();
+    let plugin = PluginRef { instance, format: preset.plugin_format, uid: preset.uid.clone(), state, sandbox };
+    ctx.edit_insert(id, |insert| {
+        let slot = &mut insert.slots[index];
+        slot.plugin = Some(plugin);
+        slot.params = params;
+        if !same {
+            slot.enabled = true;
+            slot.mix = 1.0;
+            slot.sidechain = None;
+        }
+    })?;
+    ctx.set_label(format!("Load preset {}", preset.name));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "slot": index + 1, "effect": preset.uid, "name": preset.name }))
+}
+
 fn save_mixer(ctx: &mut Ctx<'_>, p: SaveMixer) -> Result<Value, CommandError> {
     let id = ctx.insert(p.insert.as_ref())?;
     let insert = ctx.project.mixer.insert(id).ok_or_else(|| CommandError::not_found("insert", &id.to_string()))?;
@@ -391,6 +487,22 @@ pub(super) fn register(r: &mut Registry) {
         load_channel,
     )
     .example(json!({ "path": "Kick" }));
+    r.edit(
+        "preset.save_plugin",
+        "Save plugin preset",
+        "Saves the settings of an FX slot's effect as a .bodopreset file in the library.",
+        Effects::DISK,
+        save_plugin,
+    )
+    .example(json!({ "insert": 1, "slot": 1, "name": "Slapback" }));
+    r.edit(
+        "preset.load_plugin",
+        "Load plugin preset",
+        "Loads a .bodopreset file into an FX slot: onto the same effect, or as a new effect in an empty slot.",
+        Effects::UNDOABLE,
+        load_plugin,
+    )
+    .example(json!({ "path": "Delay/Slapback", "insert": 1 }));
     r.edit(
         "preset.save_mixer",
         "Save mixer preset",

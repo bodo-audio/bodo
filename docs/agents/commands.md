@@ -1340,6 +1340,28 @@ Example:
 }
 ```
 
+### `fx.set_sandbox`
+
+Sets where an FX slot's plugin runs: in Bodo, in the shared bridge, per vendor or on its own. Native effects always run in Bodo.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `mode` | Sandbox | Where its plugin runs. Native effects always run inside Bodo; the setting applies to plugins. |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "mode": "perPlugin",
+  "slot": 1
+}
+```
+
 ### `fx.set_sidechain`
 
 Feeds an FX slot's sidechain input from a channel or insert, adding the sidechain route.
@@ -3093,6 +3115,27 @@ Example:
 }
 ```
 
+### `preset.load_plugin`
+
+Loads a .bodopreset file into an FX slot: onto the same effect, or as a new effect in an empty slot.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `path` | string | The preset: a `library:` key, an absolute path, or a name in the library's Plugin presets folder. |
+| `slot` | integer, optional | The slot, 1 to 10. By default the first slot holding the same effect, or else the first empty slot. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "path": "Delay/Slapback"
+}
+```
+
 ### `preset.load_score`
 
 Adds the notes of a .bodoscore file to a channel in a pattern.
@@ -3154,6 +3197,29 @@ Example:
 ```json
 {
   "insert": 1
+}
+```
+
+### `preset.save_plugin`
+
+Saves the settings of an FX slot's effect as a .bodopreset file in the library.
+
+- Effects: disk
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `name` | string, optional | The preset's name; the effect's name by default. |
+| `path` | string, optional | Where to write it: an absolute path or a name in the library's Plugin presets folder. By default a new file in a folder named after the effect there. |
+| `slot` | integer | The slot whose effect to save, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "name": "Slapback",
+  "slot": 1
 }
 ```
 
@@ -3508,6 +3574,7 @@ Renders the song, or one pattern, through the master to an audio file.
 | `format` | Format, optional | The file format; WAV by default. |
 | `path` | string | The file to write: an absolute path, or one relative to the project's folder. The format's extension is added when it has none. |
 | `pattern` | PatternRef, optional | Loop this pattern instead of playing the playlist. |
+| `start` | Position, optional | Where to start; the start of the song or pattern by default. |
 
 Example:
 
@@ -3531,6 +3598,7 @@ Renders the song, or one pattern, to one audio file per insert in a folder, dela
 | `format` | Format, optional | The file format; WAV by default. |
 | `mix` | boolean, optional | Also write the whole mix, through the master, as `Mix`. |
 | `pattern` | PatternRef, optional | Loop this pattern instead of playing the playlist. |
+| `start` | Position, optional | Where to start; the start of the song or pattern by default. |
 
 Example:
 

@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "mode": "perPlugin",
+    "slot": 1
+  },
+  "result": {
+    "insert": 2,
+    "runs": "inProcess",
+    "sandbox": "perPlugin",
+    "slot": 1
+  },
+  "undo": "Set where slot 1 runs"
+}

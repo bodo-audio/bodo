@@ -7,6 +7,7 @@
 //!   hash, its plugin states, and for a layer the presets of its children.
 //! - **`.bodomixer`**, a [`MixerPreset`]: a mixer insert's settings and FX slots, with their plugin states.
 //! - **`.bodoscore`**, a [`ScorePreset`]: the notes of one channel in a pattern.
+//! - **`.bodopreset`**, a [`PluginPreset`]: one plugin's or native effect's settings, for an FX slot.
 //!
 //! The ids inside a preset are the ones it had where it was saved; loading gives everything new ids. Plugin states,
 //! which `project.json` keeps outside the JSON, are base64 text here so a preset stays a single file. Writes are
@@ -16,6 +17,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bodo_kit_core::Tick;
+use bodo_model::channel::PluginFormat;
+use bodo_model::mixer::ParamValue;
 use bodo_model::{Channel, MixerInsert, Note, SampleId};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -29,6 +32,8 @@ pub const CHANNEL_PRESET_EXTENSION: &str = "bodochannel";
 pub const MIXER_PRESET_EXTENSION: &str = "bodomixer";
 /// The extension of scores.
 pub const SCORE_EXTENSION: &str = "bodoscore";
+/// The extension of plugin presets.
+pub const PLUGIN_PRESET_EXTENSION: &str = "bodopreset";
 /// The newest preset version this Bodo writes and reads.
 pub const PRESET_VERSION: u32 = 1;
 
@@ -36,6 +41,7 @@ pub const PRESET_VERSION: u32 = 1;
 const CHANNEL_FORMAT: &str = "bodo.channel";
 const MIXER_FORMAT: &str = "bodo.mixer";
 const SCORE_FORMAT: &str = "bodo.score";
+const PLUGIN_FORMAT: &str = "bodo.plugin";
 
 /// A sample a preset plays, by the id it had where the preset was saved.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,6 +97,24 @@ pub struct ScorePreset {
     pub notes: Vec<Note>,
 }
 
+/// One plugin's or native effect's settings, saved on their own.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginPreset {
+    /// The name it was saved with.
+    pub name: String,
+    /// The plugin's format.
+    pub plugin_format: PluginFormat,
+    /// The format's unique id for the plugin, such as `bodo.delay` for a native effect.
+    pub uid: String,
+    /// A native effect's parameter values, by parameter id.
+    #[serde(default)]
+    pub params: Vec<ParamValue>,
+    /// A plugin's saved state, under the key `plugin`.
+    #[serde(default, with = "states")]
+    pub states: BTreeMap<String, Vec<u8>>,
+}
+
 /// The envelope every preset file has: its kind and version, then the preset.
 #[derive(Serialize, Deserialize)]
 struct Envelope<T> {
@@ -140,6 +164,20 @@ pub fn write_score(path: &Path, score: &ScorePreset) -> Result<(), IoError> {
 /// Does I/O. Complexity: O(size of the file).
 pub fn read_score(path: &Path) -> Result<ScorePreset, IoError> {
     read(path, SCORE_FORMAT, "a score")
+}
+
+/// Writes `preset` to `path` atomically, making its folder if needed.
+///
+/// Does I/O. Complexity: O(size of the preset).
+pub fn write_plugin_preset(path: &Path, preset: &PluginPreset) -> Result<(), IoError> {
+    write(path, PLUGIN_FORMAT, preset)
+}
+
+/// Reads the plugin preset at `path`.
+///
+/// Does I/O. Complexity: O(size of the file).
+pub fn read_plugin_preset(path: &Path) -> Result<PluginPreset, IoError> {
+    read(path, PLUGIN_FORMAT, "a plugin preset")
 }
 
 fn write<T: Serialize>(path: &Path, format: &str, preset: &T) -> Result<(), IoError> {
@@ -260,6 +298,23 @@ mod tests {
         std::fs::write(&path, r#"{ "format": "bodo.score", "version": 99, "name": "x", "length": 0, "notes": [] }"#).unwrap();
         let error = read_score(&path).unwrap_err().to_string();
         assert!(error.contains("preset version 99"), "{error}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_plugin_preset_round_trips() {
+        let dir = temp_dir("plugin");
+        let path = dir.join("Delay").join("Slapback.bodopreset");
+        let preset = PluginPreset {
+            name: String::from("Slapback"),
+            plugin_format: PluginFormat::Native,
+            uid: String::from("bodo.delay"),
+            params: vec![ParamValue { id: 1, value: 0.25 }],
+            states: BTreeMap::from([(String::from("plugin"), vec![1, 2, 3])]),
+        };
+        write_plugin_preset(&path, &preset).unwrap();
+        assert_eq!(read_plugin_preset(&path).unwrap(), preset);
+        assert!(read_score(&path).is_err(), "a plugin preset isn't a score");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

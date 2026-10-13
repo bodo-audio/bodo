@@ -207,3 +207,34 @@ fn exports_of_a_project_with_no_folder_go_to_rendered() {
     let beside = run(&mut s, "pattern.export_midi", json!({}));
     assert_eq!(PathBuf::from(beside["path"].as_str().unwrap()), bodo_io::project_folder(&saved_at).join("Rendered").join("Pattern 1.mid"));
 }
+
+#[test]
+fn a_plugin_preset_loads_onto_the_same_effect_or_into_an_empty_slot() {
+    let (mut s, library) = session("plugin-preset");
+    run(&mut s, "fx.load", json!({ "insert": 1, "slot": 1, "effect": "Delay", "params": { "Feedback": 70 } }));
+    let saved = run(&mut s, "preset.save_plugin", json!({ "insert": 1, "slot": 1, "name": "Long Echo" }));
+    assert_eq!(saved["path"], "library:User data/Plugin presets/Delay/Long Echo.bodopreset");
+    assert!(library.presets(PresetFolder::PluginPresets).join("Delay").join("Long Echo.bodopreset").is_file());
+    let feedback = |s: &Session, insert: usize| -> Option<f32> {
+        let id = s.project().mixer.order[insert - 1];
+        let slot = &s.project().mixer.inserts[&id].slots[0];
+        let spec = bodo_mix::fx::find("bodo.delay").unwrap().param_named("Feedback").unwrap();
+        slot.plugin.as_ref().map(|_| slot.param(spec.id).unwrap_or(spec.default))
+    };
+    let first = |s: &Session| s.project().mixer.inserts[&s.project().mixer.order[0]].slots[0].plugin.clone().unwrap();
+    // Onto the same effect: the values change, the instance stays.
+    run(&mut s, "plugin.set_param", json!({ "insert": 1, "slot": 1, "param": "Feedback", "value": 10 }));
+    let instance = first(&s).instance;
+    let steps = s.undo_labels().count();
+    let loaded = run(&mut s, "preset.load_plugin", json!({ "path": "library:User data/Plugin presets/Delay/Long Echo.bodopreset", "insert": 1 }));
+    assert_eq!(loaded["slot"], 1);
+    assert_eq!(feedback(&s, 1), Some(70.0));
+    assert_eq!(first(&s).instance, instance);
+    assert_eq!(s.undo_labels().count(), steps + 1, "one undo step");
+    // Into another insert, which has no delay: it lands in the first empty slot.
+    run(&mut s, "preset.load_plugin", json!({ "path": "Delay/Long Echo", "insert": 2 }));
+    assert_eq!(feedback(&s, 2), Some(70.0));
+    // Sandbox mode is stored for plugins, while a native effect still runs inside Bodo.
+    let set = run(&mut s, "fx.set_sandbox", json!({ "insert": 2, "slot": 1, "mode": "perPlugin" }));
+    assert_eq!((set["sandbox"].as_str(), set["runs"].as_str()), (Some("perPlugin"), Some("inProcess")));
+}

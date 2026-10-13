@@ -49,6 +49,8 @@ struct ExportMix {
     path: String,
     /// Loop this pattern instead of playing the playlist.
     pattern: Option<PatternRef>,
+    /// Where to start; the start of the song or pattern by default.
+    start: Option<Position>,
     /// Where to stop; the end of the song or of one pass of the pattern by default. One second of tail follows.
     end: Option<Position>,
     /// The file format; WAV by default.
@@ -63,6 +65,8 @@ struct ExportStems {
     folder: String,
     /// Loop this pattern instead of playing the playlist.
     pattern: Option<PatternRef>,
+    /// Where to start; the start of the song or pattern by default.
+    start: Option<Position>,
     /// Where to stop; the end of the song or of one pass of the pattern by default. One second of tail follows.
     end: Option<Position>,
     /// The file format; WAV by default.
@@ -121,8 +125,9 @@ fn locate(ctx: &Ctx<'_>, text: &str) -> PathBuf {
     if path.is_absolute() { path } else { ctx.sample_roots().project.join(path) }
 }
 
-/// The offline render of `pattern`, or else of the song, up to `end`.
-fn options(ctx: &Ctx<'_>, pattern: Option<&PatternRef>, end: Option<&Position>) -> Result<OfflineOptions, CommandError> {
+/// The offline render of `pattern`, or else of the song, from `start` up to `end`.
+fn options(ctx: &Ctx<'_>, pattern: Option<&PatternRef>, start: Option<&Position>, end: Option<&Position>) -> Result<OfflineOptions, CommandError> {
+    let start = start.map(|s| s.resolve(&ctx.project)).transpose()?.unwrap_or(Tick::ZERO).max(Tick::ZERO);
     let end = end.map(|e| e.resolve(&ctx.project)).transpose()?;
     let (mode, end) = match pattern {
         Some(r) => {
@@ -134,12 +139,12 @@ fn options(ctx: &Ctx<'_>, pattern: Option<&PatternRef>, end: Option<&Position>) 
             (PlayMode::Song, end.unwrap_or(song_end))
         }
     };
-    if end <= Tick::ZERO {
+    if end <= start {
         return Err(
             CommandError::rejected("there is nothing to render").with_hint("place clips on the playlist, or render one pattern with `pattern`")
         );
     }
-    Ok(OfflineOptions { start: Tick::ZERO, end, tail: Seconds(1.0), mode, block: 512, workers: 0 })
+    Ok(OfflineOptions { start, end, tail: Seconds(1.0), mode, block: 512, workers: 0 })
 }
 
 fn failed(error: bodo_mix::MixError) -> CommandError {
@@ -155,7 +160,7 @@ fn make_folder(folder: &Path) -> Result<(), CommandError> {
 }
 
 fn export_mix(ctx: &mut Ctx<'_>, p: ExportMix) -> Result<Value, CommandError> {
-    let options = options(ctx, p.pattern.as_ref(), p.end.as_ref())?;
+    let options = options(ctx, p.pattern.as_ref(), p.start.as_ref(), p.end.as_ref())?;
     let path = locate(ctx, &p.path);
     let path = if path.extension().is_none() { path.with_extension(p.format.extension()) } else { path };
     make_folder(path.parent().unwrap_or(Path::new("")))?;
@@ -165,7 +170,7 @@ fn export_mix(ctx: &mut Ctx<'_>, p: ExportMix) -> Result<Value, CommandError> {
 }
 
 fn export_stems(ctx: &mut Ctx<'_>, p: ExportStems) -> Result<Value, CommandError> {
-    let options = options(ctx, p.pattern.as_ref(), p.end.as_ref())?;
+    let options = options(ctx, p.pattern.as_ref(), p.start.as_ref(), p.end.as_ref())?;
     let folder = locate(ctx, &p.folder);
     make_folder(&folder)?;
     let roots = ctx.sample_roots();
