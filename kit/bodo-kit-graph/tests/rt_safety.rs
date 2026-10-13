@@ -27,10 +27,12 @@ fn desc(latency: u32, fresh: bool) -> GraphDesc<Tone> {
     GraphDesc {
         nodes: vec![node(1, 0, 0, fresh.then_some(Tone(0.1))), node(2, 0, latency, fresh.then_some(Tone(0.2))), node(3, 1, 0, None)],
         edges: vec![
-            EdgeDesc { key: 10, from: 1, to: 3, port: 0, port_offset: 0, gain: 0.5 },
-            EdgeDesc { key: 11, from: 2, to: 3, port: 0, port_offset: 0, gain: 0.5 },
+            EdgeDesc { key: 10, from: 1, to: 3, port: 0, port_offset: 0, gain: 0.5, compensate: true },
+            EdgeDesc { key: 11, from: 2, to: 3, port: 0, port_offset: 0, gain: 0.5, compensate: true },
         ],
         output: Some(3),
+        taps: vec![],
+        gain_ramp: 0,
     }
 }
 

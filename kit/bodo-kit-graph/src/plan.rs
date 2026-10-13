@@ -15,10 +15,21 @@
 //! **State that outlives a plan:** a node described without a processor takes over the processor of the node with
 //! the same key in the previous plan, and an edge whose delay didn't change keeps its delay-line contents. Both
 //! moves happen on the audio thread without allocating.
+//!
+//! **Crossfading topology changes** (ADR 0003): edge gains never jump. With [`GraphDesc::gain_ramp`] set, a gain moves
+//! by at most its whole range over that many frames, so a send-level change glides, an edge that is new in a
+//! recompiled plan fades in from silence, and an edge described with gain zero fades out. A caller that keeps a
+//! removed edge for one more plan at gain zero removes it without a click.
+//!
+//! **Buffer reuse:** a node that is the only reader of one of its inputs takes over that input's output buffer: it
+//! sums its inputs into its own ports before it writes its output, so the input's contents are no longer needed. The
+//! output node and taps never hand their buffers on, so the caller can read them after a block.
+//!
+//! **Timing:** the executor adds up the time each node spends processing ([`NodeTimes`]), for CPU meters.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 
 use atomic_refcell::AtomicRefCell;
 use bodo_kit_dsp::AudioBuffer;
@@ -64,6 +75,9 @@ pub struct EdgeDesc {
     pub port_offset: u32,
     /// The gain applied to the signal. It can be changed later through [`EdgeGains`].
     pub gain: f32,
+    /// Whether delay compensation delays this edge. An edge that isn't compensated reaches its port undelayed, so
+    /// early, which low-latency monitoring wants; delay compensation leaves it out when it lines up the others.
+    pub compensate: bool,
 }
 
 /// A graph to compile.
@@ -75,11 +89,17 @@ pub struct GraphDesc<P> {
     pub edges: Vec<EdgeDesc>,
     /// The node whose output the caller reads after each block, such as the master.
     pub output: Option<NodeKey>,
+    /// More nodes whose outputs the caller reads after each block, by their index in this list
+    /// ([`crate::GraphRunner::read_tap`]).
+    pub taps: Vec<NodeKey>,
+    /// Frames over which an edge's gain may move across its whole range, 0 to 1; zero lets it move in one block.
+    /// Edges that are new in a recompiled plan start silent and fade in at this rate.
+    pub gain_ramp: u32,
 }
 
 impl<P> Default for GraphDesc<P> {
     fn default() -> Self {
-        Self { nodes: Vec::new(), edges: Vec::new(), output: None }
+        Self { nodes: Vec::new(), edges: Vec::new(), output: None, taps: Vec::new(), gain_ramp: 0 }
     }
 }
 
@@ -176,6 +196,21 @@ impl EdgeGains {
     }
 }
 
+/// The processing time each node of a plan has used, added up since the plan started.
+#[derive(Clone, Debug)]
+pub struct NodeTimes {
+    nanos: Arc<[AtomicU64]>,
+    slots: HashMap<NodeKey, usize>,
+}
+
+impl NodeTimes {
+    /// Nanoseconds node `key` has spent processing since its plan started running, or `None` when the plan has no
+    /// such node. The count only grows while the plan runs; the next plan starts again from zero.
+    pub fn nanos(&self, key: NodeKey) -> Option<u64> {
+        self.slots.get(&key).and_then(|&slot| self.nanos.get(slot)).map(|cell| cell.load(Ordering::Relaxed))
+    }
+}
+
 /// The result of [`compile`].
 #[derive(Debug)]
 pub struct Compiled<P> {
@@ -187,6 +222,8 @@ pub struct Compiled<P> {
     pub latency: LatencyReport,
     /// Handles to change edge gains while the plan runs.
     pub gains: EdgeGains,
+    /// How long each node takes to process.
+    pub times: NodeTimes,
 }
 
 /// A processor slot that travels from plan to plan.
@@ -218,7 +255,8 @@ pub(crate) struct NodeInputs {
 #[derive(Debug)]
 pub(crate) struct PlanNode<P> {
     pub(crate) slot: AtomicRefCell<Slot<P>>,
-    pub(crate) output: AtomicRefCell<AudioBuffer>,
+    /// The index of the node's output buffer in [`Plan::buffers`], which it may have taken over from an input.
+    pub(crate) output: u32,
     pub(crate) inputs: AtomicRefCell<NodeInputs>,
     /// This node's incoming edges, `edges[in_start..in_end]`.
     pub(crate) in_start: u32,
@@ -243,6 +281,8 @@ pub(crate) struct PlanEdge {
 #[derive(Debug)]
 pub struct Plan<P> {
     pub(crate) nodes: Vec<PlanNode<P>>,
+    /// Output buffers, handed on along chains of single readers.
+    pub(crate) buffers: Vec<AtomicRefCell<AudioBuffer>>,
     /// Edges grouped by target node, sorted by port and key within a node, so inputs always sum in the same order.
     pub(crate) edges: Vec<PlanEdge>,
     pub(crate) dependents: Vec<u32>,
@@ -250,6 +290,12 @@ pub struct Plan<P> {
     pub(crate) gains: Arc<[AtomicU32]>,
     pub(crate) ready: ArrayQueue<u32>,
     pub(crate) output: Option<u32>,
+    /// Nodes the caller reads after a block, by tap index.
+    pub(crate) taps: Vec<u32>,
+    /// Nanoseconds each node has spent processing.
+    pub(crate) times: Arc<[AtomicU64]>,
+    /// Frames a full gain swing takes; zero for one block.
+    pub(crate) gain_ramp: u32,
     pub(crate) adopt_nodes: Vec<(u32, u32)>,
     pub(crate) adopt_edges: Vec<(u32, u32)>,
     pub(crate) max_frames: usize,
@@ -262,12 +308,16 @@ impl<P> Plan<P> {
     pub fn empty(max_frames: usize) -> Self {
         Self {
             nodes: Vec::new(),
+            buffers: Vec::new(),
             edges: Vec::new(),
             dependents: Vec::new(),
             sources: Vec::new(),
             gains: Arc::from(Vec::new()),
             ready: ArrayQueue::new(1),
             output: None,
+            taps: Vec::new(),
+            times: Arc::from(Vec::new()),
+            gain_ramp: 0,
             adopt_nodes: Vec::new(),
             adopt_edges: Vec::new(),
             max_frames,
@@ -282,6 +332,11 @@ impl<P> Plan<P> {
     /// The largest block this plan can run.
     pub fn max_frames(&self) -> usize {
         self.max_frames
+    }
+
+    /// How many output buffers the plan allocated: fewer than its nodes when nodes hand their buffers on.
+    pub fn buffer_count(&self) -> usize {
+        self.buffers.len()
     }
 
     /// Takes over processors and delay-line contents from `previous`, as the compiler arranged. Called on the audio
@@ -316,7 +371,7 @@ impl<P> Plan<P> {
 ///
 /// Allocates. Complexity: O((V + E) log E) for sorting the edges, plus the buffer allocations.
 pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layout>) -> Result<Compiled<P>, CompileError> {
-    let GraphDesc { nodes, edges, output } = desc;
+    let GraphDesc { nodes, edges, output, taps, gain_ramp } = desc;
     let mut index: HashMap<NodeKey, usize> = HashMap::with_capacity(nodes.len());
     for (i, node) in nodes.iter().enumerate() {
         if index.insert(node.key, i).is_some() {
@@ -330,6 +385,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
         Some(key) => Some(*index.get(&key).ok_or(CompileError::UnknownNode { node: key })?),
         None => None,
     };
+    let taps = taps.iter().map(|key| index.get(key).copied().ok_or(CompileError::UnknownNode { node: *key })).collect::<Result<Vec<_>, _>>()?;
 
     // Resolve and sort the edges: by target, then port, then key. That fixes the summing order.
     let mut seen_edges = HashMap::with_capacity(edges.len());
@@ -358,6 +414,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
     for &n in &order {
         let input = in_edges_of[n]
             .iter()
+            .filter(|&&e| resolved[e].4.compensate)
             .map(|&e| {
                 let (_, _, _, from, edge) = resolved[e];
                 i64::from(latency[from].output) - i64::from(edge.port_offset)
@@ -370,6 +427,9 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
     let delays: Vec<u32> = resolved
         .iter()
         .map(|&(to, _, _, from, edge)| {
+            if !edge.compensate {
+                return 0;
+            }
             let delay = i64::from(latency[to].input) + i64::from(edge.port_offset) - i64::from(latency[from].output);
             delay.max(0) as u32
         })
@@ -377,6 +437,8 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
 
     // Build the plan nodes; edges are already grouped by target.
     let gains: Arc<[AtomicU32]> = resolved.iter().map(|&(.., edge)| AtomicU32::new(edge.gain.to_bits())).collect();
+    // In a recompile with gain ramps, an edge that isn't carried over starts silent and fades in.
+    let fade_in = gain_ramp > 0 && previous.is_some();
     let mut out_degree = vec![0u32; nodes.len()];
     for &(_, _, _, from, _) in &resolved {
         out_degree[from] += 1;
@@ -411,6 +473,30 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
             adopt_edges.push((old.index, e as u32));
         }
     }
+    let adopted_edges: HashSet<u32> = adopt_edges.iter().map(|&(_, new)| new).collect();
+
+    // Output buffers: a node takes over the buffer of its first input whose only reader it is, unless the caller
+    // reads that input after the block. Topological order guarantees the input has its buffer by then.
+    let mut readers = vec![0u32; nodes.len()];
+    for &(_, _, _, from, _) in &resolved {
+        readers[from] += 1;
+    }
+    let read_by_caller = |n: usize| output == Some(n) || taps.contains(&n);
+    let mut buffer_of = vec![u32::MAX; nodes.len()];
+    let mut buffer_channels: Vec<usize> = Vec::new();
+    for &n in &order {
+        let inherited = in_edges_of[n]
+            .iter()
+            .map(|&e| resolved[e].3)
+            .find(|&from| readers[from] == 1 && !read_by_caller(from) && nodes[from].channels == nodes[n].channels && buffer_of[from] != u32::MAX);
+        buffer_of[n] = match inherited {
+            Some(from) => buffer_of[from],
+            None => {
+                buffer_channels.push(nodes[n].channels);
+                (buffer_channels.len() - 1) as u32
+            }
+        };
+    }
 
     let channels: Vec<usize> = nodes.iter().map(|node| node.channels).collect();
     let mut plan_nodes = Vec::with_capacity(nodes.len());
@@ -429,13 +515,14 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
                 let delay = delays[e] as usize;
                 let (.., from, edge) = resolved[e];
                 let source_channels = channels[from];
+                let gain = if fade_in && !adopted_edges.contains(&(e as u32)) { 0.0 } else { edge.gain };
                 if delay == 0 {
-                    EdgeState { lines: Vec::new(), scratch: None, gain: edge.gain }
+                    EdgeState { lines: Vec::new(), scratch: None, gain }
                 } else {
                     EdgeState {
                         lines: (0..source_channels).map(|_| DelayLine::new(delay)).collect(),
                         scratch: Some(AudioBuffer::new(source_channels, max_frames)),
-                        gain: edge.gain,
+                        gain,
                     }
                 }
             })
@@ -449,7 +536,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
         node_report.insert(node.key, latency[n]);
         plan_nodes.push(PlanNode {
             slot: AtomicRefCell::new(Slot { processor: node.processor, poisoned: false }),
-            output: AtomicRefCell::new(AudioBuffer::new(node.channels, max_frames)),
+            output: buffer_of[n],
             inputs: AtomicRefCell::new(NodeInputs {
                 ports: (0..node.ports).map(|_| AudioBuffer::new(node.channels, max_frames)).collect(),
                 edges: edge_states,
@@ -466,15 +553,22 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
 
     let total = output.map_or(0, |o| latency[o].output);
     let node_count = plan_nodes.len();
+    let times: Arc<[AtomicU64]> = (0..node_count).map(|_| AtomicU64::new(0)).collect();
+    let time_slots = layout.nodes.iter().map(|(&key, &n)| (key, n as usize)).collect();
+    let buffers = buffer_channels.iter().map(|&c| AtomicRefCell::new(AudioBuffer::new(c, max_frames))).collect();
     Ok(Compiled {
         plan: Plan {
             nodes: plan_nodes,
+            buffers,
             edges: plan_edges,
             dependents,
             sources,
             gains: Arc::clone(&gains),
             ready: ArrayQueue::new(node_count.max(1)),
             output: output.map(|o| o as u32),
+            taps: taps.iter().map(|&t| t as u32).collect(),
+            times: Arc::clone(&times),
+            gain_ramp,
             adopt_nodes,
             adopt_edges,
             max_frames,
@@ -482,6 +576,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
         layout,
         latency: LatencyReport { nodes: node_report, edges: edge_report, total },
         gains: EdgeGains { gains, slots },
+        times: NodeTimes { nanos: times, slots: time_slots },
     })
 }
 

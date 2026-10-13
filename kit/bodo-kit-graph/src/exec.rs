@@ -10,6 +10,7 @@
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::Instant;
 
 use atomic_refcell::AtomicRefCell;
 use bodo_kit_core::handoff;
@@ -83,8 +84,13 @@ impl<P: Processor<C>, C: Send + Sync + 'static> Executor<P, C> {
         if !self.gather_inputs(plan, node, frames) {
             self.faults.fetch_add(1, Ordering::Relaxed);
         }
-        if !self.process(node, frames, context) {
+        let started = Instant::now();
+        if !self.process(plan, node, frames, context) {
             self.faults.fetch_add(1, Ordering::Relaxed);
+        }
+        if let Some(time) = plan.times.get(index as usize) {
+            let nanos = u64::try_from(started.elapsed().as_nanos()).unwrap_or(u64::MAX);
+            time.fetch_add(nanos, Ordering::Relaxed);
         }
         let dependents = plan.dependents.get(node.out_start as usize..node.out_end as usize).unwrap_or(&[]);
         for &dependent in dependents {
@@ -109,10 +115,11 @@ impl<P: Processor<C>, C: Send + Sync + 'static> Executor<P, C> {
         let edges = plan.edges.get(node.in_start as usize..node.in_end as usize).unwrap_or(&[]);
         let mut ok = true;
         for (edge, state) in edges.iter().zip(inputs.edges.iter_mut()) {
-            let target = plan.gains.get(edge.gain_slot as usize).map_or(0.0, |g| f32::from_bits(g.load(Ordering::Relaxed)));
+            let wanted = plan.gains.get(edge.gain_slot as usize).map_or(0.0, |g| f32::from_bits(g.load(Ordering::Relaxed)));
+            let target = ramp_toward(state.gain, wanted, frames, plan.gain_ramp);
             let Some(port) = inputs.ports.get_mut(edge.port as usize) else { continue };
-            let Some(source) = plan.nodes.get(edge.from as usize) else { continue };
-            let Ok(source) = source.output.try_borrow() else {
+            let Some(source) = plan.nodes.get(edge.from as usize).and_then(|source| plan.buffers.get(source.output as usize)) else { continue };
+            let Ok(source) = source.try_borrow() else {
                 ok = false;
                 continue;
             };
@@ -134,8 +141,9 @@ impl<P: Processor<C>, C: Send + Sync + 'static> Executor<P, C> {
 
     /// Runs the node's processor, or passes port 0 through when it has none. Returns false on a borrow conflict or a
     /// panic.
-    fn process(&self, node: &PlanNode<P>, frames: usize, context: &C) -> bool {
-        let (Ok(inputs), Ok(mut output), Ok(mut slot)) = (node.inputs.try_borrow(), node.output.try_borrow_mut(), node.slot.try_borrow_mut()) else {
+    fn process(&self, plan: &Plan<P>, node: &PlanNode<P>, frames: usize, context: &C) -> bool {
+        let Some(output) = plan.buffers.get(node.output as usize) else { return false };
+        let (Ok(inputs), Ok(mut output), Ok(mut slot)) = (node.inputs.try_borrow(), output.try_borrow_mut(), node.slot.try_borrow_mut()) else {
             return false;
         };
         output.set_frames(frames);
@@ -158,6 +166,18 @@ impl<P: Processor<C>, C: Send + Sync + 'static> Executor<P, C> {
         }
         true
     }
+}
+
+/// Where a gain at `current` heading for `wanted` gets to in a block of `frames`: all the way when `ramp` is zero,
+/// otherwise at most `frames / ramp` of the full range.
+///
+/// RT-safe.
+fn ramp_toward(current: f32, wanted: f32, frames: usize, ramp: u32) -> f32 {
+    if ramp == 0 || current == wanted {
+        return wanted;
+    }
+    let step = frames as f32 / ramp as f32;
+    if current < wanted { (current + step).min(wanted) } else { (current - step).max(wanted) }
 }
 
 /// Adds `source` into `port`, channel by channel, ramping the gain. A mono source feeds every channel.
@@ -257,8 +277,28 @@ impl<P: Processor<C>, C: Send + Sync + 'static> GraphRunner<P, C> {
     pub fn read_output<R>(&self, read: impl FnOnce(&AudioBuffer) -> R) -> Option<R> {
         let plan = self.pool.job().plan.try_borrow().ok()?;
         let node = plan.nodes.get(plan.output? as usize)?;
-        let output = node.output.try_borrow().ok()?;
+        let output = plan.buffers.get(node.output as usize)?.try_borrow().ok()?;
         Some(read(&output))
+    }
+
+    /// Calls `read` with the output of tap `index` (its place in [`crate::GraphDesc::taps`]) from the last block, or
+    /// returns `None` when the plan has no such tap.
+    ///
+    /// RT-safe as long as `read` is.
+    #[rt_safe]
+    pub fn read_tap<R>(&self, index: usize, read: impl FnOnce(&AudioBuffer) -> R) -> Option<R> {
+        let plan = self.pool.job().plan.try_borrow().ok()?;
+        let node = plan.nodes.get(*plan.taps.get(index)? as usize)?;
+        let output = plan.buffers.get(node.output as usize)?.try_borrow().ok()?;
+        Some(read(&output))
+    }
+
+    /// How many taps the current plan has.
+    ///
+    /// RT-safe.
+    #[rt_safe]
+    pub fn tap_count(&self) -> usize {
+        self.pool.job().plan.try_borrow().map_or(0, |plan| plan.taps.len())
     }
 
     /// How many internal faults have happened: borrow conflicts, which a correct schedule never produces, and

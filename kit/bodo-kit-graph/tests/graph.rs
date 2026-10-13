@@ -69,7 +69,7 @@ fn node(key: u64, ports: usize, latency: u32, processor: Option<Node>) -> NodeDe
 }
 
 fn edge(key: u64, from: u64, to: u64) -> EdgeDesc {
-    EdgeDesc { key, from, to, port: 0, port_offset: 0, gain: 1.0 }
+    EdgeDesc { key, from, to, port: 0, port_offset: 0, gain: 1.0, compensate: true }
 }
 
 fn render(desc: GraphDesc<Node>, workers: usize, blocks: usize, frames: usize) -> Vec<f32> {
@@ -91,6 +91,8 @@ fn a_chain_runs_in_order() {
         nodes: vec![node(1, 0, 0, Some(Node::Constant(0.5))), node(2, 1, 0, None), node(3, 1, 0, None)],
         edges: vec![edge(10, 1, 2), EdgeDesc { gain: 0.5, ..edge(11, 2, 3) }],
         output: Some(3),
+        taps: vec![],
+        gain_ramp: 0,
     };
     let out = render(desc, 0, 1, 8);
     assert!(out.iter().all(|&s| s == 0.25), "{out:?}");
@@ -102,6 +104,8 @@ fn compile_reports_errors() {
         nodes: vec![node(1, 1, 0, None), node(2, 1, 0, None), node(3, 1, 0, None)],
         edges: vec![edge(10, 1, 2), edge(11, 2, 3), edge(12, 3, 2)],
         output: None,
+        taps: vec![],
+        gain_ramp: 0,
     };
     match compile(cycle, 64, None).unwrap_err() {
         CompileError::Cycle { path } => assert_eq!(path.iter().copied().collect::<HashSet<_>>(), HashSet::from([2, 3])),
@@ -109,12 +113,14 @@ fn compile_reports_errors() {
     }
     let duplicate = GraphDesc::<Node> { nodes: vec![node(1, 0, 0, None), node(1, 0, 0, None)], ..GraphDesc::default() };
     assert_eq!(compile(duplicate, 64, None).unwrap_err(), CompileError::DuplicateNode(1));
-    let unknown = GraphDesc::<Node> { nodes: vec![node(1, 1, 0, None)], edges: vec![edge(10, 9, 1)], output: None };
+    let unknown = GraphDesc::<Node> { nodes: vec![node(1, 1, 0, None)], edges: vec![edge(10, 9, 1)], output: None, taps: vec![], gain_ramp: 0 };
     assert_eq!(compile(unknown, 64, None).unwrap_err(), CompileError::UnknownNode { node: 9 });
     let port = GraphDesc::<Node> {
         nodes: vec![node(1, 0, 0, None), node(2, 1, 0, None)],
         edges: vec![EdgeDesc { port: 3, ..edge(10, 1, 2) }],
         output: None,
+        taps: vec![],
+        gain_ramp: 0,
     };
     assert_eq!(compile(port, 64, None).unwrap_err(), CompileError::NoSuchPort { edge: 10, port: 3 });
 }
@@ -126,6 +132,8 @@ fn delay_compensation_matches_the_spec_formulas() {
         nodes: vec![node(1, 0, 100, None), node(2, 0, 0, None), node(3, 2, 50, None), node(4, 0, 200, None)],
         edges: vec![edge(10, 1, 3), edge(11, 2, 3), EdgeDesc { port: 1, port_offset: 30, ..edge(12, 4, 3) }],
         output: Some(3),
+        taps: vec![],
+        gain_ramp: 0,
     };
     let report = compile(desc, 64, None).unwrap().latency;
     // in(c) = max(100 - 0, 0 - 0, 200 - 30) = 170; out(c) = 220.
@@ -139,7 +147,7 @@ fn delay_compensation_matches_the_spec_formulas() {
 
 #[test]
 fn processors_survive_recompiles_unless_replaced() {
-    let desc = |processor| GraphDesc { nodes: vec![node(1, 0, 0, processor)], edges: vec![], output: Some(1) };
+    let desc = |processor| GraphDesc { nodes: vec![node(1, 0, 0, processor)], edges: vec![], output: Some(1), taps: vec![], gain_ramp: 0 };
     let first = compile(desc(Some(Node::Counter(0.0))), 64, None).unwrap();
     let (mut runner, mut sender) = runner(first.plan, Block(0), RtPoolConfig::new(1)).unwrap();
     let value = |runner: &mut bodo_kit_graph::GraphRunner<Node, Block>| {
@@ -159,7 +167,13 @@ fn processors_survive_recompiles_unless_replaced() {
 
 #[test]
 fn edge_gains_change_without_recompiling() {
-    let desc = GraphDesc { nodes: vec![node(1, 0, 0, Some(Node::Constant(1.0))), node(2, 1, 0, None)], edges: vec![edge(10, 1, 2)], output: Some(2) };
+    let desc = GraphDesc {
+        nodes: vec![node(1, 0, 0, Some(Node::Constant(1.0))), node(2, 1, 0, None)],
+        edges: vec![edge(10, 1, 2)],
+        output: Some(2),
+        taps: vec![],
+        gain_ramp: 0,
+    };
     let compiled = compile(desc, 64, None).unwrap();
     let gains = compiled.gains;
     let (mut runner, _sender) = runner(compiled.plan, Block(0), RtPoolConfig::new(0)).unwrap();
@@ -183,6 +197,8 @@ fn a_panicking_processor_is_contained() {
         nodes: vec![node(1, 0, 0, Some(Node::Panic)), node(2, 0, 0, Some(Node::Constant(1.0))), node(3, 1, 0, None)],
         edges: vec![edge(10, 1, 3), edge(11, 2, 3)],
         output: Some(3),
+        taps: vec![],
+        gain_ramp: 0,
     };
     let compiled = compile(desc, 64, None).unwrap();
     let (mut runner, _sender) = runner(compiled.plan, Block(0), RtPoolConfig::new(2)).unwrap();
@@ -217,7 +233,7 @@ fn build(n: usize, edges: &[(usize, usize)], latencies: &[u32], source: impl Fn(
     for i in (0..n).filter(|i| !has_output.contains(i)) {
         descs.push(edge(1000 + i as u64, i as u64, sink));
     }
-    GraphDesc { nodes, edges: descs, output: Some(sink) }
+    GraphDesc { nodes, edges: descs, output: Some(sink), taps: vec![], gain_ramp: 0 }
 }
 
 proptest! {
