@@ -2,7 +2,7 @@
 //! group editing, the route control, meters and clip lights, the insert panel with its slots, EQ, outputs and timing,
 //! effect editors, the Browser's plugins, the routing graph, the top bar's loop record, oscilloscope and latency, and
 //! the export dialog. Snapshots show the mixer wide with the insert panel, compact, as a graph, an effect editor and
-//! the export dialog, in both themes.
+//! the export dialog, in both themes, and the wide mixer, the effect editor and the export dialog in Turkish.
 
 #![allow(clippy::unwrap_used, clippy::panic, reason = "tests")]
 
@@ -458,7 +458,17 @@ fn scene(app: &mut BodoApp, scene: Scene) {
 }
 
 fn snapshot(name: &str, theme: Theme, which: Scene) {
-    let app = app_with(theme, |app| scene(app, which));
+    snapshot_in(name, theme, which, None);
+}
+
+/// Like [`snapshot`], with the interface in `language` (such as `tr`) when given.
+fn snapshot_in(name: &str, theme: Theme, which: Scene, language: Option<&str>) {
+    let app = app_with(theme, |app| {
+        if let Some(language) = language {
+            app.run("ui.set_language", json!({ "language": language })).unwrap();
+        }
+        scene(app, which);
+    });
     let mut h = common::harness(app, theme, true);
     h.run_steps(8);
     h.snapshot_options(name, &common::snapshot_options(name));
@@ -512,4 +522,19 @@ fn the_export_dialog_dark() {
 #[test]
 fn the_export_dialog_light() {
     snapshot("export_light", Theme::Light, Scene::Export);
+}
+
+#[test]
+fn the_mixer_in_turkish() {
+    snapshot_in("mixer_turkish", Theme::Dark, Scene::Wide, Some("tr"));
+}
+
+#[test]
+fn an_effect_editor_in_turkish() {
+    snapshot_in("effect_editor_turkish", Theme::Dark, Scene::Editor, Some("tr"));
+}
+
+#[test]
+fn the_export_dialog_in_turkish() {
+    snapshot_in("export_turkish", Theme::Dark, Scene::Export, Some("tr"));
 }
