@@ -18,11 +18,12 @@ mod browser;
 pub mod channel_window;
 pub mod control;
 mod dialogs;
+pub mod effect_editor;
 pub mod layouts;
 pub mod library;
 pub mod menu;
 mod midi_out;
-mod mixer;
+pub mod mixer;
 mod palette;
 mod piano_roll;
 mod playlist;
@@ -259,6 +260,8 @@ pub struct View {
     pub auto_scroll: bool,
     /// The open channel windows, such as the Sampler.
     pub channel_windows: channel_window::ChannelWindows,
+    /// The open effect editors.
+    pub effect_editors: effect_editor::EffectEditors,
 }
 
 /// The main window.
@@ -516,6 +519,34 @@ impl BodoApp {
                 self.view.palette = Some(palette::PaletteState::default());
                 Ok(json!({ "palette": true }))
             }
+            "ui.export" => {
+                let what = match text("what").as_str() {
+                    "" | "mix" => Some(dialogs::ExportWhat::Mix),
+                    "stems" => Some(dialogs::ExportWhat::Stems),
+                    "both" => Some(dialogs::ExportWhat::Both),
+                    _ => None,
+                };
+                match what {
+                    Some(what) => {
+                        self.view.dialogs.export = Some(dialogs::Export::new(self, what));
+                        Ok(json!({ "export": true }))
+                    }
+                    None => Err(String::from("what must be mix, stems or both")),
+                }
+            }
+            "ui.open_effect_editor" => {
+                let number = params.get("insert").and_then(Value::as_u64).map_or(0, |n| n as usize);
+                let slot = params.get("slot").and_then(Value::as_u64).map_or(1, |n| n as usize).max(1);
+                let project = Arc::clone(self.session.project());
+                match mixer::insert_at(&project, number).filter(|i| i.slots.get(slot - 1).is_some_and(|s| s.plugin.is_some())) {
+                    Some(insert) => {
+                        let ctx = self.remote.ctx();
+                        effect_editor::open(self, ctx.as_ref(), insert.id, slot - 1);
+                        Ok(json!({ "insert": number, "slot": slot }))
+                    }
+                    None => Err(String::from("there is no effect in that slot")),
+                }
+            }
             _ => return None,
         };
         if let Err(error) = &result {
@@ -567,6 +598,12 @@ impl BodoApp {
                 "Opens a channel's window, such as the Sampler, for the selected channel or {\"channel\": \"Kick\"}.",
             ),
             ("ui.palette", "Command palette", "Opens the command palette."),
+            ("ui.export", "Export", "Opens the export dialog for the mix, the stems or both: {\"what\": \"mix\" | \"stems\" | \"both\"}."),
+            (
+                "ui.open_effect_editor",
+                "Open effect editor",
+                "Opens the editor of the effect in an FX slot: {\"insert\": 1, \"slot\": 2}, the master as insert 0.",
+            ),
         ]
     }
 
@@ -654,6 +691,7 @@ impl BodoApp {
             rack::window(self, ui.ctx(), workspace, &project);
             piano_roll::window(self, ui.ctx(), workspace, &project);
             channel_window::show_all(self, ui.ctx(), workspace, &project);
+            effect_editor::show_all(self, ui.ctx(), workspace, &project);
             // A press on the playlist or the piano roll makes it the editor the tool keys act on.
             let ctx = ui.ctx();
             let pressed = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });

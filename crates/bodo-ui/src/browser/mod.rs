@@ -526,6 +526,38 @@ fn section(app: &mut BodoApp, ui: &mut Ui, section: Section) {
             if response.double_clicked() {
                 let _ = app.run("channel.add", json!({ "name": "Sampler" }));
             }
+            // The native effects, by category: drag one onto a mixer strip or slot, or double-click to load it.
+            for (category, effects) in crate::mixer::effects_by_category() {
+                empty(ui, 1, crate::mixer::category_name(category));
+                for info in effects {
+                    let response = row(ui, 2, icons::ADJUSTMENTS_HORIZONTAL, info.name, false);
+                    response.dnd_set_drag_payload(crate::mixer::EffectDrag { uid: info.uid });
+                    rows::drag_label(ui, &response, info.name);
+                    control::record(ui, &response, &format!("Plugin {}", info.name), "plugin", None);
+                    app.hint(
+                        &response,
+                        format!(
+                            "{}: {} Drag it onto a mixer strip or slot, or double-click to load it on the selected insert",
+                            info.name, info.description
+                        ),
+                    );
+                    if response.double_clicked() {
+                        // Into the slot chosen in the insert panel when it is empty, or else the first empty one.
+                        let project = std::sync::Arc::clone(app.session.project());
+                        let insert = app.session.editor().insert.unwrap_or(project.mixer.master.id);
+                        let chosen = app
+                            .view
+                            .mixer
+                            .slot
+                            .filter(|s| project.mixer.insert(insert).and_then(|i| i.slots.get(*s)).is_some_and(|slot| slot.plugin.is_none()));
+                        let params = match chosen {
+                            Some(slot) => json!({ "effect": info.uid, "slot": slot + 1 }),
+                            None => json!({ "effect": info.uid }),
+                        };
+                        let _ = app.run("fx.load", params);
+                    }
+                }
+            }
         }
     }
 }

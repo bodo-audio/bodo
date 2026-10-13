@@ -67,7 +67,7 @@ pub(super) fn row(ui: &mut Ui, depth: usize, icon: Icon, name: &str, lit: bool) 
 }
 
 /// Shows `name` beside the pointer while `response` is dragged.
-fn drag_label(ui: &Ui, response: &egui::Response, name: &str) {
+pub(super) fn drag_label(ui: &Ui, response: &egui::Response, name: &str) {
     if response.dragged()
         && let Some(pointer) = ui.ctx().pointer_interact_pos()
     {
@@ -130,7 +130,7 @@ fn project_place(library: Option<&UserLibrary>, file: &Path) -> ProjectPlace {
 pub(super) fn file(app: &mut BodoApp, ui: &mut Ui, kind: EntryKind, name: &str, path: &Path, depth: usize) {
     let response = row(ui, depth, icon_of(kind), name, false);
     let text = path.display().to_string();
-    if matches!(kind, EntryKind::ChannelPreset | EntryKind::MixerPreset | EntryKind::Score) {
+    if matches!(kind, EntryKind::ChannelPreset | EntryKind::MixerPreset | EntryKind::Score | EntryKind::PluginPreset) {
         response.dnd_set_drag_payload(FilePayload { path: path.to_path_buf(), kind });
         drag_label(ui, &response, name);
     }
@@ -146,7 +146,7 @@ pub(super) fn file(app: &mut BodoApp, ui: &mut Ui, kind: EntryKind, name: &str, 
         (EntryKind::MixerPreset, _) => format!("{name}: double-click to load it on the selected insert, or drop it on a mixer strip"),
         (EntryKind::Score, _) => format!("{name}: double-click to add its notes to the piano roll's channel, or drop it on a channel"),
         (EntryKind::Midi, _) => format!("{name}: double-click to import it as a new pattern"),
-        (EntryKind::PluginPreset, _) => format!("{name}: a plugin preset; plugins load them once plugin hosting arrives"),
+        (EntryKind::PluginPreset, _) => format!("{name}: double-click to load it into the slot chosen in the mixer, or drop it on a slot or strip"),
         (EntryKind::Plugin, _) => format!("{name}: a plugin; Bodo loads it once plugin hosting arrives"),
         (EntryKind::Folder | EntryKind::Sound, _) => name.to_owned(),
     };
@@ -178,7 +178,14 @@ fn open(app: &mut BodoApp, kind: EntryKind, path: &Path, place: ProjectPlace) {
         EntryKind::Midi => {
             let _ = app.run("project.import_midi", json!({ "path": text }));
         }
-        EntryKind::PluginPreset | EntryKind::Plugin => app.set_status("Plugins arrive with plugin hosting", false),
+        EntryKind::PluginPreset => {
+            let params = match app.view.mixer.slot {
+                Some(slot) => json!({ "path": text, "slot": slot + 1 }),
+                None => json!({ "path": text }),
+            };
+            let _ = app.run("preset.load_plugin", params);
+        }
+        EntryKind::Plugin => app.set_status("Bodo loads plugins once plugin hosting arrives", false),
         EntryKind::Folder | EntryKind::Sound => {}
     }
 }

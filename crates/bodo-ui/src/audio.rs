@@ -20,8 +20,10 @@ use bodo_engine::{Call, Event, PlayMode, Session};
 use bodo_kit_core::{MAX_BLOCK_FRAMES, Seconds, Tick, rt_safe};
 use bodo_kit_device::midi::{self, MidiInput};
 use bodo_kit_device::{AudioCallback, AudioStream, Block, DeviceConfig, StreamStatus};
-use bodo_mix::{AudioEngine, Compensation, Engine, EngineConfig, LiveInput, MidiRouter, Preview, PreviewPlayer, Take, TakeTarget};
-use bodo_model::{ChannelId, Project};
+use bodo_mix::{
+    AudioEngine, Compensation, Engine, EngineConfig, InsertLatency, LiveInput, MeterReading, MidiRouter, Preview, PreviewPlayer, Take, TakeTarget,
+};
+use bodo_model::{ChannelId, InsertId, Project};
 use serde_json::json;
 
 /// The audio and MIDI devices the user chose.
@@ -191,6 +193,21 @@ pub struct Audio {
     meter: Arc<Meter>,
     levels: (f32, f32),
     stream_status: StreamStatus,
+    readings: Readings,
+}
+
+/// Mixer readings to show while no engine runs, for tests and screenshots of the meters, CPU readouts, the
+/// oscilloscope and latency. A running engine's own readings always win.
+#[derive(Clone, Debug, Default)]
+pub struct Readings {
+    /// Each insert's meter.
+    pub meters: std::collections::HashMap<InsertId, MeterReading>,
+    /// Each insert's share of real time, 0.01 for 1%.
+    pub cpu: std::collections::HashMap<InsertId, f32>,
+    /// The latest master frames, mixed to mono, oldest first.
+    pub scope: Vec<f32>,
+    /// The whole mix's latency, in frames.
+    pub latency: Option<u32>,
 }
 
 impl std::fmt::Debug for Audio {
@@ -211,6 +228,7 @@ impl Audio {
             meter: Arc::new(Meter::default()),
             levels: (0.0, 0.0),
             stream_status: StreamStatus::default(),
+            readings: Readings::default(),
         }
     }
 
@@ -357,6 +375,77 @@ impl Audio {
     /// Whether a count-in is clicking before the recording starts.
     pub fn is_counting_in(&self) -> bool {
         self.running.as_ref().is_some_and(|r| r.engine.status().counting_in)
+    }
+
+    /// Shows `readings` while no engine runs, for tests and screenshots.
+    pub fn set_readings(&mut self, readings: Readings) {
+        self.readings = readings;
+    }
+
+    /// What `insert`'s meter read since the last call, which clears its peaks; `None` when nothing measures it.
+    pub fn meter(&self, insert: InsertId) -> Option<MeterReading> {
+        match &self.running {
+            Some(running) => running.engine.meter(insert),
+            None => self.readings.meters.get(&insert).copied(),
+        }
+    }
+
+    /// Clears the clip latch of `insert`'s meter.
+    pub fn clear_clip(&mut self, insert: InsertId) {
+        match &self.running {
+            Some(running) => running.engine.clear_clip(insert),
+            None => {
+                if let Some(reading) = self.readings.meters.get_mut(&insert) {
+                    reading.clipped = false;
+                }
+            }
+        }
+    }
+
+    /// The share of real time `insert` spent processing since the last call, 0.01 for 1%; `None` without sound.
+    pub fn insert_cpu(&mut self, insert: InsertId) -> Option<f32> {
+        match self.running.as_mut() {
+            Some(running) => Some(running.engine.insert_cpu(insert)),
+            None => self.readings.cpu.get(&insert).copied(),
+        }
+    }
+
+    /// Copies the latest `out.len()` frames of the master output, mixed to mono, into `out`. Returns false, leaving
+    /// `out` silent, when nothing plays.
+    ///
+    /// Complexity: O(n) in `out.len()`.
+    pub fn scope(&self, out: &mut [f32]) -> bool {
+        match &self.running {
+            Some(running) => {
+                running.engine.scope(out);
+                true
+            }
+            None if !self.readings.scope.is_empty() => {
+                let shown = &self.readings.scope;
+                let skip = shown.len().saturating_sub(out.len());
+                let start = out.len().saturating_sub(shown.len());
+                out[..start].fill(0.0);
+                out[start..].copy_from_slice(&shown[skip..]);
+                true
+            }
+            None => {
+                out.fill(0.0);
+                false
+            }
+        }
+    }
+
+    /// How late the master's output is, in frames, as delay compensation decided it; `None` without sound.
+    pub fn total_latency(&self) -> Option<u32> {
+        match &self.running {
+            Some(running) => Some(running.engine.total_latency()),
+            None => self.readings.latency,
+        }
+    }
+
+    /// The latency of `insert` in the running mix; `None` without sound.
+    pub fn insert_latency(&self, insert: InsertId) -> Option<InsertLatency> {
+        self.running.as_ref().and_then(|r| r.engine.insert_latency(insert))
     }
 
     /// Brings the engine up to date with `session` and reports the playhead back. Call once per frame.

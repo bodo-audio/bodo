@@ -5,7 +5,8 @@
 //! - a **channel preset** on a channel rack row replaces that channel; anywhere else on the channel rack it becomes a
 //!   new channel;
 //! - a **mixer preset** on a mixer strip loads on that insert; anywhere else on the mixer, on the selected insert;
-//! - a **score** on a channel rack row adds its notes to that channel; on the piano roll, to the piano roll's channel.
+//! - a **score** on a channel rack row adds its notes to that channel; on the piano roll, to the piano roll's channel;
+//! - a **plugin preset** on an FX slot of the insert panel loads into that slot; on a mixer strip, into that insert.
 //!
 //! The targets are found from the elements every window records for agents and tests, so the windows need no code
 //! of their own for it.
@@ -43,6 +44,18 @@ pub(crate) fn handle_drops(app: &mut BodoApp, ctx: &egui::Context) {
             under("channel").map(|channel| ("preset.load_score", json!({ "path": path, "channel": channel })))
         }
         (EntryKind::Score, Some(WindowKind::PianoRoll)) => Some(("preset.load_score", json!({ "path": path }))),
+        // A plugin preset on an FX slot loads into that slot; on a strip, into that insert.
+        (EntryKind::PluginPreset, Some(WindowKind::Mixer)) => {
+            let slot = under("slot").and_then(|label| {
+                let (insert, number) = label.rsplit_once(" slot ")?;
+                Some((insert.to_owned(), number.parse::<usize>().ok()?))
+            });
+            match (slot, under("strip").and_then(|s| s.strip_suffix(" strip").map(str::to_owned))) {
+                (Some((insert, number)), _) => Some(("preset.load_plugin", json!({ "path": path, "insert": insert, "slot": number }))),
+                (None, Some(insert)) => Some(("preset.load_plugin", json!({ "path": path, "insert": insert }))),
+                (None, None) => Some(("preset.load_plugin", json!({ "path": path }))),
+            }
+        }
         _ => None,
     };
     if let Some((id, params)) = call {

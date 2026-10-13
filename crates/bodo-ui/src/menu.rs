@@ -24,6 +24,8 @@ pub enum Action {
     ImportMidi,
     /// Exports the song, or the current pattern when set, as a MIDI file.
     ExportMidi(bool),
+    /// Opens the export dialog for the mix, the stems or both.
+    Export(crate::dialogs::ExportWhat),
     /// Closes Bodo, asking about unsaved changes first.
     Quit,
     /// Adds a channel playing this sound.
@@ -178,6 +180,9 @@ fn file(app: &BodoApp) -> Menu {
             item("file.import_midi", "Import MIDI file...", Action::ImportMidi),
             item("file.export_song_midi", "Export song as MIDI...", Action::ExportMidi(false)),
             item("file.export_pattern_midi", "Export pattern as MIDI...", Action::ExportMidi(true)),
+            Item::Separator,
+            item("file.export_mix", "Export mix...", Action::Export(crate::dialogs::ExportWhat::Mix)),
+            item("file.export_stems", "Export stems...", Action::Export(crate::dialogs::ExportWhat::Stems)),
             Item::Separator,
             with_keys(item("file.quit", "Quit", Action::Quit), binding_keys(app, "app:quit")),
         ],
@@ -381,6 +386,7 @@ pub fn perform(app: &mut BodoApp, action: Action) {
         Action::OpenRecent(path) => dialogs::guard_unsaved(app, dialogs::Pending::Open(Some(path))),
         Action::ImportMidi => dialogs::import_midi(app),
         Action::ExportMidi(pattern) => dialogs::export_midi(app, pattern),
+        Action::Export(what) => app.view.dialogs.export = Some(dialogs::Export::new(app, what)),
         Action::Quit => dialogs::guard_unsaved(app, dialogs::Pending::Quit),
         Action::AddSound(path) => {
             let _ = app.run("channel.add", json!({ "sample": path }));

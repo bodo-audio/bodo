@@ -155,6 +155,11 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     if count_in.clicked() {
         let _ = app.run("transport.count_in", json!({ "on": !transport.count_in }));
     }
+    let loop_record = icon_button(ui, icons::LOOP_RECORD, "Loop record", transport.loop_record);
+    app.hint(&loop_record, "Loop record: while recording in a loop, every pass becomes its own take and MIDI passes add up");
+    if loop_record.clicked() {
+        let _ = app.run("transport.loop_record", json!({ "on": !transport.loop_record }));
+    }
     let metronome = icon_button(ui, icons::METRONOME, "Metronome", transport.metronome);
     app.hint(&metronome, "Metronome: clicks every beat while playing and recording");
     if metronome.clicked() {
@@ -228,6 +233,8 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
         painter.rect_filled(Rect::from_min_size(lane.min, vec2(lane.width() * fill, lane.height())), 1.0, color);
     }
     app.hint(&meter, "The master output level");
+    ui.add_space(4.0);
+    oscilloscope(app, ui);
     ui.add_space(10.0);
 
     // Performance: CPU load, dropouts, and the memory in use, measured once a second.
@@ -247,12 +254,52 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
         }
     });
     let memory = memory.map(|bytes| format!("  {} MB", bytes / 1_000_000)).unwrap_or_default();
-    let text =
-        if app.audio.is_on() { format!("CPU {:>3.0}%  {} dropouts{memory}", status.load * 100.0, status.xruns) } else { format!("No sound{memory}") };
+    // The mix's latency from delay compensation, in milliseconds, when there is any.
+    let rate = f64::from(app.session.project().settings.sample_rate.hz());
+    let latency = crate::mixer::total_latency(app)
+        .filter(|frames| *frames > 0)
+        .map(|frames| format!("  {:.1} ms", f64::from(frames) * 1000.0 / rate))
+        .unwrap_or_default();
+    let text = if app.audio.is_on() {
+        format!("CPU {:>3.0}%  {} dropouts{latency}{memory}", status.load * 100.0, status.xruns)
+    } else {
+        format!("No sound{latency}{memory}")
+    };
     let color = if !app.audio.is_on() || status.xruns > 0 { tk.warn } else { tk.text_dim };
     let perf = ui.add(egui::Label::new(RichText::new(text).monospace().size(size::SMALL).color(color)).sense(Sense::hover()));
     let audio_status = app.audio.status().to_owned();
     app.hint(&perf, format!("Audio: {audio_status}"));
+}
+
+/// How many frames of the master the oscilloscope shows: about 20 ms at 48 kHz.
+const SCOPE_FRAMES: usize = 1024;
+
+/// The oscilloscope: the master output's latest frames, mixed to mono, as a line.
+fn oscilloscope(app: &mut BodoApp, ui: &mut Ui) {
+    let tk = Tokens::get();
+    let (rect, response) = ui.allocate_exact_size(vec2(72.0, 18.0), Sense::hover());
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, 3.0, tk.field);
+    let mut frames = vec![0.0f32; SCOPE_FRAMES];
+    let live = app.audio.scope(&mut frames);
+    // One point per column: the sample of largest size among the frames it covers, so peaks don't vanish.
+    let columns = rect.width().max(1.0) as usize;
+    let per = (SCOPE_FRAMES / columns).max(1);
+    let half = rect.height() / 2.0 - 1.5;
+    let points: Vec<egui::Pos2> = (0..columns)
+        .map(|c| {
+            let chunk = &frames[(c * per).min(SCOPE_FRAMES)..((c + 1) * per).min(SCOPE_FRAMES)];
+            let peak = chunk.iter().copied().fold(0.0f32, |a, b| if b.abs() > a.abs() { b } else { a });
+            egui::pos2(rect.left() + c as f32 + 0.5, rect.center().y - peak.clamp(-1.0, 1.0) * half)
+        })
+        .collect();
+    painter.hline(rect.x_range(), rect.center().y, egui::Stroke::new(1.0, tk.grid_beat));
+    painter.add(egui::Shape::line(points, egui::Stroke::new(1.0, if live { tk.accent } else { tk.text_faint })));
+    control::record(ui, &response, "Oscilloscope", "scope", None);
+    app.hint(&response, "The oscilloscope: the master output's wave, the last 20 ms or so");
+    if live {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(33));
+    }
 }
 
 /// The record button: red while recording, blinking while a count-in clicks.

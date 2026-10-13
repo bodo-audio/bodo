@@ -56,6 +56,62 @@ pub struct Dialogs {
     pub recovery: Vec<PathBuf>,
     /// The song position shows minutes and seconds instead of bars, steps and ticks.
     pub clock_seconds: bool,
+    /// The export dialog, while it is open.
+    pub export: Option<Export>,
+}
+
+/// What the export dialog renders.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExportWhat {
+    /// The whole mix, through the master, as one file.
+    #[default]
+    Mix,
+    /// One file per insert, in a folder.
+    Stems,
+    /// One file per insert, and the mix beside them.
+    Both,
+}
+
+/// Which stretch of the song the export dialog renders.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ExportRange {
+    /// From the start to the end of the song.
+    #[default]
+    Song,
+    /// The Song mode loop.
+    Loop,
+    /// The playlist's time selection.
+    Selection,
+}
+
+/// The export dialog: what to render, which stretch, in which format, and where.
+#[derive(Clone, Debug, Default)]
+pub struct Export {
+    /// What to render.
+    pub what: ExportWhat,
+    /// Which stretch.
+    pub range: ExportRange,
+    /// The file format: `wav`, `flac` or `w64`.
+    pub format: &'static str,
+    /// The folder the files go in.
+    pub folder: String,
+    /// The mix file's name, or the stems folder's, without an extension.
+    pub name: String,
+    /// What the last export said: where it wrote, or why it couldn't.
+    pub message: Option<(String, bool)>,
+}
+
+impl Export {
+    /// The dialog for `what`, with the project's Rendered folder and title.
+    pub(crate) fn new(app: &BodoApp, what: ExportWhat) -> Self {
+        let folder = match (app.session.file(), app.user_library()) {
+            (Some(file), _) => bodo_io::project_folder(file).join("Rendered"),
+            (None, Some(library)) => library.rendered(),
+            (None, None) => std::env::temp_dir().join("Bodo Rendered"),
+        };
+        let name = app.title().trim_end_matches(" *").to_owned();
+        Self { what, range: ExportRange::Song, format: "wav", folder: folder.display().to_string(), name, message: None }
+    }
 }
 
 /// The layout name dialog's purpose and what has been typed.
@@ -353,6 +409,120 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
             ui.label(RichText::new("The Bodo Drums factory kit is CC0: use it in your music freely.").color(tk.text_dim));
         });
         app.view.dialogs.about = open;
+    }
+    export(app, ctx);
+}
+
+/// The export dialog: the mix, the stems or both, over the song, the loop or the time selection, as WAV, FLAC or
+/// Wave64, into a folder.
+fn export(app: &mut BodoApp, ctx: &egui::Context) {
+    let Some(mut dialog) = app.view.dialogs.export.take() else { return };
+    let tk = Tokens::get();
+    let transport = *app.session.transport();
+    let selection = app.view.playlist.time_selection;
+    let mut open = true;
+    let mut run = false;
+    let center = ctx.content_rect().center();
+    let window = egui::Window::new("Export").id(egui::Id::new("bodo-export")).pivot(Align2::CENTER_CENTER).default_pos(center);
+    window.open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        ui.set_min_width(340.0);
+        egui::Grid::new("bodo-export-grid").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+            ui.label("Render");
+            ui.horizontal(|ui| {
+                for (value, label) in [(ExportWhat::Mix, "The mix"), (ExportWhat::Stems, "Stems"), (ExportWhat::Both, "Stems and the mix")] {
+                    let choice = ui.radio(dialog.what == value, label);
+                    crate::control::record(ui, &choice, &format!("Export {label}"), "radio", Some(dialog.what == value));
+                    if choice.clicked() {
+                        dialog.what = value;
+                    }
+                }
+            });
+            ui.end_row();
+            ui.label("Range");
+            ui.horizontal(|ui| {
+                for (value, label, available) in [
+                    (ExportRange::Song, "The song", true),
+                    (ExportRange::Loop, "The loop", transport.loop_region.is_some()),
+                    (ExportRange::Selection, "The selection", selection.is_some()),
+                ] {
+                    let choice = ui.add_enabled(available, egui::RadioButton::new(dialog.range == value, label));
+                    crate::control::record(ui, &choice, &format!("Export range {label}"), "radio", Some(dialog.range == value));
+                    if choice.clicked() {
+                        dialog.range = value;
+                    }
+                }
+            });
+            ui.end_row();
+            ui.label("Format");
+            ui.horizontal(|ui| {
+                for (value, label) in [("wav", "WAV"), ("flac", "FLAC"), ("w64", "Wave64")] {
+                    let choice = ui.radio(dialog.format == value, label);
+                    crate::control::record(ui, &choice, &format!("Export format {label}"), "radio", Some(dialog.format == value));
+                    if choice.clicked() {
+                        dialog.format = value;
+                    }
+                }
+            });
+            ui.end_row();
+            ui.label("Folder");
+            ui.horizontal(|ui| {
+                let field = ui.add(egui::TextEdit::singleline(&mut dialog.folder).desired_width(220.0));
+                crate::control::record(ui, &field, "Export folder", "text", None);
+                if app.services.pick_folder.is_some()
+                    && ui.button("Choose...").clicked()
+                    && let Some(folder) = app.services.pick_folder.as_ref().and_then(|pick| pick())
+                {
+                    dialog.folder = folder.display().to_string();
+                }
+            });
+            ui.end_row();
+            ui.label(if dialog.what == ExportWhat::Mix { "File name" } else { "Stems folder" });
+            let field = ui.add(egui::TextEdit::singleline(&mut dialog.name).desired_width(220.0));
+            crate::control::record(ui, &field, "Export name", "text", None);
+            ui.end_row();
+        });
+        if let Some((message, error)) = &dialog.message {
+            ui.add_space(4.0);
+            ui.label(RichText::new(message).size(size::SMALL).color(if *error { tk.error } else { tk.text_dim }));
+        }
+        ui.add_space(6.0);
+        let button = ui.add_enabled(!dialog.name.trim().is_empty() && !dialog.folder.trim().is_empty(), egui::Button::new("Export"));
+        crate::control::record(ui, &button, "Export run", "button", None);
+        if button.clicked() {
+            run = true;
+        }
+    });
+    if run {
+        let range = match dialog.range {
+            ExportRange::Song => None,
+            ExportRange::Loop => transport.loop_region.map(|(s, e)| (s.0, e.0)),
+            ExportRange::Selection => selection,
+        };
+        let folder = PathBuf::from(dialog.folder.trim());
+        let name = dialog.name.trim().to_owned();
+        let mut params = match dialog.what {
+            ExportWhat::Mix => json!({ "path": folder.join(format!("{name}.{}", dialog.format)).display().to_string(), "format": dialog.format }),
+            ExportWhat::Stems | ExportWhat::Both => json!({
+                "folder": folder.join(format!("{name} stems")).display().to_string(),
+                "format": dialog.format,
+                "mix": dialog.what == ExportWhat::Both,
+            }),
+        };
+        if let (Some((start, end)), Some(map)) = (range, params.as_object_mut()) {
+            map.insert(String::from("start"), json!(start));
+            map.insert(String::from("end"), json!(end));
+        }
+        let id = if dialog.what == ExportWhat::Mix { "render.export_mix" } else { "render.export_stems" };
+        dialog.message = Some(match app.run(id, params) {
+            Ok(result) => {
+                let place = result.get("path").or_else(|| result.get("folder")).and_then(serde_json::Value::as_str).unwrap_or_default();
+                (format!("Wrote {place}"), false)
+            }
+            Err(error) => (error, true),
+        });
+    }
+    if open {
+        app.view.dialogs.export = Some(dialog);
     }
 }
 
