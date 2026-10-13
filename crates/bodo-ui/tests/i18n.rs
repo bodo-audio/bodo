@@ -35,6 +35,7 @@ const SINKS: &[(&str, usize)] = &[
     ("heading", 1),
     ("labeled", 1),
     ("row", 1),
+    ("empty", 2),
 ];
 
 /// egui calls that show text, with how many arguments come before the text. A literal with letters in any of these
@@ -65,11 +66,7 @@ const SHOWN: &[(&str, usize)] = &[
 ];
 
 /// Literals that read the same in every language: the wordmark and one-letter marks such as S for solo.
-const NEUTRAL: &[&str] = &["bodo", "Bodo", "S", "M", "BPM", " BPM", "Hz", "dB", "ms", "MIDI"];
-
-/// Sources another stream of work is changing, wrapped once that work lands: the mixer and the browser. Their keys
-/// may already be in the catalogs, and their literals aren't checked yet.
-const PENDING: &[&str] = &["mixer.rs", "browser/"];
+const NEUTRAL: &[&str] = &["bodo", "Bodo", "S", "M", "BPM", " BPM", "Hz", "dB", "ms", " ms", "MIDI"];
 
 /// Every Rust source of the interface and the app, with its path relative to its `src`, comments blanked out and any
 /// tests at its end cut off.
@@ -98,10 +95,6 @@ fn sources() -> Vec<(String, String)> {
     }
     out.sort();
     out
-}
-
-fn pending(path: &str) -> bool {
-    PENDING.iter().any(|p| path == *p || (p.ends_with('/') && path.starts_with(p)))
 }
 
 /// `text` with its comments replaced by spaces, keeping strings, character literals and line numbers.
@@ -276,7 +269,8 @@ fn keys(sources: &[(String, String)]) -> BTreeMap<String, String> {
     keys
 }
 
-/// Command titles and summaries, from the registry and the interface's own commands.
+/// Command titles and summaries, from the registry and the interface's own commands, and the texts of the native
+/// effects people see: their names, descriptions, parameter names and choices.
 fn command_texts() -> BTreeSet<String> {
     let app = common::app(Theme::Dark);
     let mut texts = BTreeSet::new();
@@ -287,6 +281,16 @@ fn command_texts() -> BTreeSet<String> {
     for (_, title, summary) in bodo_ui::BodoApp::ui_commands() {
         texts.insert((*title).to_owned());
         texts.insert((*summary).to_owned());
+    }
+    for info in bodo_mix::fx::catalog().iter().filter(|i| !i.hidden) {
+        texts.insert(info.name.to_owned());
+        texts.insert(info.description.to_owned());
+        for param in info.params {
+            texts.insert(param.name.to_owned());
+            if let bodo_mix::fx::ParamKind::Choice { choices } = param.kind {
+                texts.extend(choices.iter().map(|c| (*c).to_owned()));
+            }
+        }
     }
     texts
 }
@@ -314,8 +318,7 @@ fn turkish() -> &'static i18n::Catalog {
 
 #[test]
 fn every_key_the_interface_uses_is_in_every_catalog() {
-    let sources: Vec<_> = sources().into_iter().filter(|(path, _)| !pending(path)).collect();
-    let mut wanted: BTreeMap<String, String> = keys(&sources);
+    let mut wanted: BTreeMap<String, String> = keys(&sources());
     for text in command_texts() {
         wanted.entry(text).or_insert_with(|| String::from("(commands)"));
     }
@@ -403,7 +406,7 @@ fn untranslated(path: &str, text: &str) -> Vec<String> {
 
 #[test]
 fn no_egui_text_skips_translation() {
-    let found: Vec<String> = sources().into_iter().filter(|(path, _)| !pending(path)).flat_map(|(path, text)| untranslated(&path, &text)).collect();
+    let found: Vec<String> = sources().into_iter().flat_map(|(path, text)| untranslated(&path, &text)).collect();
     assert!(found.is_empty(), "English shown without t():\n{}", found.join("\n"));
 }
 

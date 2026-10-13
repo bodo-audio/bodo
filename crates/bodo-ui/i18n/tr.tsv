@@ -1,28 +1,46 @@
 en	tr
 # Turkish catalog: the English text, a tab, then the Turkish text. Placeholders such as {name} keep their names.
+(empty)	(boş)
 1 bar	1 ölçü
 1 beat	1 vuruş
 1 clip on the playlist, from {at}	Çalma listesinde 1 klip, {at} konumundan
 1 step	1 adım
+1/16	1/16
+1/2	1/2
 1/2 beat	1/2 vuruş
 1/2 step	1/2 adım
 1/3 beat	1/3 vuruş
 1/3 step	1/3 adım
+1/4	1/4
+1/4 dotted	1/4 noktalı
 1/4 step	1/4 adım
+1/4 triplet	1/4 triole
 1/6 beat	1/6 vuruş
 1/6 step	1/6 adım
+1/8	1/8
+1/8 dotted	1/8 noktalı
+1/8 triplet	1/8 triole
 2 steps	2 adım
+24-bit WAV	24 bit WAV
+32-bit float WAV	32 bit kayan noktalı WAV
+A bridge of its own	Kendine ait bir köprü
+A bridge per vendor	Üretici başına bir köprü
 a change	bir değişiklik
+A channel	Bir kanal
 A fade-in at the start	Başta bir yükselerek giriş
 A fade-out at the end	Sonda bir alçalarak çıkış
 A free, open-source digital audio workstation written in Rust.	Rust ile yazılmış, özgür ve açık kaynaklı bir dijital ses iş istasyonu.
 A removed channel	Kaldırılmış bir kanal
+A tag, such as warm or kick	Bir etiket, örneğin sıcak ya da kick
 About Bodo	Bodo hakkında
 Add	Ekle
 Add a channel	Kanal ekle
 Add a channel the layer plays on every note	Katmanın her notada çaldığı bir kanal ekle
 Add a channel: a factory sound, an empty sampler, or a file	Kanal ekle: hazır bir ses, boş bir örnekleyici ya da bir dosya
+Add a folder of your own sounds to the Browser	Tarayıcıya kendi seslerinizin bulunduğu bir klasör ekleyin
 Add a marker	İşaretçi ekle
+Add a mixer insert	Mikser yolu ekle
+Add a sample folder	Örnek klasörü ekle
 Add audio clip channel	Ses klibi kanalı ekle
 Add automation point	Otomasyon noktası ekle
 Add channel	Kanal ekle
@@ -34,6 +52,8 @@ Add notes	Nota ekle
 Add recorded takes	Kaydedilen kayıtları ekle
 Add route	Yönlendirme ekle
 Add sample folder...	Örnek klasörü ekle...
+Add tag	Etiket ekle
+Add tag...	Etiket ekle...
 Add to group	Gruba ekle
 Add track	Parça ekle
 Added 9th	Eklenmiş 9'lu
@@ -49,9 +69,13 @@ Adds notes for one channel to a pattern and selects them; returns their ids.	Bir
 Adds tags to a library file, or removes them; the Browser filters by them.	Bir kitaplık dosyasına etiket ekler ya da etiketlerini kaldırır; Tarayıcı bunlara göre süzer.
 Adds the notes of a .bodoscore file to a channel in a pattern.	Bir .bodoscore dosyasının notalarını bir desendeki bir kanala ekler.
 Adjust inserts	Yolları birlikte ayarla
+After the fader	Fader'dan sonra
+After the FX	Efektlerden sonra
 Agent ({tool}): {step}	Asistan ({tool}): {step}
 AI	Yapay zekâ
+All	Tümü
 All channels	Tüm kanallar
+Always	Her zaman
 Any MIDI channel	Herhangi bir MIDI kanalı
 Apply	Uygula
 Arm insert	Yolu kayda hazırla
@@ -72,6 +96,7 @@ Audio	Ses
 Audio and automation	Ses ve otomasyon
 Audio clip	Ses klibi
 Audio clip: place it on the playlist	Ses klibi: onu çalma listesine yerleştirin
+Audio input	Ses girişi
 Audio is off	Ses kapalı
 Audio settings	Ses ayarları
 Audio settings...	Ses ayarları...
@@ -90,22 +115,32 @@ Automation clip: edit it on the playlist	Otomasyon klibi: onu çalma listesinde 
 Autosave	Otomatik kayıt
 Autosaved	Otomatik kaydedildi
 Back	Geri
+Back to where the Browser was	Tarayıcının önceki konumuna dön
+Backup	Yedek
 Band pass	Bant geçiren
 Bar	Ölçü
 Beat	Vuruş
 beats	vuruş
+Before the FX	Efektlerden önce
 Bend	Bükme
 Binds a channel to a MIDI input port and optionally one MIDI channel, or removes the binding.	Bir kanalı bir MIDI giriş portuna ve isteğe bağlı olarak tek bir MIDI kanalına bağlar ya da bağlantıyı kaldırır.
 blues	blues
 Bodo didn't close properly last time. These autosaves can bring your work back:	Bodo geçen sefer düzgün kapanmadı. Bu otomatik kayıtlar çalışmanızı geri getirebilir:
 Bodo keeps this plugin and its state with the project; it plays and shows its editor once plugin hosting arrives.	Bodo bu eklentiyi ve durumunu projeyle birlikte saklar; eklenti barındırma geldiğinde çalar ve düzenleyicisini gösterir.
+Bodo loads plugins once plugin hosting arrives	Bodo, eklenti barındırma geldiğinde eklentileri yükler
 Bodo project	Bodo projesi
 Bodo's keys: {keys}	Bodo'nun tuşları: {keys}
+Bodo's sampler: double-click to add an empty sampler channel, then give it a sound	Bodo'nun örnekleyicisi: boş bir örnekleyici kanalı eklemek için çift tıklayın, sonra ona bir ses verin
 Bring the peak to full scale	Tepe noktasını tam ölçeğe getir
 Brings the next open window to the front and moves keyboard focus into it.	Sonraki açık pencereyi öne getirir ve klavye odağını ona taşır.
 Browser	Tarayıcı
+Browser back	Tarayıcıda geri
+Browser up	Tarayıcıda yukarı
 Buffer	Arabellek
+Bypass: turn the effect off or on; off, it keeps its latency	Atla: efekti kapatın ya da açın; kapalıyken gecikmesini korur
+C	D
 Cancel	İptal
+Cancel export	Dışa aktarmayı iptal et
 CC 1 Mod wheel	CC 1 Modülasyon tekerleği
 CC 10 Pan	CC 10 Pan
 CC 11 Expression	CC 11 İfade
@@ -113,18 +148,23 @@ CC 64 Sustain	CC 64 Sürdürme pedalı
 CC 7 Volume	CC 7 Ses düzeyi
 CC 74 Brightness	CC 74 Parlaklık
 Channel	Kanal
+Channel envelopes	Kanal zarfları
+Channel presets	Kanal ön ayarları
 Channel pressure	Kanal basıncı
 channel pressure	kanal basıncı
 Channel rack	Kanal rafı
 Channel rack options	Kanal rafı seçenekleri
 Channel rack options: add, clone, delete, select, fill steps, groups	Kanal rafı seçenekleri: ekle, çoğalt, sil, seç, adımları doldur, gruplar
+Choose a library folder in the Browser to keep presets	Ön ayarları saklamak için Tarayıcı'da bir kitaplık klasörü seçin
 Choose a scale first	Önce bir gam seçin
+Choose...	Seç...
 Chooses Pattern mode (loop the current pattern) or Song mode (play the playlist).	Desen modunu (geçerli deseni döngüde çalar) ya da Şarkı modunu (çalma listesini çalar) seçer.
 Chop notes	Notaları doğra
 Chop to the snap	Hizalamaya göre doğra
 chromatic	kromatik
 Clear	Temizle
 Clear automation	Otomasyonu temizle
+Clear every clip light	Tüm kırpılma ışıklarını söndür
 Clear points	Noktaları temizle
 Clear steps	Adımları temizle
 Clear the selection	Seçimi temizle
@@ -132,6 +172,7 @@ Clears the selection of channels, clips and notes.	Kanal, klip ve nota seçimini
 Click a shortcut's keys, then press the new ones. Escape stops listening; right-click removes a shortcut.	Bir kısayolun tuşlarına tıklayın, sonra yenilerine basın. Escape dinlemeyi durdurur; sağ tık kısayolu kaldırır.
 Click or drag to move the pattern's position	Desenin konumunu taşımak için tıklayın ya da sürükleyin
 Click to choose what the lane edits	Şeridin neyi düzenleyeceğini seçmek için tıklayın
+Clipboard files	Pano dosyaları
 Clips	Klipler
 Clone	Çoğalt
 Clone channels	Kanalları çoğalt
@@ -147,10 +188,13 @@ Colors clips, or gives them their source's color again with null.	Klipleri renkl
 Command palette	Komut paleti
 Command palette...	Komut paleti...
 Commands	Komutlar
+Compact	Dar
 Compact rows	Sıkışık satırlar
 Compact rows: smaller rows and steps	Sıkışık satırlar: daha küçük satırlar ve adımlar
 Compose	Beste
+Compromise (-4.5 dB)	Orta yol (-4,5 dB)
 Consolidate to audio	Sese dönüştür
+Constant power (-3 dB)	Sabit güç (-3 dB)
 Convert the sample to the project's rate when it loads	Örneği yüklenirken projenin örnekleme hızına dönüştür
 Copies a channel's settings into a new channel after it (notes are not copied).	Bir kanalın ayarlarını hemen ardındaki yeni bir kanala kopyalar (notalar kopyalanmaz).
 Copies a pattern with its notes into a new current pattern.	Bir deseni notalarıyla birlikte yeni bir geçerli desene kopyalar.
@@ -159,14 +203,18 @@ Copies the selected clips or notes and removes them.	Seçili klipleri ya da nota
 Copies the selected clips, the selected notes, or a time selection of the playlist, for edit.paste.	Seçili klipleri, seçili notaları ya da çalma listesindeki bir zaman seçimini edit.paste için kopyalar.
 Copy	Kopyala
 Copy effects	Efektleri kopyala
+Copy the chain	Efekt zincirini kopyala
 Could not preview: {error}	Ön dinleme yapılamadı: {error}
 Could not recover: {error}	Kurtarılamadı: {error}
 Count-in	Ön sayım
 Count-in: a bar of clicks before recording starts	Ön sayım: kayıt başlamadan önce bir ölçü tık sesi
 Counting in: recording starts after this bar	Ön sayım yapılıyor: kayıt bu ölçüden sonra başlar
+CPU {load}%	İşlemci %{load}
 CPU {load}%  {dropouts} dropouts	İşlemci %{load}  {dropouts} kesinti
+CPU: no sound	İşlemci: ses yok
 Create automation clip	Otomasyon klibi oluştur
 Crossfade	Çapraz geçiş
+Current project	Geçerli proje
 Curve	Eğri
 Cut	Kes
 Cut silence from both ends	Baştaki ve sondaki sessizliği kes
@@ -177,6 +225,7 @@ Dark	Koyu
 Decay	Düşüş
 Declicking	Tık giderme
 Default	Varsayılan
+Delay	Delay
 Delete	Sil
 Delete (D): click or drag over clips to delete them	Silme (D): klipleri silmek için üzerlerine tıklayın ya da sürükleyin
 Delete (D): click or drag over notes to delete them	Silme (D): notaları silmek için üzerlerine tıklayın ya da sürükleyin
@@ -191,12 +240,16 @@ Delete track	Parçayı sil
 Deletes a pattern and every clip of it on the playlist.	Bir deseni ve çalma listesindeki tüm kliplerini siler.
 Deletes a saved layout: {"layout": "Studio"}.	Kaydedilmiş bir yerleşimi siler: {"layout": "Studio"}.
 Deletes notes from a pattern.	Bir desenden nota siler.
+Demo projects	Demo projeler
+Depth	Derinlik
 Describe plugin	Eklentiyi tanımla
 Describes an effect and its parameters: ids, units, ranges and defaults.	Bir efekti ve parametrelerini tanımlar: kimlikler, birimler, aralıklar ve varsayılanlar.
 Deselect	Seçimi kaldır
 Detach window	Pencereyi ayır
 Detach {window}	{window} penceresini ayır
+Device outputs this insert also plays straight to, such as a cue mix	Bu mikser yolunun ayrıca doğrudan gönderildiği aygıt çıkışları, örneğin bir dinleme (cue) karışımı
 Diminished	Eksik
+Direct out	Doğrudan çıkış
 Dissolves a track group, or takes tracks out of theirs.	Bir parça grubunu dağıtır ya da parçaları gruplarından çıkarır.
 Dominant 7th	Dominant 7'li
 Dominant 9th	Dominant 9'lu
@@ -226,7 +279,10 @@ Draw lays down this chord; click to draw single notes again	Çizim bu akoru yerl
 Draw on the playlist	Çalma listesinde çiz
 Draw tool	Çizim aracı
 Driver	Sürücü
+Drum	Davul
+Ducker	Ducker
 Duplicate channel	Kanalı çoğalt
+Dynamics	Dinamikler
 Each 2 steps	Her 2 adımda bir
 Each 4 steps	Her 4 adımda bir
 Each 8 steps	Her 8 adımda bir
@@ -237,22 +293,34 @@ Edit notes	Notaları düzenle
 Edit sampler	Örnekleyiciyi düzenle
 Edit track	Parçayı düzenle
 Edit track group	Parça grubunu düzenle
+Effect on	Efekt açık
+Effects	Efektler
 Empties an FX slot.	Bir efekt yuvasını boşaltır.
 Empty sampler	Boş örnekleyici
 Envelopes	Zarflar
+EQ	EQ
 Every MIDI channel	Her MIDI kanalı
 Every {minutes} minutes	Her {minutes} dakikada bir
+Export	Dışa aktar
 Export mix	Miksi dışa aktar
+Export mix...	Miksi dışa aktar...
 Export pattern as MIDI	Deseni MIDI olarak dışa aktar
 Export pattern as MIDI...	Deseni MIDI olarak dışa aktar...
 Export song as MIDI	Şarkıyı MIDI olarak dışa aktar
 Export song as MIDI...	Şarkıyı MIDI olarak dışa aktar...
 Export stems	Stem'leri dışa aktar
+Export stems...	Stem'leri dışa aktar...
+Export the song as MIDI here	Şarkıyı buraya MIDI olarak dışa aktar
+Exporting to {place}	{place} konumuna dışa aktarılıyor
+Extra compact	Çok dar
 Fade in	Yükselerek giriş
 Fade out	Alçalarak çıkış
 Fade stereo	Stereo geçiş
+Feedback	Geri besleme
 Feeds an FX slot's sidechain input from a channel or insert, adding the sidechain route.	Bir efekt yuvasının yan zincir girişini bir kanaldan ya da mikser yolundan besler ve yan zincir yönlendirmesini ekler.
+Feeds the master	Ana çıkışı besler
 File	Dosya
+File name	Dosya adı
 Fill each 2 steps	Her 2 adımı doldur
 Fill each 4 steps	Her 4 adımı doldur
 Fill each 8 steps	Her 8 adımı doldur
@@ -275,8 +343,11 @@ Fixes a pattern's length, or sets it back to auto.	Bir desenin uzunluğunu sabit
 Flip in time	Zamanda ters çevir
 Flip keys	Tuşları ters çevir
 Flip notes	Notaları ters çevir
+Folder	Klasör
+Format	Biçim
 From file...	Dosyadan...
 Full length	Tam uzunluk
+Gain	Kazanç
 Gate	Nota süresi
 Generic	Genel
 Get effect parameters	Efekt parametrelerini al
@@ -296,11 +367,15 @@ Group tracks	Parçaları grupla
 Group with track above	Üstteki parçayla grupla
 Group {name} on	{name} grubu açık
 Group {number}	Grup {number}
+Guitar	Gitar
 Half	Yarım
 Half-diminished	Yarı eksik
 harmonic minor	armonik minör
+Headphones	Kulaklık
 Help	Yardım
+High	Tiz
 High contrast	Yüksek karşıtlık
+High cut	Tiz kesme
 High pass	Yüksek geçiren
 Highest key	En yüksek tuş
 Hold a key to hear the channel play it	Kanalın onu çaldığını duymak için bir tuşu basılı tutun
@@ -308,6 +383,7 @@ How far the cutoff follows the key: at 100% an octave per octave	Kesim frekansı
 How far the envelope moves the filter: {amount}	Zarfın filtreyi ne kadar hareket ettirdiği: {amount}
 How far the envelope moves the pitch: {amount}	Zarfın perdeyi ne kadar hareket ettirdiği: {amount}
 How far the pitch knob reaches, in semitones either way	Perde düğmesinin iki yöne kaç yarım ton uzandığı
+How late this insert's sound is: what reaches it, what its effects add, and what leaves it	Bu mikser yolunun sesinin ne kadar geciktiği: ona ulaşan gecikme, efektlerinin eklediği ve çıkışta oluşan toplam
 How long each note lasts, as a share of the step	Her notanın adımın ne kadarı boyunca sürdüğü
 How many octaves up the pattern climbs	Desenin kaç oktav yukarı tırmandığı
 How many times each note plays before the next	Her notanın bir sonrakinden önce kaç kez çaldığı
@@ -317,18 +393,29 @@ How the clips follow the project's tempo	Kliplerin projenin temposunu nasıl izl
 How the sample loops between the loop markers	Örneğin döngü işaretçileri arasında nasıl döngü yaptığı
 Humanize	İnsansılaştır
 Humanize notes	Notaları insansılaştır
+Icon	Simge
 Import MIDI file	MIDI dosyası içe aktar
 Import MIDI file...	MIDI dosyası içe aktar...
 Imports a MIDI file as a new pattern, with an empty sampler channel per part, and places it on the playlist.	Bir MIDI dosyasını, her bölüm için boş bir örnekleyici kanalıyla yeni bir desen olarak içe aktarır ve çalma listesine yerleştirir.
+Impulses	Dürtü yanıtları
+In	Giriş
 Input	Giriş
 Insert	Mikser yolu
+Insert panel	Mikser yolu paneli
 Insert time	Zaman ekle
 Insert track above	Üste parça ekle
 Insert {number}	Yol {number}
+Insert {number} doesn't feed the master: click to change	Yol {number} ana çıkışı beslemiyor: değiştirmek için tıklayın
+Insert {number} doesn't route here: click to route it, Cmd/Ctrl click for a sidechain	Yol {number} buraya yönlendirilmiyor: yönlendirmek için tıklayın, yan zincir için Cmd/Ctrl ile tıklayın
+Insert {number} feeds the master: click to change	Yol {number} ana çıkışı besliyor: değiştirmek için tıklayın
+Insert {number} routes here at {percent}%: click to remove, drag to set the level	Yol {number} buraya %{percent} düzeyinde yönlendiriliyor: kaldırmak için tıklayın, düzeyi ayarlamak için sürükleyin
+Insert {number} sidechains here at {percent}%: click to remove, drag to set the level	Yol {number} buraya %{percent} düzeyinde yan zincir gönderiyor: kaldırmak için tıklayın, düzeyi ayarlamak için sürükleyin
+Inside Bodo	Bodo'nun içinde
 Instrument	Çalgı
 Interface settings	Arayüz ayarları
 Interface settings...	Arayüz ayarları...
 Interface size	Arayüz boyutu
+Invert polarity	Polariteyi ters çevir
 Invert the waveform	Dalga biçimini ters çevir
 Inverts an insert's polarity; toggles without `on`.	Bir mikser yolunun polaritesini ters çevirir; `on` olmadan durumunu değiştirir.
 Its own speed	Kendi hızı
@@ -337,11 +424,14 @@ Joins notes of the same key and channel that touch or overlap.	Aynı tuştaki ve
 Keep on disk	Diskte tut
 Key	Tuş
 Key tracking	Tuş takibi
+Keyboard	Klavye
 Keyboard shortcuts	Klavye kısayolları
 Keyboard shortcuts...	Klavye kısayolları...
 Keys	Tuşlar
 Language	Dil
 Larger	Daha büyük
+Latency {total} ms (in {input}, own {own})	Gecikme {total} ms (giriş {input}, kendi {own})
+Latency: -	Gecikme: -
 Layer	Katman
 Layout	Yerleşim
 Layout name	Yerleşim adı
@@ -352,20 +442,25 @@ Length (ticks)	Uzunluk (tik)
 Lengthens each note to the start of the next one on its channel.	Her notayı kanalındaki bir sonraki notanın başlangıcına kadar uzatır.
 Let the envelope move the filter	Zarfın filtreyi hareket ettirmesine izin ver
 Let the envelope move the pitch	Zarfın perdeyi hareket ettirmesine izin ver
+Library	Kitaplık
+Library folder	Kitaplık klasörü
 Licensed under the GNU GPL, version 3 or later.	GNU GPL sürüm 3 ya da sonrası altında lisanslanmıştır.
 Light	Açık
 Limit to scale	Gama sınırla
 Limit to {root} {scale}	{root} {scale} gamına sınırla
+Linear (-6 dB)	Doğrusal (-6 dB)
 List library folder	Kitaplık klasörünü listele
 List plugins	Eklentileri listele
 Lists a folder of the user library: sounds, projects, presets and scores.	Kullanıcı kitaplığının bir klasörünü listeler: sesler, projeler, ön ayarlar ve notalar.
 Lists the effects FX slots can load, with their parameters.	Efekt yuvalarının yükleyebileceği efektleri parametreleriyle listeler.
 Lists the parameters of the effect in an FX slot with their values.	Bir efekt yuvasındaki efektin parametrelerini değerleriyle listeler.
+Load	Yükle
 Load a sample, or drop one from the browser	Bir örnek yükleyin ya da tarayıcıdan bir tane bırakın
 Load another audio file into this sampler	Bu örnekleyiciye başka bir ses dosyası yükle
 Load channel preset	Kanal ön ayarı yükle
 Load effect	Efekt yükle
 Load mixer preset	Mikser ön ayarı yükle
+Load plugin preset	Eklenti ön ayarı yükle
 Load regions	Bölgeleri yükle
 Load sample	Örnek yükle
 Load sample...	Örnek yükle...
@@ -373,16 +468,21 @@ Load score	Nota dosyası yükle
 Load slices	Dilimleri yükle
 Load...	Yükle...
 Loads a .bodochannel file as a new channel, or into a channel to replace its sound.	Bir .bodochannel dosyasını yeni bir kanal olarak ya da sesini değiştirmek için bir kanala yükler.
+Loads a .bodopreset file into an FX slot: onto the same effect, or as a new effect in an empty slot.	Bir .bodopreset dosyasını bir efekt yuvasına yükler: aynı efektin üzerine ya da boş bir yuvaya yeni bir efekt olarak.
 Loads a native effect into an FX slot, the first empty one by default.	Bir yerleşik efekti bir efekt yuvasına, varsayılan olarak ilk boş yuvaya yükler.
 Loads an audio file into a sampler channel.	Bir ses dosyasını bir örnekleyici kanalına yükler.
 Lock	Kilitle
 locrian	lokrien
 Loop	Döngü
 Loop record	Döngülü kayıt
+Loop record: while recording in a loop, every pass becomes its own take and MIDI passes add up	Döngülü kayıt: döngüde kayıt yaparken her geçiş ayrı bir kayıt olur ve MIDI geçişleri birbirine eklenir
 Loop the selection	Seçimi döngüye al
 Loop {start} to {end}	Döngü {start} - {end}
 Loops Song mode over a region of the playlist, or stops looping.	Şarkı modunu çalma listesinin bir bölgesinde döngüye alır ya da döngüyü durdurur.
+Low	Bas
 Low pass	Alçak geçiren
+Low, high or band pass filter with resonance, for sweeps and tone shaping.	Süpürmeler ve ton şekillendirme için rezonanslı alçak, yüksek ya da bant geçiren filtre.
+Lowers the signal while the sidechain plays, for sidechain pumping.	Yan zincir çaldıkça sinyali düşürür; yan zincir pompalaması için.
 Lowest key	En alçak tuş
 lydian	lidyen
 Major	Majör
@@ -413,6 +513,8 @@ Maximize {window}	{window} penceresini büyüt
 melodic minor	melodik minör
 Metronome	Metronom
 Metronome: clicks every beat while playing and recording	Metronom: çalarken ve kayıt yaparken her vuruşta tıklar
+Microphone	Mikrofon
+Mid	Orta
 MIDI channel	MIDI kanalı
 MIDI channel {number}	MIDI kanalı {number}
 MIDI file	MIDI dosyası
@@ -427,21 +529,32 @@ Minor 6th	Minör 6'lı
 Minor 7th	Minör 7'li
 Minor 9th	Minör 9'lu
 minor pentatonic	minör pentatonik
+Misc	Çeşitli
 Missing sample	Eksik örnek
 Mix	Miks
 mix	karışım
+Mix: {percent}% wet	Miks: %{percent} ıslak
 Mixer	Mikser
+Mixer - {insert}	Mikser - {insert}
 Mixer insert	Mikser yolu
+Mixer presets	Mikser ön ayarları
 mixolydian	miksolidyen
 Mod X	Mod X
 Mod Y	Mod Y
+Mode	Mod
+Mono	Mono
+mono	mono
 Move channel	Kanalı taşı
 Move clips	Klipleri taşı
+Move down	Aşağı taşı
 Move effect	Efekti taşı
 Move insert	Mikser yolunu taşı
+Move left	Sola taşı
 Move notes	Notaları taşı
+Move right	Sağa taşı
 Move the sound from left to right over its length	Sesi uzunluğu boyunca soldan sağa kaydır
 Move to group	Gruba taşı
+Move up	Yukarı taşı
 Moves a channel to another position in the channel rack.	Bir kanalı kanal rafında başka bir konuma taşır.
 Moves a window into its own OS window, or back: {"window": "mixer", "detached": true}. The channel rack stays in.	Bir pencereyi kendi işletim sistemi penceresine taşır ya da geri alır: {"window": "mixer", "detached": true}. Kanal rafı içeride kalır.
 Moves an FX slot to another place in the chain; the slots between shift.	Bir efekt yuvasını zincirde başka bir yere taşır; aradaki yuvalar kayar.
@@ -456,6 +569,7 @@ Moves starts by a player-like drift and varies velocities, from a seed.	Başlang
 Moves the faders, pans or stereo separation of several inserts together, by the same amount.	Birkaç mikser yolunun fader'larını, panlarını ya da stereo ayrımını aynı miktarda birlikte hareket ettirir.
 Moves the playhead.	Çalma imlecini taşır.
 Multiplier	Çarpan
+Music	Müzik
 Mute (T): click or drag over clips to mute or unmute them	Susturma (T): klipleri susturmak ya da seslerini açmak için üzerlerine tıklayın ya da sürükleyin
 Mute (T): click or drag over notes to mute or unmute them	Susturma (T): notaları susturmak ya da seslerini açmak için üzerlerine tıklayın ya da sürükleyin
 Mute channel	Kanalı sustur
@@ -468,11 +582,15 @@ Mutes or unmutes a channel; toggles without `muted`.	Bir kanalı susturur ya da 
 Mutes or unmutes an insert; toggles without `on`.	Bir mikser yolunu susturur ya da sesini açar; `on` olmadan durumunu değiştirir.
 Mutes or unmutes clips; toggles each without `muted`.	Klipleri susturur ya da seslerini açar; `muted` olmadan her birinin durumunu değiştirir.
 Mutes, unmutes, solos or unsolos every track of a group.	Bir grubun tüm parçalarını susturur, seslerini açar, solo yapar ya da solodan çıkarır.
+My projects	Projelerim
 N.Pitch	N.Perde
 N.Press	N.Basınç
 N.Timb	N.Tını
 Narrows or widens an insert: -1 wider, 0 unchanged, 1 mono.	Bir mikser yolunu daraltır ya da genişletir: -1 daha geniş, 0 değişmez, 1 mono.
+Native effects always run inside Bodo; this applies to plugins	Yerleşik efektler her zaman Bodo'nun içinde çalışır; bu ayar eklentiler içindir
+Never	Hiçbir zaman
 New	Yeni
+new	yeni
 New group	Yeni grup
 New group...	Yeni grup...
 New pattern	Yeni desen
@@ -488,15 +606,21 @@ No command matches	Eşleşen komut yok
 No declicking	Tık giderme yok
 No filter	Filtre yok
 No free insert to record into: add one in the mixer	Kayıt yapılacak boş mikser yolu yok: mikserde bir tane ekleyin
+No library folder: choose one with the gear above	Kitaplık klasörü yok: yukarıdaki dişli simgesiyle bir tane seçin
 No loop	Döngü yok
 No MIDI inputs found	MIDI girişi bulunamadı
 No MIDI inputs found. Connect a keyboard and press Refresh.	MIDI girişi bulunamadı. Bir klavye bağlayın ve Yenile'ye basın.
+No mixer presets saved yet	Henüz kaydedilmiş mikser ön ayarı yok
 No pattern	Desen yok
+No presets saved yet	Henüz kaydedilmiş ön ayar yok
 No sample	Örnek yok
 No scale	Gam yok
 No sound	Ses yok
 No sound: {error}	Ses yok: {error}
+No sounds yet	Henüz ses yok
+No {effect} presets saved yet	Henüz kaydedilmiş {effect} ön ayarı yok
 None	Yok
+none	yok
 Normalize	Normalleştir
 Not recording audio: {error}	Ses kaydedilmiyor: {error}
 Notch	Çentik
@@ -505,7 +629,10 @@ Note pressure (MPE)	Nota basıncı (MPE)
 Note timbre (MPE)	Nota tınısı (MPE)
 Note tools: they act on the selected notes, or on all of the channel's notes when none are selected	Nota araçları: seçili notalara ya da hiçbiri seçili değilken kanalın tüm notalarına uygulanır
 Note {key}	Nota {key}
+Nothing found	Hiçbir şey bulunamadı
+Nothing here yet	Burada henüz bir şey yok
 Nothing yet: add channels below	Henüz bir şey yok: aşağıdan kanal ekleyin
+Nothing yet: what you get from the Marketplace lands here	Henüz bir şey yok: Pazar yeri'nden aldıklarınız buraya gelir
 oct	okt
 Octaves	Oktavlar
 Off	Kapalı
@@ -516,6 +643,8 @@ One-click audio recording: arm an insert and record into the playlist	Tek tıkla
 One-shot	Tek seferlik
 Open a window	Bir pencere aç
 Open channel window	Kanal penceresini aç
+Open editor	Düzenleyiciyi aç
+Open effect editor	Efekt düzenleyicisini aç
 Open in piano roll	Piyano rulosunda aç
 Open piano roll	Piyano rulosunu aç
 Open project	Proje aç
@@ -525,27 +654,37 @@ Opens a .bodo file or .bodoproj folder, replacing the current project.	Bir .bodo
 Opens a channel's window, such as the Sampler, for the selected channel or {"channel": "Kick"}.	Seçili kanalın ya da {"channel": "Kick"} kanalının Örnekleyici gibi penceresini açar.
 Opens and brings a window to the front: {"window": "playlist"}.	Bir pencereyi açar ve öne getirir: {"window": "playlist"}.
 Opens the command palette.	Komut paletini açar.
+Opens the editor of the effect in an FX slot: {"insert": 1, "slot": 2}, the master as insert 0.	Bir efekt yuvasındaki efektin düzenleyicisini açar: {"insert": 1, "slot": 2}; ana çıkış 0 numaralı mikser yoludur.
+Opens the export dialog for the mix, the stems or both: {"what": "mix" | "stems" | "both"}.	Dışa aktarma penceresini miks, stem'ler ya da ikisi için açar: {"what": "mix" | "stems" | "both"}.
 Opens the piano roll, optionally for a channel: {"channel": "Kick"}.	Piyano rulosunu, isteğe bağlı olarak bir kanal için açar: {"channel": "Kick"}.
 Options	Seçenekler
 Other CC	Diğer CC
+Out	Çıkış
 Output	Çıkış
+Outputs	Çıkışlar
 Own window	Kendi penceresi
+Packs	Paketler
 Paint (B): drag to lay down copies of the current clip; right-drag deletes	Boyama (B): geçerli klibin kopyalarını yaymak için sürükleyin; sağ sürükleme siler
 Paint (B): drag to lay down notes along the path; right-drag deletes	Boyama (B): yol boyunca nota yaymak için sürükleyin; sağ sürükleme siler
 Paint tool	Boyama aracı
 Pan	Pan
 pan	pan
+Pan law	Pan yasası
 Pan: {value}	Pan: {value}
 Paste	Yapıştır
 Paste effects	Efektleri yapıştır
 Paste here	Buraya yapıştır
+Paste the chain	Efekt zincirini yapıştır
 Pastes what was copied: clips onto the playlist, notes into the current pattern.	Kopyalananı yapıştırır: klipleri çalma listesine, notaları geçerli desene.
 PAT	DESEN
 Pattern	Desen
 Pattern mode loops the current pattern; Song mode plays the playlist	Desen modu geçerli deseni döngüde çalar; Şarkı modu çalma listesini çalar
 Patterns	Desenler
+PDC bypass	PDC atlama
 phrygian	frigyen
+Piano	Piyano
 Piano roll	Piyano rulosu
+Ping-pong	Ping-pong
 Ping-pong loop	Git-gel döngü
 Pitch	Perde
 pitch	perde
@@ -584,12 +723,20 @@ Playlist track	Çalma listesi parçası
 Plays	Çaldıkları
 Plays when stopped and stops when playing.	Durmuşken çalar, çalarken durdurur.
 Plugin	Eklenti
+Plugin database	Eklenti veritabanı
 Plugin parameter {param}	Eklenti parametresi {param}
+Plugin presets	Eklenti ön ayarları
+Plugins	Eklentiler
+Plugins (owned)	Eklentiler (sahip olunan)
 Portamento	Portamento
 Precomputed effects	Önceden hesaplanan efektler
+Presets	Ön ayarlar
 Press	Basınç
 Press keys...	Tuşlara basın...
 Previous pattern	Önceki desen
+Project	Proje
+Project parts	Proje parçaları
+Projects you open and save show here	Açtığınız ve kaydettiğiniz projeler burada görünür
 Properties...	Özellikler...
 Pushes everything from a position later by a length, cutting clips that cross it.	Bir konumdan itibaren her şeyi bir uzunluk kadar ileri iter; o konumu kesen klipleri böler.
 Put every shortcut back to Bodo's keys	Her kısayolu Bodo'nun tuşlarına geri döndür
@@ -608,10 +755,16 @@ Random	Rastgele
 Randomize in {root} {scale}	{root} {scale} gamında rastgele oluştur
 Randomize notes	Notaları rastgele oluştur
 Range	Aralık
+Read the folders and the library again	Klasörleri ve kitaplığı yeniden oku
+Reading the library...	Kitaplık okunuyor...
 Reading the sample...	Örnek okunuyor...
+Recent files	Son dosyalar
 Record	Kayıt
+Record format	Kayıt biçimi
+Record from	Kayıt alma noktası
 Record MIDI	MIDI kaydı
 Record: plays and records the armed mixer inserts and the notes you play	Kayıt: kayda hazır mikser yollarını ve çaldığınız notaları çalar ve kaydeder
+Recorded	Kaydedilenler
 Recorded 1 take	1 kayıt alındı
 Recorded {count} takes	{count} kayıt alındı
 Recording 1 insert	1 mikser yolu kaydediliyor
@@ -626,6 +779,7 @@ Redo	Yinele
 Redo {step}	Yinele: {step}
 Redoes the last undone change.	Geri alınan son değişikliği yineler.
 Refresh	Yenile
+Refresh the browser	Tarayıcıyı yenile
 Rel	Bır.
 Release	Bırakma
 Release velocity	Bırakma gücü
@@ -643,6 +797,7 @@ Remove marker	İşaretçiyi kaldır
 Remove pattern lane	Desen şeridini kaldır
 Remove route	Yönlendirmeyi kaldır
 Remove shortcut	Kısayolu kaldır
+Remove tag {tag}	{tag} etiketini kaldır
 Remove track	Parçayı kaldır
 Removes a marker by name or number.	Bir işaretçiyi adına ya da numarasına göre kaldırır.
 Removes a pattern's lane for a parameter.	Bir desenin bir parametre için şeridini kaldırır.
@@ -674,10 +829,13 @@ Renames a mixer insert.	Bir mikser yolunu yeniden adlandırır.
 Renames a pattern.	Bir deseni yeniden adlandırır.
 Renames a saved layout: {"layout": "Two screens", "name": "Studio"}.	Kaydedilmiş bir yerleşimi yeniden adlandırır: {"layout": "Two screens", "name": "Studio"}.
 Renames a track group.	Bir parça grubunu yeniden adlandırır.
+Render	İşlenecek
+Rendered	İşlenenler
 Renders clips to a WAV in the project's Rendered folder and replaces them with one audio clip.	Klipleri projenin Rendered klasöründe bir WAV dosyasına işler ve onların yerine tek bir ses klibi koyar.
 Renders the song, or one pattern, through the master to an audio file.	Şarkıyı ya da tek bir deseni ana çıkış üzerinden bir ses dosyasına işler.
 Renders the song, or one pattern, to one audio file per insert in a folder, delay compensated so they line up.	Şarkıyı ya da tek bir deseni bir klasörde mikser yolu başına bir ses dosyasına işler; dosyalar hizalı olsun diye gecikme dengelenir.
 Repeat	Tekrar
+Replace	Değiştir
 Replaces an automation channel's points; times are from the clip's start, values 0 to 1.	Bir otomasyon kanalının noktalarını değiştirir; zamanlar klibin başından itibarendir, değerler 0 ile 1 arasındadır.
 Replaces the FX slots of one or more inserts with the copied ones, each effect a new instance.	Bir ya da daha fazla mikser yolunun efekt yuvalarını kopyalananlarla değiştirir; her efekt yeni bir örnektir.
 Resample	Yeniden örnekle
@@ -696,34 +854,50 @@ Reverses notes in time, or mirrors their keys.	Notaları zamanda ters çevirir y
 Rolls chords so each voice starts a little after the one before.	Akorları her ses bir öncekinden biraz sonra başlayacak şekilde yayar.
 Root key	Kök tuş
 Route exclusively	Yalnızca buraya yönlendir
+Route Insert {number} only here	Yol {number} yalnızca buraya yönlendirilsin
+Route only to the master	Yalnızca ana çıkışa yönlendir
 Route to master	Ana çıkışa yönlendir
 Routes a channel or insert into another insert; refuses loops.	Bir kanalı ya da mikser yolunu başka bir mikser yoluna yönlendirir; döngüleri reddeder.
 Routes a channel or insert to one insert, or the master, only, removing its other audio routes.	Bir kanalı ya da mikser yolunu yalnızca bir mikser yoluna ya da ana çıkışa yönlendirir ve diğer ses yönlendirmelerini kaldırır.
+Routing graph	Yönlendirme grafiği
 Run	Çalıştır
+Run plugin	Eklentiyi çalıştır
 Sample	Örnek
+Sample folders	Örnek klasörleri
 Sampler	Örnekleyici
+Sampler (built in)	Örnekleyici (yerleşik)
 Save	Kaydet
 Save as	Farklı kaydet
+Save as preset	Ön ayar olarak kaydet
 Save as template	Şablon olarak kaydet
 Save as...	Farklı kaydet...
 Save channel preset	Kanal ön ayarını kaydet
 Save layout	Yerleşimi kaydet
 Save layout as...	Yerleşimi farklı kaydet...
 Save mixer preset	Mikser ön ayarını kaydet
+Save plugin preset	Eklenti ön ayarını kaydet
 Save score	Nota dosyasını kaydet
 Save the changes to {project} first?	Önce {project} üzerindeki değişiklikler kaydedilsin mi?
+Save the piano roll's notes here	Piyano rulosunun notalarını buraya kaydet
+Save the selected channel here	Seçili kanalı buraya kaydet
+Save the selected insert here	Seçili mikser yolunu buraya kaydet
 Save the windows as they are now, under the name:	Pencereleri şu anki halleriyle şu ad altında kaydet:
+Save this project as a template	Bu projeyi şablon olarak kaydet
 Saves a channel, with its samples and plugin states, as a .bodochannel file in the library.	Bir kanalı örnekleri ve eklenti durumlarıyla birlikte kitaplıkta bir .bodochannel dosyası olarak kaydeder.
 Saves a copy of the project in the library's Templates folder, for project.new to start from.	Projenin bir kopyasını, project.new komutunun başlangıç noktası olarak kitaplığın Templates klasörüne kaydeder.
 Saves a mixer insert's settings and FX slots as a .bodomixer file in the library.	Bir mikser yolunun ayarlarını ve efekt yuvalarını kitaplıkta bir .bodomixer dosyası olarak kaydeder.
 Saves one channel's notes in a pattern as a .bodoscore file in the library.	Bir desendeki tek bir kanalın notalarını kitaplıkta bir .bodoscore dosyası olarak kaydeder.
 Saves the project to a new file, which becomes its file.	Projeyi yeni bir dosyaya kaydeder; bu dosya projenin dosyası olur.
 Saves the project to its file, or to path.	Projeyi kendi dosyasına ya da path yoluna kaydeder.
+Saves the settings of an FX slot's effect as a .bodopreset file in the library.	Bir efekt yuvasındaki efektin ayarlarını kitaplıkta bir .bodopreset dosyası olarak kaydeder.
 Saves the windows as they are now as a layout: {"name": "Two screens"}.	Pencereleri şu anki halleriyle bir yerleşim olarak kaydeder: {"name": "Two screens"}.
 Scale	Gam
+Scores	Notalar
 Search library	Kitaplıkta ara
+Search results	Arama sonuçları
 Search shortcuts	Kısayollarda ara
 Search sounds	Ses ara
+Search the library	Kitaplıkta ara
 Select	Seç
 Select (E): drag a box to select clips; Shift adds or removes	Seçim (E): klipleri seçmek için bir kutu sürükleyin; Shift ekler ya da çıkarır
 Select (E): drag a box to select notes; Shift adds or removes	Seçim (E): notaları seçmek için bir kutu sürükleyin; Shift ekler ya da çıkarır
@@ -768,6 +942,7 @@ Set pattern color	Desen rengini ayarla
 Set pattern lane	Desen şeridini ayarla
 Set pattern length	Desen uzunluğunu ayarla
 Set play mode	Çalma modunu ayarla
+Set plugin sandbox	Eklentinin korumalı alanını ayarla
 Set project information	Proje bilgilerini ayarla
 Set record format	Kayıt biçimini ayarla
 Set record tap	Kayıt alma noktasını ayarla
@@ -802,6 +977,7 @@ Sets an insert's track latency: positive declares latency, negative delays the i
 Sets any of a sampler channel's settings: the played part and loop, content options, declicking, envelopes, filter, stretch, precomputed effects and arpeggiator.	Bir örnekleyici kanalının ayarlarından herhangi birini ayarlar: çalınan bölüm ve döngü, içerik seçenekleri, tık giderme, zarflar, filtre, esnetme, önceden hesaplanan efektler ve arpejatör.
 Sets clips' length; a clip longer than its pattern repeats it.	Kliplerin uzunluğunu ayarlar; deseninden uzun bir klip deseni yineler.
 Sets each note's length to a share of the time until the next one, from staccato to legato.	Her notanın uzunluğunu staccato'dan legato'ya kadar bir sonrakine kalan sürenin bir payı olarak ayarlar.
+Sets gain, pan and stereo width, inverts polarity, or sums to mono.	Kazancı, panı ve stereo genişliği ayarlar, polariteyi ters çevirir ya da monoya toplar.
 Sets how an audio clip channel follows the tempo: none, resample or stretch.	Bir ses klibi kanalının tempoyu nasıl izleyeceğini ayarlar: none, resample ya da stretch.
 Sets how late every second step plays, from 0 to 1.	Her ikinci adımın ne kadar geç çalacağını 0 ile 1 arasında ayarlar.
 Sets how mono sources spread as they pan, for the whole project.	Mono kaynakların pan yapılırken nasıl yayılacağını tüm proje için ayarlar.
@@ -826,18 +1002,27 @@ Sets the theme: {"theme": "Dark" | "Light" | "High contrast" | "System"}.	Temay�
 Sets the time signature at the start of the song.	Şarkının başındaki zaman imzasını ayarlar.
 Sets the tool of the editor used last, or of {"window": "playlist" or "pianoRoll"}: draw, paint, delete, mute, slip (playlist only), slice, select, zoom or playback.	Son kullanılan düzenleyicinin ya da {"window": "playlist" veya "pianoRoll"} penceresinin aracını ayarlar: draw, paint, delete, mute, slip (yalnızca çalma listesi), slice, select, zoom ya da playback.
 Sets when an insert skips delay compensation: never, always or whileRecording.	Bir mikser yolunun gecikme dengelemesini ne zaman atlayacağını ayarlar: never, always ya da whileRecording.
+Sets where an FX slot's plugin runs: in Bodo, in the shared bridge, per vendor or on its own. Native effects always run in Bodo.	Bir efekt yuvasındaki eklentinin nerede çalışacağını ayarlar: Bodo'da, paylaşılan köprüde, üretici başına bir köprüde ya da kendi köprüsünde. Yerleşik efektler her zaman Bodo'da çalışır.
 Sets where on its strip an armed insert records from.	Kayda hazır bir mikser yolunun kendi şeridinde nereden kayıt alacağını ayarlar.
 Sets whether an insert feeds the master; toggles without `on`.	Bir mikser yolunun ana çıkışı besleyip beslemediğini ayarlar; `on` olmadan durumunu değiştirir.
+Shared bridge	Paylaşılan köprü
 Shifts a channel's pitch in cents.	Bir kanalın perdesini sent olarak kaydırır.
 Short fades at the start and end of notes against clicks	Tıklamalara karşı notaların başında ve sonunda kısa geçişler
+Show only what is tagged {tag}	Yalnızca {tag} etiketlileri göster
 Show or hide a window	Bir pencereyi göster ya da gizle
 Show or hide the Browser	Tarayıcıyı göster ya da gizle
 Show or hide the browser	Tarayıcıyı göster ya da gizle
+Show or hide the insert panel: the selected insert's effects, EQ and outputs	Mikser yolu panelini göster ya da gizle: seçili mikser yolunun efektleri, EQ'su ve çıkışları
 Show or hide the {window}	{window} penceresini göster ya da gizle
+Show the routes as a graph of inserts, or the strips again	Yönlendirmeleri mikser yollarının grafiği olarak ya da yeniden şeritler olarak göster
 Show the Sampler's envelope settings	Örnekleyicinin zarf ayarlarını göster
 Show the Sampler's sample settings	Örnekleyicinin örnek ayarlarını göster
+Showing what is tagged {tag}: click to stop	{tag} etiketliler gösteriliyor: durdurmak için tıklayın
 Shows or hides the browser on the left.	Soldaki tarayıcıyı gösterir ya da gizler.
 Shows or hides the channel rack, playlist, piano roll or mixer: {"window": "mixer"}.	Kanal rafını, çalma listesini, piyano rulosunu ya da mikseri gösterir veya gizler: {"window": "mixer"}.
+Sidechain from	Yan zincir kaynağı
+Sidechain: none, choose one from the slot's menu	Yan zincir: yok; yuvanın menüsünden bir tane seçin
+Sidechain: set	Yan zincir: ayarlı
 Silent	Sessiz
 Single note	Tek nota
 Slice (C): drag a line to cut every clip it crosses; Shift draws a slanted line	Dilimleme (C): kestiği her klibi bölmek için bir çizgi sürükleyin; Shift eğik bir çizgi çizer
@@ -845,12 +1030,19 @@ Slice (C): drag a line to cut the notes it crosses; Shift slants it	Dilimleme (C
 Slice clips	Klipleri dilimle
 Slice notes	Notaları dilimle
 Slice tool	Dilimleme aracı
+Sliced audio	Dilimlenmiş sesler
 Slide	Kaydırma
 Slide to the next note	Sonraki notaya kayarak geç
 Slides the content inside clips without moving or resizing them.	Kliplerin içeriğini, klipleri taşımadan ya da boyutlandırmadan kaydırır.
 Slip (S): drag a clip sideways to slide what plays inside it	İç kaydırma (S): içinde çalanı kaydırmak için bir klibi yana sürükleyin
 Slip clips	Kliplerin içini kaydır
 Slip tool	İç kaydırma aracı
+Slot {slot} mix	Yuva {slot} karışımı
+Slot {slot} mix: {percent}% wet	Yuva {slot} karışımı: %{percent} ıslak
+Slot {slot} on	Yuva {slot} açık
+Slot {slot}: click to load an effect, or drop one from the Browser	Yuva {slot}: efekt yüklemek için tıklayın ya da Tarayıcı'dan bir tane bırakın
+Slot {slot}: turn it on or off; off, it keeps its latency	Yuva {slot}: açın ya da kapatın; kapalıyken gecikmesini korur
+Slot {slot}: {effect}. Double-click to edit it, drag to move it, right-click for more	Yuva {slot}: {effect}. Düzenlemek için çift tıklayın, taşımak için sürükleyin, diğer seçenekler için sağ tıklayın
 Smaller	Daha küçük
 Smooth	Yumuşak
 Smooth the loop by crossfading its end into the audio before its start	Döngünün sonunu başlangıcından önceki sese çapraz geçişle karıştırarak döngüyü yumuşat
@@ -862,6 +1054,10 @@ Solo {name}: while any track is soloed, only soloed tracks play	{name} parçası
 Solos or unsolos an insert, alone with `exclusive`; toggles without `on`.	Bir mikser yolunu solo yapar ya da solodan çıkarır, `exclusive` ile tek başına; `on` olmadan durumunu değiştirir.
 SONG	ŞARKI
 Song mode loops this region; click to stop looping	Şarkı modu bu bölgeyi döngüde çalar; döngüyü durdurmak için tıklayın
+Soundfonts	Soundfont'lar
+Sounds	Sesler
+Speaker	Hoparlör
+Speech	Konuşma
 Split by channel	Kanallara göre böl
 Splits notes into pieces of a length.	Notaları belirli uzunlukta parçalara böler.
 st	yt
@@ -873,12 +1069,18 @@ Start (ticks)	Başlangıç (tik)
 Starts a new project from a template, replacing the current one.	Bir şablondan, geçerli projenin yerine geçen yeni bir proje başlatır.
 Starts playing and recording the armed inserts, or stops a recording; the takes land on the playlist.	Çalmaya ve kayda hazır mikser yollarını kaydetmeye başlar ya da bir kaydı durdurur; kayıtlar çalma listesine eklenir.
 Starts playing from the song position.	Şarkı konumundan çalmaya başlar.
+Stems	Stem'ler
+Stems (owned)	Stem'ler (sahip olunan)
+Stems and the mix	Stem'ler ve miks
+Stems folder	Stem klasörü
 Step	Adım
 stereo separation	stereo ayrımı
+Stereo separation	Stereo ayrımı
 Stop	Durdur
 Stop and return to the start	Durdur ve başa dön
 Stop playing {name} from this layer	{name} kanalını bu katmandan çıkar
 Stops playing and returns to the start.	Çalmayı durdurur ve başa döner.
+Stops the export; the files written so far stay	Dışa aktarmayı durdurur; o ana kadar yazılan dosyalar kalır
 Stream the sample from disk instead of loading it, where the playback allows	Çalma izin verdiği ölçüde örneği yüklemek yerine diskten akışla oku
 Stretch	Esnetme
 Stretch mode	Esnetme modu
@@ -901,15 +1103,24 @@ Switch layout	Yerleşimi değiştir
 System	Sistem
 System language	Sistem dili
 Tag file	Dosyayı etiketle
+Tag {name}	Etiketle: {name}
 Target	Hedef
+Templates	Şablonlar
 Tempo	Tempo
+Tempo-synced echo with feedback, a high cut and optional ping-pong.	Tempoya eşlenmiş, geri beslemeli, tiz kesmeli ve isteğe bağlı ping-pong'lu yankı.
 Tenuto	Tenuto
 The audio device went away; open Options > Audio settings to reconnect	Ses aygıtı bağlantısı kesildi; yeniden bağlanmak için Seçenekler > Ses ayarları'nı açın
 The audio engine could not start: {error}	Ses motoru başlatılamadı: {error}
 The Bodo Assistant arrives in a later version	Bodo Asistan sonraki bir sürümde geliyor
 The Bodo Drums factory kit is CC0: use it in your music freely.	Bodo Drums hazır davul seti CC0 lisanslıdır: müziğinizde özgürce kullanabilirsiniz.
 The channel whose notes the piano roll edits	Piyano rulosunun notalarını düzenlediği kanal
+The channel {name}	{name} kanalı
 The current pattern: the channel rack edits it and Pattern mode plays it	Geçerli desen: kanal rafı onu düzenler ve Desen modu onu çalar
+The device input this insert records and monitors	Bu mikser yolunun kaydettiği ve dinlettiği aygıt girişi
+The EQ's response: the low shelf, the peaking mid and the high shelf together	EQ'nun yanıtı: bas raf, tepe tipi orta ve tiz raf birlikte
+The export could not start: {error}	Dışa aktarma başlatılamadı: {error}
+The export stopped unexpectedly	Dışa aktarma beklenmedik şekilde durdu
+The factory content wasn't found	Hazır içerik bulunamadı
 The fade in of every clip of this channel	Bu kanalın her klibinin giriş geçişi
 The fade out of every clip of this channel	Bu kanalın her klibinin çıkış geçişi
 The filter every voice goes through	Her sesin içinden geçtiği filtre
@@ -919,25 +1130,40 @@ The highlighted scale; click to turn the highlight off	Vurgulanan gam; vurguyu k
 The interface keys: Cmd or Ctrl with + and - change its size, and 0 goes back to Auto.	Arayüz tuşları: Cmd ya da Ctrl ile + ve - boyutunu değiştirir, 0 Otomatik'e geri döner.
 The key that plays the sample at its own pitch; slices start here	Örneği kendi perdesinde çalan tuş; dilimler burada başlar
 The layout's new name:	Yerleşimin yeni adı:
+The library folder ({place}): click to choose another	Kitaplık klasörü ({place}): başka birini seçmek için tıklayın
+The loop	Döngü
 The lowest key the sampler plays	Örnekleyicinin çaldığı en alçak tuş
 The Marketplace arrives in a later version	Pazar yeri sonraki bir sürümde geliyor
 The master output level	Ana çıkış düzeyi
 The MIDI channel, 1 to 16	MIDI kanalı, 1 ile 16 arası
 The MIDI port this channel's notes go to	Bu kanalın notalarının gittiği MIDI portu
+The mix	Miks
 The mixer insert this channel plays into	Bu kanalın çaldığı mikser yolu
+The mixer's options: strip size, clip lights, solo and the pan law	Mikser seçenekleri: şerit boyutu, kırpılma ışıkları, solo ve pan yasası
 The most notes the sampler plays at once	Örnekleyicinin aynı anda çaldığı en fazla nota
 The order the held keys play in	Basılı tuşların çalınma sırası
+The oscilloscope: the master output's wave, the last 20 ms or so	Osiloskop: ana çıkışın dalgası, yaklaşık son 20 ms
 The recording could not be placed: {error}	Kayıt yerleştirilemedi: {error}
 The ruler: click to move the song position, drag to select time, Shift+drag to set the loop, right-click the selection for its menu or elsewhere to add a marker	Cetvel: şarkı konumunu taşımak için tıklayın, zaman seçmek için sürükleyin, döngüyü ayarlamak için Shift ile sürükleyin, menüsü için seçime ya da işaretçi eklemek için başka bir yere sağ tıklayın
+The selection	Seçim
+The share of real time this insert takes to process	Bu mikser yolunun işlenirken gerçek zamandan aldığı pay
+The song	Şarkı
 The song position; click to switch between bars:steps:ticks and minutes:seconds	Şarkı konumu; ölçü:adım:tik ile dakika:saniye arasında geçiş için tıklayın
 The tempo the audio was made at, which Resample and Stretch match to the project's	Sesin yapıldığı tempo; Yeniden örnekleme ve Esnetme bunu projeninkine uydurur
 The tempo: drag, or double-click to type	Tempo: sürükleyin ya da yazmak için çift tıklayın
 Theme	Tema
+There is no sound to preview through	Ön dinleme için ses çıkışı yok
+This effect has no sidechain input	Bu efektin yan zincir girişi yok
+This plugin's own editor opens once plugin hosting arrives; until then it passes audio through.	Bu eklentinin kendi düzenleyicisi eklenti barındırma geldiğinde açılır; o zamana kadar sesi olduğu gibi geçirir.
+Threshold	Eşik
 Time	Süre
 Time from one note to the next	Bir notadan sonrakine kadar geçen süre
 Time stretching	Zaman esnetme
+To the master	Ana çıkışa
 Toggle step	Adımı aç ya da kapat
 Tools	Araçlar
+Track latency	Parça gecikmesi
+Track latency: positive declares latency the insert has, negative delays it	Parça gecikmesi: pozitif değer mikser yolunun gecikmesini bildirir, negatif değer onu geciktirir
 Transient	Geçici
 Transpose down an octave	Bir oktav aşağı aktar
 Transpose notes	Notaları aktar
@@ -956,6 +1182,7 @@ Typing keyboard	Yazı klavyesi
 Typing keyboard: the computer keyboard plays the selected channel, Z to M from C4 and Q to U from C5	Yazı klavyesi: bilgisayar klavyesi seçili kanalı çalar, C4'ten itibaren Z ile M, C5'ten itibaren Q ile U
 Un-humanize	İnsansılaştırmayı geri al
 Un-humanize notes	Notaların insansılaştırmasını geri al
+unchanged	değişmez
 Undo	Geri al
 Undo {step}	Geri al: {step}
 Undoes the last change to the project.	Projedeki son değişikliği geri alır.
@@ -964,12 +1191,16 @@ Ungroup tracks	Parçaların grubunu dağıt
 Unlock	Kilidi aç
 Unsaved changes	Kaydedilmemiş değişiklikler
 Unsolo	Solodan çıkar
+Unsolo all	Tümünü solodan çıkar
 Unsorted	Grupsuz
 Unticked inputs stay closed after Apply. A port bound to channels plays them; any other port plays the selected channel.	İşaretlenmemiş girişler Uygula'dan sonra kapalı kalır. Kanallara bağlı bir port onları çalar; diğer portlar seçili kanalı çalar.
 Untitled	Adsız
 Up	Yukarı
 Up and down	Yukarı ve aşağı
+Up to the folder above	Üst klasöre çık
 Use it here	Burada kullan
+User data	Kullanıcı verileri
+Utility	Yardımcı
 Vel	Güç
 Velocity	Vuruş gücü
 Version {version}	Sürüm {version}
@@ -983,46 +1214,94 @@ Volume envelope	Ses düzeyi zarfı
 Volume release	Ses düzeyi bırakması
 Volume sustain	Ses düzeyi sürdürmesi
 Volume: {percent}%	Ses düzeyi: %{percent}
+W	G
+Wave	Dalga
+When this insert skips delay compensation, for monitoring with the least latency	Bu mikser yolunun gecikme dengelemesini ne zaman atlayacağı; en az gecikmeyle dinlemek için
+Whether this insert feeds the master	Bu mikser yolunun ana çıkışı besleyip beslemediği
 Which channels the rack shows: all, those in no group, or one group	Rafın hangi kanalları gösterdiği: tümü, grupsuz olanlar ya da tek bir grup
+While recording	Kayıt sırasında
 whole tone	tam ton
+Wide	Geniş
+Width	Genişlik
 Windows	Pencereler
 Writes a pattern as a MIDI file, one track per channel.	Bir deseni her kanal için bir parça olacak şekilde MIDI dosyası olarak yazar.
 Writes the whole playlist as a MIDI file, every clip as it plays, one track per channel.	Tüm çalma listesini, her klibi çaldığı gibi, her kanal için bir parça olacak şekilde MIDI dosyası olarak yazar.
+Wrote {place}	{place} yazıldı
+XC	ÇD
+You can close this dialog and keep working while it renders.	İşlenirken bu pencereyi kapatıp çalışmaya devam edebilirsiniz.
 Zoom (Z): drag a box to zoom to it, click to zoom in, right-click to zoom out	Yakınlaştırma (Z): yakınlaştırmak için bir kutu sürükleyin, yakınlaşmak için tıklayın, uzaklaşmak için sağ tıklayın
 Zoom (Z): drag a box to zoom to it; click to zoom in, right-click to zoom out	Yakınlaştırma (Z): yakınlaştırmak için bir kutu sürükleyin; yakınlaşmak için tıklayın, uzaklaşmak için sağ tıklayın
 Zoom tool	Yakınlaştırma aracı
+{band} band frequency	{band} bandı frekansı
+{band} band frequency: {value}	{band} bandı frekansı: {value}
+{band} band gain	{band} bandı kazancı
+{band} band gain: {value}	{band} bandı kazancı: {value}
+{band} band Q	{band} bandı Q
+{band} band {value} (for the shelves, the slope)	{band} bandı {value} (raflarda eğim)
 {beats} beats	{beats} vuruş
 {count} clips on the playlist, from {at}	Çalma listesinde {count} klip, {at} konumundan
 {count} regions from {key}	{key} tuşundan itibaren {count} bölge
 {count} slices from {key}	{key} tuşundan itibaren {count} dilim
 {device} ({count} in)	{device} ({count} giriş)
+{effect} - Insert {number} slot {slot}	{effect} - Yol {number} yuva {slot}
+{effect} - Master slot {slot}	{effect} - Ana çıkış yuva {slot}
 {frames} frames	{frames} kare
 {frames} frames ({ms} ms)	{frames} kare ({ms} ms)
 {insert} slot {slot} {param}	{insert} yuva {slot} {param}
 {megabytes} MB	{megabytes} MB
+{name} armed: recording takes its input	{name} kayda hazır: kayıt girişini alır
+{name} meter	{name} ölçeri
 {name} on	{name} açık
 {name} pan	{name} pan
+{name} pan: {value}	{name} pan: {value}
 {name} pan: {value}; right-click to automate it	{name} pan: {value}; otomasyon için sağ tıklayın
 {name} plays into insert {number}; click to choose	{name}, {number} numaralı mikser yoluna çalıyor; seçmek için tıklayın
 {name} plays into the master; click to choose	{name}, ana çıkışa çalıyor; seçmek için tıklayın
+{name} separation	{name} ayrımı
+{name} solo: click to solo, Cmd/Ctrl click to solo it alone	{name} solo: solo yapmak için tıklayın, tek başına solo yapmak için Cmd/Ctrl ile tıklayın
 {name} step {number}	{name} adım {number}
 {name} steps: click to toggle, drag to paint, right-drag to clear	{name} adımları: açıp kapatmak için tıklayın, boyamak için sürükleyin, temizlemek için sağ sürükleyin
+{name} stereo separation: {value}	{name} stereo ayrımı: {value}
 {name} volume	{name} ses düzeyi
 {name} volume: {percent}%; right-click to automate it	{name} ses düzeyi: %{percent}; otomasyon için sağ tıklayın
+{name} went over 0 dB: click to clear the clip light	{name} 0 dB'yi aştı: kırpılma ışığını söndürmek için tıklayın
 {name} window pan	{name} pencere panı
 {name} window pitch	{name} pencere perdesi
 {name} window volume	{name} pencere ses düzeyi
 {name}, an audio clip: click to make it current; the draw tool places it	{name}, bir ses klibi: geçerli yapmak için tıklayın; çizim aracı onu yerleştirir
 {name}, an automation clip: click to make it current; the draw tool places it	{name}, bir otomasyon klibi: geçerli yapmak için tıklayın; çizim aracı onu yerleştirir
+{name}: a plugin; Bodo loads it once plugin hosting arrives	{name}: bir eklenti; Bodo onu eklenti barındırma geldiğinde yükler
+{name}: an autosave; double-click to open it as an unsaved project	{name}: bir otomatik kayıt; kaydedilmemiş bir proje olarak açmak için çift tıklayın
+{name}: click to arm it for recording	{name}: kayda hazırlamak için tıklayın
 {name}: click to fold or unfold its tracks, right-click to rename or ungroup	{name}: parçalarını katlamak ya da açmak için tıklayın, yeniden adlandırmak ya da grubu dağıtmak için sağ tıklayın
+{name}: click to hear it, double-click to add a channel, or drag it onto the channel rack or a playlist track	{name}: dinlemek için tıklayın, kanal eklemek için çift tıklayın ya da kanal rafına veya bir çalma listesi parçasına sürükleyin
 {name}: click to make it current; the draw tool places it	{name}: geçerli yapmak için tıklayın; çizim aracı onu yerleştirir
 {name}: click to mute or unmute	{name}: susturmak ya da sesini açmak için tıklayın
+{name}: click to select it	{name}: seçmek için tıklayın
 {name}: click to select, double-click for the piano roll, drag to move, right-click for more	{name}: seçmek için tıklayın, piyano rulosu için çift tıklayın, taşımak için sürükleyin, daha fazlası için sağ tıklayın
 {name}: click to select, double-click to draw it on the playlist, drag to move, right-click for more	{name}: seçmek için tıklayın, çalma listesine çizmek için çift tıklayın, taşımak için sürükleyin, daha fazlası için sağ tıklayın
+{name}: click to select, Shift or Cmd/Ctrl click to group, right-click for more	{name}: seçmek için tıklayın, gruplamak için Shift ya da Cmd/Ctrl ile tıklayın, diğer seçenekler için sağ tıklayın
+{name}: double-click to add it as a channel, or drop it on a channel to replace that channel	{name}: kanal olarak eklemek için çift tıklayın ya da o kanalın yerine koymak için bir kanalın üzerine bırakın
+{name}: double-click to add its notes to the piano roll's channel, or drop it on a channel	{name}: notalarını piyano rulosunun kanalına eklemek için çift tıklayın ya da bir kanalın üzerine bırakın
+{name}: double-click to import it as a new pattern	{name}: yeni bir desen olarak içe aktarmak için çift tıklayın
+{name}: double-click to load it into the slot chosen in the mixer, or drop it on a slot or strip	{name}: mikserde seçili yuvaya yüklemek için çift tıklayın ya da bir yuvanın veya şeridin üzerine bırakın
+{name}: double-click to load it on the selected insert, or drop it on a mixer strip	{name}: seçili mikser yoluna yüklemek için çift tıklayın ya da bir mikser şeridinin üzerine bırakın
+{name}: double-click to open it	{name}: açmak için çift tıklayın
+{name}: double-click to start a new project from it	{name}: bundan yeni bir proje başlatmak için çift tıklayın
+{name}: no clipping	{name}: kırpılma yok
+{name}: reverse the polarity, before the effects	{name}: polariteyi efektlerden önce ters çevir
+{name}: swap left and right, before the effects	{name}: sol ve sağı efektlerden önce yer değiştir
+{name}: the audio input it records; click to choose	{name}: kaydettiği ses girişi; seçmek için tıklayın
+{name}: {description} Drag it onto a mixer strip or slot, or double-click to load it on the selected insert	{name}: {description} Bir mikser şeridine ya da yuvasına sürükleyin veya seçili mikser yoluna yüklemek için çift tıklayın
+{name}: {value}; double-click for 0 dB, Alt drags the selected faders together	{name}: {value}; 0 dB için çift tıklayın, Alt seçili fader'ları birlikte sürükler
+{name}: {value}; right-click to automate it	{name}: {value}; otomasyon için sağ tıklayın
+{percent}% narrower	%{percent} daha dar
+{percent}% wider	%{percent} daha geniş
 {points} points, 1 clip on the playlist	{points} nokta, çalma listesinde 1 klip
 {points} points, {clips} clips on the playlist	{points} nokta, çalma listesinde {clips} klip
 {port} (closed)	{port} (kapalı)
 {port} (in use)	{port} (kullanımda)
+{size} strips	{size} şeritler
 {start} to {end}	{start} - {end}
 {ticks} ticks	{ticks} tik
 Assign to mixer track	Mikser yoluna ata
