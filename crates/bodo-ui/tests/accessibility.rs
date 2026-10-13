@@ -109,6 +109,10 @@ fn f10_reaches_the_menus_and_escape_closes_an_open_one() {
     assert_eq!(focused(&h).as_deref(), Some("Menu File"));
     press(&mut h, Key::Space);
     assert!(egui::Popup::is_any_open(&h.ctx), "Space opens the focused menu");
+    press(&mut h, Key::ArrowDown);
+    press(&mut h, Key::ArrowDown);
+    let item = focused(&h);
+    assert!(item.as_deref() != Some("Menu File") && egui::Popup::is_any_open(&h.ctx), "the arrows move into the menu: {item:?}");
     press(&mut h, Key::Escape);
     assert!(!egui::Popup::is_any_open(&h.ctx), "Escape closes it");
 }
