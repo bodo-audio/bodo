@@ -69,7 +69,7 @@ pub(crate) fn import(ctx: &mut Ctx<'_>, text: &str) -> Result<SampleId, CommandE
 }
 
 /// The file name of `path` without its extension, as a channel name.
-pub(crate) fn display_name(path: &str) -> String {
+pub fn display_name(path: &str) -> String {
     let name = path.rsplit(['/', '\\', ':']).next().unwrap_or(path);
     name.rsplit_once('.').map_or(name, |(stem, _)| stem).to_owned()
 }

@@ -73,8 +73,13 @@ impl<'a> StepRow<'a> {
     }
 
     /// The left edge of step `index`, relative to the row's left edge.
-    fn offset(&self, index: usize) -> f32 {
+    pub fn offset(&self, index: usize) -> f32 {
         index as f32 * (self.step_size.x + self.gap) + (index / GROUP) as f32 * self.group_gap
+    }
+
+    /// The size of one step.
+    pub fn size(&self) -> Vec2 {
+        self.step_size
     }
 
     /// The row's width in points.

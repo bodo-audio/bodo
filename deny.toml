@@ -56,4 +56,7 @@ deny = [
 unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
-allow-git = []
+allow-git = [
+    # craft-ui (MIT OR Apache-2.0), the shared egui components of the owner's apps (ADR 0001).
+    "https://github.com/storytold/craft-libs",
+]

@@ -14,7 +14,7 @@ use bodo_model::{ChannelId, Note, NoteId, Pattern, PatternId, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{pattern_length, unique_name};
+use super::{pattern_length, unique_name, whole};
 use crate::error::CommandError;
 use crate::palette;
 use crate::params::{ChannelRef, ColorText, Length, PatternRef, STEP, format_length};
@@ -369,7 +369,8 @@ pub(super) fn register(r: &mut Registry) {
     )
     .example(json!({ "channel": "Kick", "steps": "x... x... x... x..." }));
     r.edit("pattern.toggle_step", "Toggle step", "Turns one step of a channel on or off.", Effects::UNDOABLE, toggle_step)
-        .example(json!({ "channel": "Clap", "step": 5 }));
+        .example(json!({ "channel": "Clap", "step": 5 }))
+        .merge(whole);
     r.edit(
         "ui.select_pattern",
         "Select pattern",

@@ -29,6 +29,7 @@ bodo-io = { path = "crates/bodo-io" }
 bodo-mcp = { path = "crates/bodo-mcp" }
 bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
+bodo-ui = { path = "crates/bodo-ui" }
 
 # Real-time
 atomic_refcell = "0.1.14"
@@ -54,6 +55,11 @@ midly = { version = "0.5.3", default-features = false, features = ["std"] }
 
 # GUI. No default features: libraries draw with the fonts the app installs; apps and tests turn on `default_fonts`.
 egui = { version = "0.36.2", default-features = false }
+eframe = { version = "0.36.2", default-features = false }
+# Shared egui components of the owner's apps (ADR 0001): icon buttons, resize handles, tabs. Pinned by commit.
+craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "e9546e191dd62f2bc1d61eca45dbdc2f1b3c1d8e" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+rfd = "0.17.2"
 
 # Data, errors and logging
 blake3 = "1.8.7"

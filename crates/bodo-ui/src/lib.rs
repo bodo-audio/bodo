@@ -1,0 +1,489 @@
+//! The Bodo interface (project.md section 14, ADRs 0001 and 0012).
+//!
+//! [`BodoApp`] is the whole main window: the two-row top bar, the Browser on the left, and the workspace with the free
+//! windows (Channel Rack, Playlist, Piano Roll, Mixer). It owns the editing session and the audio engine. The UI
+//! never owns document data: every change goes through [`BodoApp::run`], which calls the session's commands, and every
+//! frame draws from the session's current snapshot.
+//!
+//! - [`theme`]: design tokens and egui styling.
+//! - [`windows`]: free windows and layouts.
+//! - [`audio`]: the audio device and engine, kept in step with the session.
+//! - [`control`] and [`remote`]: automation through the control channel, for agents and tests.
+
+#![forbid(unsafe_code)]
+
+pub mod audio;
+mod autosave;
+mod browser;
+pub mod control;
+mod dialogs;
+mod mixer;
+mod palette;
+mod piano_roll;
+mod playlist;
+mod rack;
+pub mod remote;
+pub mod screenshot;
+mod shortcuts;
+pub mod theme;
+mod topbar;
+pub mod windows;
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+use bodo_engine::{Call, CommandError, Session};
+use bodo_model::Project;
+use serde_json::{Value, json};
+
+pub use crate::autosave::{end_session, start_session};
+use crate::theme::{ThemePref, Tokens};
+use crate::windows::{Layout, Preset, WindowKind};
+
+/// The storage key of the preferences.
+pub const PREFS_KEY: &str = "bodo.prefs";
+
+/// Asks the user for a file or folder; `None` when they cancel.
+pub type PickPath = Box<dyn Fn() -> Option<PathBuf>>;
+/// Asks the user where to save, suggesting a file name.
+pub type PickSave = Box<dyn Fn(&str) -> Option<PathBuf>>;
+/// Asks the user for some files.
+pub type PickFiles = Box<dyn Fn() -> Vec<PathBuf>>;
+
+/// File dialogs and other services the app shell provides. Tests leave them empty.
+#[derive(Default)]
+pub struct Services {
+    /// Asks for a project to open.
+    pub pick_open: Option<PickPath>,
+    /// Asks where to save a project, suggesting a file name.
+    pub pick_save: Option<PickSave>,
+    /// Asks for audio files to load.
+    pub pick_samples: Option<PickFiles>,
+    /// Asks for a folder of sounds to add to the browser.
+    pub pick_folder: Option<PickPath>,
+}
+
+/// What the user chose, kept between runs. Window layouts belong here, not in projects.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Prefs {
+    /// The theme.
+    pub theme: ThemePref,
+    /// The window layout.
+    pub layout: Layout,
+    /// Folders of the user's own sounds.
+    pub library: Vec<PathBuf>,
+    /// Recently opened or saved projects, newest first.
+    pub recent: Vec<PathBuf>,
+    /// Minutes between autosaves; 0 turns autosave off.
+    pub autosave_minutes: u32,
+    /// The audio device.
+    pub audio: audio::AudioPrefs,
+}
+
+impl Default for Prefs {
+    fn default() -> Self {
+        Self {
+            theme: ThemePref::Dark,
+            layout: Layout::default(),
+            library: Vec::new(),
+            recent: Vec::new(),
+            autosave_minutes: 5,
+            audio: audio::AudioPrefs::default(),
+        }
+    }
+}
+
+/// How positions snap in the editors (project.md section 10.3).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Snap {
+    /// Anywhere.
+    None,
+    /// A sixteenth note.
+    Step,
+    /// A beat.
+    #[default]
+    Beat,
+    /// A bar.
+    Bar,
+}
+
+impl Snap {
+    /// Every choice, in menu order.
+    pub const ALL: [Self; 4] = [Self::None, Self::Step, Self::Beat, Self::Bar];
+
+    /// Its name in the snap menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::None => "None",
+            Self::Step => "Step",
+            Self::Beat => "Beat",
+            Self::Bar => "Bar",
+        }
+    }
+
+    /// The grid in ticks, for `project`'s meter; 1 for none.
+    pub fn ticks(self, project: &Project) -> i64 {
+        let meter = project.meter.signature_at(bodo_kit_core::Tick::ZERO);
+        match self {
+            Self::None => 1,
+            Self::Step => bodo_engine::params::STEP.0,
+            Self::Beat => meter.beat_ticks(),
+            Self::Bar => meter.bar_ticks(),
+        }
+    }
+
+    /// `ticks` rounded down to the grid.
+    pub fn floor(self, project: &Project, ticks: f64) -> i64 {
+        let grid = self.ticks(project).max(1) as f64;
+        ((ticks / grid).floor() * grid) as i64
+    }
+
+    /// `ticks` rounded to the nearest grid line.
+    pub fn round(self, project: &Project, ticks: f64) -> i64 {
+        let grid = self.ticks(project).max(1) as f64;
+        ((ticks / grid).round() * grid) as i64
+    }
+}
+
+/// What the interface shows besides the project: tools, zoom, scroll, dialogs. Not saved.
+#[derive(Debug, Default)]
+pub struct View {
+    /// The snap of the playlist and piano roll.
+    pub snap: Snap,
+    /// The playlist's tool, zoom and scroll.
+    pub playlist: playlist::PlaylistView,
+    /// The piano roll's tool, zoom and scroll.
+    pub piano: piano_roll::PianoView,
+    /// The mixer's scroll.
+    pub mixer: mixer::MixerView,
+    /// The browser's tab, open folders and search.
+    pub browser: browser::BrowserView,
+    /// The command palette, while it is open.
+    pub palette: Option<palette::PaletteState>,
+    /// Dialogs and popups.
+    pub dialogs: dialogs::Dialogs,
+    /// What the hint bar says about the control under the pointer.
+    pub hint: Option<String>,
+    /// The gesture of the step stroke being painted, so it is one undo step.
+    pub step_gesture: Option<u64>,
+}
+
+/// The main window.
+pub struct BodoApp {
+    /// The editing session: the project, its history and the selection.
+    pub session: Session,
+    /// The user's preferences.
+    pub prefs: Prefs,
+    /// Tools, zoom, scroll and dialogs.
+    pub view: View,
+    /// The audio device and engine.
+    pub audio: audio::Audio,
+    /// File dialogs.
+    pub services: Services,
+    /// The control channel for agents and tests.
+    pub remote: remote::Remote,
+    /// Screenshots being taken.
+    pub shots: screenshot::Shots,
+    /// Bodo's data folder, for autosaves; `None` turns autosave off.
+    pub data_dir: Option<PathBuf>,
+    /// Set when the app should close.
+    pub quit_requested: bool,
+    /// Quit once the requested screenshot is saved (`--screenshot`).
+    pub quit_after_shot: bool,
+    autosave: autosave::Autosave,
+    shown_theme: Option<egui::Theme>,
+    status: Option<(String, bool, Instant)>,
+    gestures: std::collections::HashMap<egui::Id, u64>,
+    next_gesture: u64,
+}
+
+/// How long a status message stays in the hint bar.
+const STATUS_TIME: Duration = Duration::from_secs(6);
+
+impl BodoApp {
+    /// The app around `session`, with `prefs`. `audio` opens the audio device; tests leave it off.
+    pub fn new(session: Session, prefs: Prefs, services: Services, audio: bool) -> Self {
+        let audio = if audio { audio::Audio::start(&session, &prefs.audio) } else { audio::Audio::off() };
+        let mut app = Self {
+            session,
+            prefs,
+            view: View::default(),
+            audio,
+            services,
+            remote: remote::Remote::default(),
+            shots: screenshot::Shots::default(),
+            data_dir: None,
+            quit_requested: false,
+            quit_after_shot: false,
+            autosave: autosave::Autosave::default(),
+            shown_theme: None,
+            status: None,
+            gestures: std::collections::HashMap::new(),
+            next_gesture: 1,
+        };
+        app.sync_library();
+        app
+    }
+
+    /// The window title: the project's name and whether it has unsaved changes.
+    pub fn title(&self) -> String {
+        let project = self.session.project();
+        let name = if !project.meta.title.is_empty() {
+            project.meta.title.clone()
+        } else {
+            self.session.file().and_then(|f| f.file_stem()).map_or_else(|| String::from("Untitled"), |s| s.to_string_lossy().into_owned())
+        };
+        format!("{name}{}", if self.session.is_dirty() { " *" } else { "" })
+    }
+
+    /// Runs command `id` with `params`: a command of the session, or one of the interface's own (`ui.*` commands that
+    /// the session doesn't know). Shows the outcome in the hint bar.
+    pub fn run(&mut self, id: &str, params: Value) -> Result<Value, String> {
+        self.invoke(Call::new(id, params))
+    }
+
+    /// Runs `call`, which may belong to a gesture so a whole drag is one undo step.
+    pub fn invoke(&mut self, call: Call) -> Result<Value, String> {
+        if self.session.registry().get(&call.id).is_none()
+            && let Some(result) = self.ui_command(&call.id, &call.params)
+        {
+            return result;
+        }
+        match self.session.invoke(&call) {
+            Ok(output) => {
+                if let Some(undo) = &output.undo {
+                    self.set_status(undo.clone(), false);
+                }
+                self.after_command();
+                Ok(output.result)
+            }
+            Err(error) => {
+                self.report(&error);
+                Err(error.to_string())
+            }
+        }
+    }
+
+    /// Runs command `id` as part of the gesture of the widget with `response`: one undo step from the press to the
+    /// release.
+    pub fn run_gesture(&mut self, response: &egui::Response, id: &str, params: Value) {
+        if response.drag_started() || !self.gestures.contains_key(&response.id) {
+            self.next_gesture += 1;
+            self.gestures.insert(response.id, self.next_gesture);
+        }
+        let gesture = self.gestures.get(&response.id).copied();
+        let call = Call { id: id.to_owned(), params, gesture: gesture.filter(|_| response.dragged() || response.drag_stopped()) };
+        let _ = self.invoke(call);
+        if !response.dragged() {
+            self.gestures.remove(&response.id);
+        }
+    }
+
+    /// A new gesture id, for gestures that span several widgets, such as painting steps.
+    pub fn new_gesture(&mut self) -> u64 {
+        self.next_gesture += 1;
+        self.next_gesture
+    }
+
+    fn report(&mut self, error: &CommandError) {
+        let mut text = error.message.clone();
+        if let Some(hint) = &error.hint {
+            text.push_str(&format!(" ({hint})"));
+        }
+        self.set_status(text, true);
+    }
+
+    /// Shows `text` in the hint bar for a few seconds; `error` shows it in the error color.
+    pub fn set_status(&mut self, text: impl Into<String>, error: bool) {
+        self.status = Some((text.into(), error, Instant::now()));
+    }
+
+    /// The status message, if one is still showing, and whether it is an error.
+    pub fn status(&self) -> Option<(&str, bool)> {
+        self.status.as_ref().filter(|(_, _, at)| at.elapsed() < STATUS_TIME).map(|(text, error, _)| (text.as_str(), *error))
+    }
+
+    /// Commands of the interface itself, which aren't project edits. Returns `None` for an id it doesn't know.
+    fn ui_command(&mut self, id: &str, params: &Value) -> Option<Result<Value, String>> {
+        let text = |key: &str| params.get(key).and_then(Value::as_str).unwrap_or_default().to_owned();
+        let result = match id {
+            "ui.toggle_window" | "ui.open_window" => match WindowKind::from_id(&text("window")) {
+                Some(kind) => {
+                    let ctx = self.remote.ctx();
+                    match (id, ctx) {
+                        ("ui.open_window", Some(ctx)) => self.prefs.layout.open(&ctx, kind),
+                        (_, Some(ctx)) => self.prefs.layout.toggle(&ctx, kind),
+                        (_, None) => {
+                            let mut state = self.prefs.layout.state(kind);
+                            state.open = id == "ui.open_window" || !state.open;
+                            self.prefs.layout.windows.insert(kind, state);
+                        }
+                    }
+                    Ok(json!({ "window": kind.id(), "open": self.prefs.layout.is_open(kind) }))
+                }
+                None => Err(String::from("window must be channelRack, playlist, pianoRoll or mixer")),
+            },
+            "ui.toggle_browser" => {
+                self.prefs.layout.browser = !self.prefs.layout.browser;
+                Ok(json!({ "browser": self.prefs.layout.browser }))
+            }
+            "ui.set_layout" => match Preset::from_id(&text("layout")) {
+                Some(preset) => {
+                    self.prefs.layout =
+                        Layout { browser: self.prefs.layout.browser, browser_width: self.prefs.layout.browser_width, ..Layout::preset(preset) };
+                    Ok(json!({ "layout": preset.label() }))
+                }
+                None => Err(String::from("layout must be Default, Compose, Arrange or Mix")),
+            },
+            "ui.set_snap" => match Snap::ALL.into_iter().find(|s| s.label().eq_ignore_ascii_case(&text("snap"))) {
+                Some(snap) => {
+                    self.view.snap = snap;
+                    Ok(json!({ "snap": snap.label() }))
+                }
+                None => Err(String::from("snap must be None, Step, Beat or Bar")),
+            },
+            "ui.set_theme" => match ThemePref::ALL.into_iter().find(|t| t.label().eq_ignore_ascii_case(&text("theme"))) {
+                Some(theme) => {
+                    self.prefs.theme = theme;
+                    Ok(json!({ "theme": theme.label() }))
+                }
+                None => Err(String::from("theme must be Dark, Light or System")),
+            },
+            "ui.set_tool" => playlist::set_tool(self, &text("tool")),
+            "ui.open_piano_roll" => {
+                if let Some(channel) = params.get("channel").filter(|c| !c.is_null())
+                    && let Err(e) = self.session.execute("edit.select", json!({ "channel": channel }))
+                {
+                    return Some(Err(e.to_string()));
+                }
+                if let Some(ctx) = self.remote.ctx() {
+                    self.prefs.layout.open(&ctx, WindowKind::PianoRoll);
+                } else {
+                    let mut state = self.prefs.layout.state(WindowKind::PianoRoll);
+                    state.open = true;
+                    self.prefs.layout.windows.insert(WindowKind::PianoRoll, state);
+                }
+                Ok(json!({ "channel": self.session.editor().channel }))
+            }
+            "ui.palette" => {
+                self.view.palette = Some(palette::PaletteState::default());
+                Ok(json!({ "palette": true }))
+            }
+            _ => return None,
+        };
+        if let Err(error) = &result {
+            self.set_status(error.clone(), true);
+        }
+        Some(result)
+    }
+
+    /// The interface's own commands, for the palette and the control channel: id, title and summary.
+    pub fn ui_commands() -> &'static [(&'static str, &'static str, &'static str)] {
+        &[
+            ("ui.toggle_window", "Show or hide a window", "Shows or hides the channel rack, playlist, piano roll or mixer: {\"window\": \"mixer\"}."),
+            ("ui.open_window", "Open a window", "Opens and brings a window to the front: {\"window\": \"playlist\"}."),
+            ("ui.toggle_browser", "Show or hide the browser", "Shows or hides the browser on the left."),
+            ("ui.set_layout", "Switch layout", "Arranges the windows: {\"layout\": \"Default\" | \"Compose\" | \"Arrange\" | \"Mix\"}."),
+            ("ui.set_snap", "Set snap", "Sets the editors' snap: {\"snap\": \"None\" | \"Step\" | \"Beat\" | \"Bar\"}."),
+            ("ui.set_theme", "Set theme", "Sets the theme: {\"theme\": \"Dark\" | \"Light\" | \"System\"}."),
+            ("ui.set_tool", "Set playlist tool", "Sets the playlist's tool: {\"tool\": \"draw\" | \"delete\" | \"mute\"}."),
+            ("ui.open_piano_roll", "Open piano roll", "Opens the piano roll, optionally for a channel: {\"channel\": \"Kick\"}."),
+            ("ui.palette", "Command palette", "Opens the command palette."),
+        ]
+    }
+
+    /// Keeps the session's environment in step with the user's sample folders.
+    fn sync_library(&mut self) {
+        let mut env = self.session.env().clone();
+        if env.library != self.prefs.library {
+            env.library.clone_from(&self.prefs.library);
+            self.session.set_env(env);
+        }
+    }
+
+    /// Bookkeeping after any command: the audio engine, recent files.
+    fn after_command(&mut self) {
+        if let Some(file) = self.session.file().map(PathBuf::from)
+            && self.prefs.recent.first() != Some(&file)
+        {
+            self.prefs.recent.retain(|f| f != &file);
+            self.prefs.recent.insert(0, file);
+            self.prefs.recent.truncate(10);
+        }
+    }
+
+    /// Everything the frame needs before drawing: theme, shortcuts, the control channel, audio and autosave.
+    pub fn logic(&mut self, ctx: &egui::Context) {
+        let theme = self.prefs.theme.resolve(ctx.system_theme());
+        if self.shown_theme != Some(theme) {
+            theme::apply(ctx, theme);
+            self.shown_theme = Some(theme);
+        }
+        self.remote.set_ctx(ctx);
+        shortcuts::handle(self, ctx);
+        remote::drain(self, ctx);
+        self.audio.sync(&mut self.session);
+        if self.audio.is_playing() {
+            ctx.request_repaint_after(Duration::from_millis(16));
+        }
+        autosave::tick(self);
+        self.shots.tick(ctx);
+        if self.quit_after_shot
+            && let Some(done) = &self.shots.done
+        {
+            if let Err(error) = done {
+                tracing::error!(%error, "screenshot failed");
+            }
+            self.quit_requested = true;
+        }
+        if let Some((_, _, at)) = &self.status {
+            let left = STATUS_TIME.saturating_sub(at.elapsed());
+            if !left.is_zero() {
+                ctx.request_repaint_after(left);
+            }
+        }
+        self.sync_library();
+    }
+
+    /// Draws the main window.
+    pub fn ui(&mut self, ui: &mut egui::Ui) {
+        control::begin_frame(ui.ctx());
+        self.view.hint = None;
+        let tk = Tokens::get();
+        topbar::show(self, ui);
+        if self.prefs.layout.browser {
+            let panel = egui::Panel::left("bodo-browser")
+                .resizable(true)
+                .default_size(self.prefs.layout.browser_width)
+                .size_range(160.0..=480.0)
+                .frame(egui::Frame::NONE.fill(tk.panel).inner_margin(egui::Margin::same(0)))
+                .show(ui, |ui| browser::show(self, ui));
+            self.prefs.layout.browser_width = panel.response.rect.width();
+        }
+        egui::CentralPanel::default().frame(egui::Frame::NONE.fill(tk.border)).show(ui, |ui| {
+            let workspace = ui.max_rect();
+            let project = Arc::clone(self.session.project());
+            rack::window(self, ui.ctx(), workspace, &project);
+            playlist::window(self, ui.ctx(), workspace, &project);
+            piano_roll::window(self, ui.ctx(), workspace, &project);
+            mixer::window(self, ui.ctx(), workspace, &project);
+        });
+        dialogs::show(self, ui.ctx());
+        palette::show(self, ui.ctx());
+    }
+
+    /// Closes Bodo, asking first when there are unsaved changes.
+    pub fn request_quit(&mut self) {
+        dialogs::guard_unsaved(self, dialogs::Pending::Quit);
+    }
+
+    /// Sets the hint bar's text for this frame, for the control under the pointer.
+    pub fn hint(&mut self, response: &egui::Response, text: impl Into<String>) {
+        if response.hovered() {
+            self.view.hint = Some(text.into());
+        }
+    }
+}
