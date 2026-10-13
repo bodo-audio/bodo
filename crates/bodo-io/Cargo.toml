@@ -9,6 +9,8 @@ publish.workspace = true
 
 [dependencies]
 blake3.workspace = true
+bodo-kit-core.workspace = true
+bodo-kit-midi.workspace = true
 bodo-model.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -17,7 +19,6 @@ tracing.workspace = true
 zip.workspace = true
 
 [dev-dependencies]
-bodo-kit-core = { workspace = true, features = ["serde"] }
 bodo-kit-dsp = { workspace = true, features = ["serde"] }
 imbl.workspace = true
 

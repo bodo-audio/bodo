@@ -101,6 +101,14 @@ pub enum IoError {
         /// The existing file or folder.
         path: PathBuf,
     },
+    /// A MIDI file could not be read or written.
+    #[error("{}: {message}", .path.as_deref().map_or_else(|| String::from("the MIDI file"), |p| p.display().to_string()))]
+    Midi {
+        /// The MIDI file, when there is one.
+        path: Option<PathBuf>,
+        /// What is wrong.
+        message: String,
+    },
     /// The project could not be turned into JSON.
     #[error("the project could not be written as JSON: {message}")]
     Encode {
@@ -130,6 +138,7 @@ impl IoError {
             Self::TooNew { path: p, found } => Self::TooNew { path: named(p), found },
             Self::Migration { path: p, from, message } => Self::Migration { path: named(p), from, message },
             Self::Invalid { path: p, error } => Self::Invalid { path: named(p), error },
+            Self::Midi { path: p, message } => Self::Midi { path: named(p), message },
             other => other,
         }
     }

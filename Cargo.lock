@@ -702,6 +702,7 @@ dependencies = [
  "blake3",
  "bodo-kit-core",
  "bodo-kit-dsp",
+ "bodo-kit-midi",
  "bodo-model",
  "imbl",
  "serde",
