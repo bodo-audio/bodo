@@ -62,7 +62,43 @@ const QUALITIES: &[(&str, &[u8])] = &[
     ("", &[0, 4, 7]),
 ];
 
+/// The qualities [`Chord::detect`] names, in the order it prefers when two spellings fit the same keys.
+const DETECTED: &[&str] = &[
+    "", "m", "7", "maj7", "m7", "dim", "dim7", "aug", "sus2", "sus4", "7sus4", "m7b5", "6", "m6", "add9", "9", "m9", "maj9", "11", "m11", "13",
+    "maj13",
+];
+
 impl Chord {
+    /// Names the chord that `keys` sound, whatever their octaves and order: the lowest key is the bass, and a chord
+    /// whose root isn't the bass is written as a slash chord. Fewer than three different pitch classes, or a set no
+    /// quality fits, give `None`.
+    ///
+    /// Complexity: O(k) in the keys, plus a constant 12 roots times the qualities.
+    pub fn detect(keys: &[u8]) -> Option<Self> {
+        let bass = PitchClass::of(*keys.iter().min()?);
+        let set = keys.iter().fold(0u16, |set, key| set | 1 << (key % 12));
+        if set.count_ones() < 3 {
+            return None;
+        }
+        let roots = core::iter::once(bass.get()).chain((0..12).filter(|r| *r != bass.get() && set & 1 << r != 0));
+        let mut slash = None;
+        for root in roots {
+            for quality in DETECTED {
+                let Some((_, intervals)) = QUALITIES.iter().find(|(name, _)| name == quality) else { continue };
+                let mask = intervals.iter().fold(0u16, |mask, i| mask | 1 << ((root + i) % 12));
+                if mask != set {
+                    continue;
+                }
+                let chord = Self { root: PitchClass::new(root), intervals: intervals.to_vec(), bass: None, quality: (*quality).to_owned() };
+                if root == bass.get() {
+                    return Some(chord);
+                }
+                slash.get_or_insert(Self { bass: Some(bass), ..chord });
+            }
+        }
+        slash
+    }
+
     /// The MIDI keys of the chord in close position, the root in `octave` (C4 is 60) and a slash chord's bass just
     /// below the root. Keys outside 0..=127 are left out.
     pub fn keys(&self, octave: i32) -> Vec<u8> {
@@ -164,5 +200,18 @@ mod tests {
         assert_eq!("Bbm7b5/Ab".parse::<Chord>().map(|c| c.to_string()), Ok(String::from("A#m7b5/G#")));
         assert!("H7".parse::<Chord>().is_err() && "Cxyz".parse::<Chord>().is_err() && "C/X".parse::<Chord>().is_err());
         assert!("G13".parse::<Chord>().unwrap().keys(9).iter().all(|k| *k <= 127), "keys past 127 are left out");
+    }
+
+    #[test]
+    fn detect_names_chords_from_any_voicing() {
+        let name = |keys: &[u8]| Chord::detect(keys).map(|c| c.to_string());
+        assert_eq!(name(&[60, 64, 67]), Some(String::from("C")));
+        assert_eq!(name(&[64, 55, 72]), Some(String::from("C/G")), "the lowest key is the bass");
+        assert_eq!(name(&[57, 60, 64, 67]), Some(String::from("Am7")), "a root in the bass wins over C6");
+        assert_eq!(name(&[60, 63, 66, 70]), Some(String::from("Cm7b5")));
+        assert_eq!(name(&[62, 65, 69, 72, 76]), Some(String::from("Dm9")));
+        assert_eq!(name(&[60, 64]), None, "two notes are an interval");
+        assert_eq!(name(&[60, 61, 62]), None);
+        assert_eq!(name(&[]), None);
     }
 }
