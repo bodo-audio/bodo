@@ -43,10 +43,10 @@ Started 2026-10-13.
 | `bodo-kit-dsp` basics | Done | gain, pan laws, stereo, smoothing, delay lines, biquads and SVF, ADSR, interpolation, buffers |
 | `bodo-kit-graph` | Done | incremental cycle checks, Kahn ordering, delay compensation, parallel executor ([ADR 0015](adr/0015-graph-executor.md)) |
 | `bodo-kit-audio` | Done | decoding, WAV writing, resampling, peaks, disk streaming ([ADR 0016](adr/0016-disk-streaming-in-kit-audio.md)) |
-| `bodo-kit-device` | Done, Windows low latency to come | device lists, streams, latency, dropout counting, hot-plug detection, virtual device; ASIO builds in CI |
+| `bodo-kit-device` | Done | device lists, streams, latency, dropout counting, hot-plug detection, virtual device; ASIO builds in CI; real playback tested in CI on Windows (VB-CABLE) and Linux (PipeWire) |
 | `bodo-model` v1 | Done | the project document and `Project::validate()` |
 | `bodo-mix` | Done | realtime and offline engine, built-in sampler, sequencer, insert strips |
-| WASAPI exclusive mode | Next | low latency on Windows without an ASIO audio interface, like FL Studio ASIO |
+| WASAPI exclusive mode | Done | the "WASAPI Exclusive" host ([ADR 0017](adr/0017-wasapi-exclusive-mode.md)); see the Windows notes below |
 | macOS audio workgroup | Done | RT workers join the device's IO `os_workgroup` through `Engine::set_thread_group`; checked on an Apple Silicon Mac |
 
 ### Exit criteria
@@ -56,6 +56,15 @@ Started 2026-10-13.
 | 64 frames at 48 kHz without dropouts for 100 sampler voices | Met on an Apple Silicon Mac: 10 s, 7,503 callbacks, 0 dropouts, peak load 9% with 7 workers and 18% with none (`crates/bodo-mix/tests/stress.rs`, run by hand in release) |
 | Zero allocations under rtsan | Met: every RT test suite runs under RealtimeSanitizer in CI, and the stress scenario ran clean under it locally |
 | Offline renders bit-identical across runs | Met: `renders_are_bit_identical_for_any_workers_and_block_size` |
+
+### Windows and Linux audio, as tested in CI
+
+No Windows or Linux machine is available for testing yet, so CI installs a virtual sound card and plays through it:
+
+- **Windows, shared mode:** real time with no dropouts, 43 ms output latency (2,062 frames at 48 kHz).
+- **Windows, exclusive mode:** opens with 4 ms latency at the shortest period. VB-CABLE's own clock only ticks every 10 to 16 ms, so it cannot feed buffers shorter than that; at 1,024 frames (21 ms) exclusive mode runs in real time with no dropouts, and CI checks it there. Short buffers on a real sound card still need a check on a Windows machine.
+- **Linux, PipeWire:** real time with no dropouts at every buffer size tried, down to 128 frames (5 ms).
+- **Linux, PulseAudio:** cpal's ALSA backend stalls on PulseAudio's null sink at every buffer size, while `aplay` plays fine. Most current distributions run PipeWire; a check on a real PulseAudio machine is still open.
 
 ### Deferred to M4
 

@@ -93,4 +93,10 @@ jobs:
         uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test -p bodo-kit-device --release --locked -- --ignored --nocapture --test-threads=1
+      - run: cargo test -p bodo-kit-device --release --locked -- --ignored --nocapture --test-threads=1 --skip exclusive
+      - if: runner.os == 'Windows'
+        # VB-CABLE's clock ticks every 10 to 16 ms whatever the buffer size, so exclusive mode is checked at a buffer
+        # it can keep up with. Real sound cards keep up at their shortest period.
+        run: cargo test -p bodo-kit-device --release --locked --test device -- --ignored --nocapture exclusive
+        env:
+          BODO_TEST_BUFFER: 1024
