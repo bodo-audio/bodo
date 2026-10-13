@@ -1,0 +1,22 @@
+[package]
+name = "bodo-kit-graph"
+description = "The Bodo Kit processing graph: incremental cycle checks, compilation, delay compensation and a parallel executor."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+atomic_refcell.workspace = true
+bodo-kit-core.workspace = true
+bodo-kit-dsp.workspace = true
+crossbeam-queue.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+assert_no_alloc = { workspace = true, features = ["warn_debug"] }
+proptest.workspace = true
+
+[lints]
+workspace = true
