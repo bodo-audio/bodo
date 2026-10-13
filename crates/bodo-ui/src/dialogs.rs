@@ -236,12 +236,16 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
         let mut open = true;
         egui::Window::new("Keyboard shortcuts").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             egui::Grid::new("bodo-shortcuts").num_columns(2).spacing(vec2(16.0, 4.0)).show(ui, |ui| {
-                let mut rows: Vec<(String, String)> =
-                    app.session.registry().iter().filter_map(|c| c.shortcut.map(|s| (crate::shortcuts::display(s), c.title.to_owned()))).collect();
+                let mut rows: Vec<(String, String)> = app
+                    .session
+                    .registry()
+                    .iter()
+                    .filter_map(|c| c.shortcut.map(|s| (crate::shortcuts::display(ctx, s), c.title.to_owned())))
+                    .collect();
                 for kind in crate::windows::WindowKind::ALL {
                     rows.push((format!("{:?}", kind.key()), format!("Show or hide the {}", kind.title())));
                 }
-                rows.push((crate::shortcuts::display("Mod+K"), String::from("Command palette")));
+                rows.push((crate::shortcuts::display(ctx, "Mod+K"), String::from("Command palette")));
                 rows.push((String::from("P / D / T"), String::from("Playlist tools: draw, delete, mute")));
                 for (keys, what) in rows {
                     ui.label(RichText::new(keys).monospace());

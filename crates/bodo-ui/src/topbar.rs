@@ -388,8 +388,8 @@ fn tools(app: &mut BodoApp, ui: &mut Ui) {
             app.view.dialogs.shortcuts = true;
         }
         let mods = ui.input(|i| i.modifiers);
-        let cmd = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
-        let alt = if cfg!(target_os = "macos") { "Opt" } else { "Alt" };
+        let mac = crate::shortcuts::is_mac(ui.ctx());
+        let (cmd, alt) = if mac { ("Cmd", "Opt") } else { ("Ctrl", "Alt") };
         for (on, name) in [(mods.alt, alt), (mods.command, cmd), (mods.shift, "Shift")] {
             let color = if on { tk.accent } else { tk.text_faint };
             ui.label(RichText::new(name).size(size::SMALL).color(color));

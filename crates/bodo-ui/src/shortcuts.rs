@@ -24,10 +24,14 @@ pub(crate) fn parse(spec: &str) -> Option<KeyboardShortcut> {
     key.map(|key| KeyboardShortcut::new(modifiers, key))
 }
 
+/// Whether `ctx` runs on macOS, which names its modifier keys Cmd and Opt.
+pub(crate) fn is_mac(ctx: &egui::Context) -> bool {
+    ctx.os() == egui::os::OperatingSystem::Mac
+}
+
 /// `spec` as this platform writes it: `Cmd+S` on macOS, `Ctrl+S` elsewhere.
-pub(crate) fn display(spec: &str) -> String {
-    let command = if cfg!(target_os = "macos") { "Cmd" } else { "Ctrl" };
-    spec.replace("Mod", command)
+pub(crate) fn display(ctx: &egui::Context, spec: &str) -> String {
+    spec.replace("Mod", if is_mac(ctx) { "Cmd" } else { "Ctrl" })
 }
 
 /// Runs the shortcuts pressed this frame.

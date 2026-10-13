@@ -19,13 +19,16 @@ pub fn app(theme: Theme) -> BodoApp {
 pub fn harness(app: BodoApp, theme: Theme, wgpu: bool) -> Harness<'static, BodoApp> {
     let builder = Harness::builder().with_size(vec2(1440.0, 900.0)).with_theme(theme).with_step_dt(1.0 / 60.0).with_max_steps(120);
     let builder = if wgpu { builder.wgpu() } else { builder };
-    builder.build_ui_state(
+    let harness = builder.build_ui_state(
         |ui, app: &mut BodoApp| {
             app.logic(ui.ctx());
             app.ui(ui);
         },
         app,
-    )
+    );
+    // Every platform draws the snapshots the same way, with macOS's names for the modifier keys.
+    harness.ctx.set_os(egui::os::OperatingSystem::Mac);
+    harness
 }
 
 /// Where the element labeled `label` was drawn last frame.

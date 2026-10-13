@@ -33,7 +33,7 @@ struct Entry {
     fields: Vec<(String, bool)>,
 }
 
-fn entries(app: &BodoApp) -> Vec<Entry> {
+fn entries(app: &BodoApp, ctx: &egui::Context) -> Vec<Entry> {
     let mut out: Vec<Entry> = app
         .session
         .registry()
@@ -50,7 +50,7 @@ fn entries(app: &BodoApp) -> Vec<Entry> {
                 id: spec.id.to_owned(),
                 title: spec.title.to_owned(),
                 summary: spec.summary.to_owned(),
-                shortcut: spec.shortcut.map(crate::shortcuts::display),
+                shortcut: spec.shortcut.map(|s| crate::shortcuts::display(ctx, s)),
                 required,
                 fields,
             }
@@ -128,7 +128,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
             let field = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text("Type a command").desired_width(f32::INFINITY));
             field.request_focus();
             let mut found: Vec<(i32, Entry)> =
-                entries(app).into_iter().filter_map(|e| score(&state.query, &format!("{} {}", e.title, e.id)).map(|s| (s, e))).collect();
+                entries(app, ctx).into_iter().filter_map(|e| score(&state.query, &format!("{} {}", e.title, e.id)).map(|s| (s, e))).collect();
             found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
             found.truncate(12);
             if ui.input(|i| i.key_pressed(Key::ArrowDown)) {
