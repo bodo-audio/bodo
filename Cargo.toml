@@ -1,0 +1,62 @@
+[workspace]
+resolver = "3"
+# Cargo rejects a member glob that matches nothing, so `crates/*`, `plugins/*` and `apps/*`
+# are added here when their first crate lands.
+members = ["kit/*"]
+# Fixture workspaces that the xtask gates run against. They are separate workspaces on purpose.
+exclude = ["xtask/fixtures"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.98"
+publish = false
+
+[workspace.dependencies]
+# Bodo Kit
+bodo-kit-core = { path = "kit/bodo-kit-core" }
+bodo-kit-midi = { path = "kit/bodo-kit-midi" }
+
+# Real-time
+rtrb = "0.4.0"
+audio_thread_priority = { version = "0.38.0", default-features = false }
+assert_no_alloc = "1.1.2"
+
+# MIDI
+midly = { version = "0.5.3", default-features = false, features = ["std"] }
+
+# Data, errors and logging
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
+thiserror = "2.0.21"
+tracing = "0.1.41"
+
+# Tooling (xtask only)
+anyhow = "1.0.104"
+cargo_metadata = "0.23.1"
+proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+syn = { version = "3.0.9", features = ["full", "visit", "parsing"] }
+toml = "1.1.8"
+
+# Testing
+proptest = "1.12.0"
+
+[workspace.lints.rust]
+unsafe_code = "deny" # non-FFI crates also declare #![forbid(unsafe_code)]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+dbg_macro = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+
+[profile.dev.package."*"]
+# Keep dependencies reasonably fast in debug builds; tests run DSP and property loops.
+opt-level = 1
