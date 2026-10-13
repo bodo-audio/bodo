@@ -1,7 +1,7 @@
 //! Turning a project snapshot into the mix graph (project.md section 9.4).
 //!
-//! Sampler channels feed their target insert, or the master; inserts feed each other through audio routes and the
-//! master through `to_master`. Most edits never touch the graph: faders, pans, mutes and send levels go to the
+//! Sampler and audio clip channels feed their target insert, or the master; inserts feed each other through audio
+//! routes and the master through `to_master`. Most edits never touch the graph: faders, pans, mutes and send levels go to the
 //! running processors through shared atomics and edge gains. Only a change of topology, or of a sampler's settings
 //! or sample, compiles a new plan, and processors whose settings didn't change carry over into it.
 
@@ -17,10 +17,12 @@ use bodo_model::mixer::{RouteKind, RouteSource};
 use bodo_model::{ChannelId, InsertId, Project, SampleRoots};
 
 use crate::MixError;
+use crate::audio_clips::stretch_keys;
 use crate::keys;
 use crate::live::{ChannelLive, StripLive};
-use crate::nodes::{MixNode, SamplerNode, StripNode};
+use crate::nodes::{AudioClipNode, MixNode, SamplerNode, StripNode};
 use crate::sample::SampleCache;
+use crate::stretch::StretchCache;
 
 /// What a sampler node was built from, to tell whether it must be rebuilt.
 #[derive(Clone, Debug)]
@@ -40,6 +42,26 @@ impl SamplerSource {
     }
 }
 
+/// What an audio clip node was built from: the sample and its time-stretched copies.
+#[derive(Clone, Debug)]
+struct AudioSource {
+    sample: Option<Arc<AudioData>>,
+    stretched: Vec<(u32, Arc<AudioData>)>,
+}
+
+impl AudioSource {
+    fn same_as(&self, other: &AudioSource) -> bool {
+        let same_sample = match (&self.sample, &other.sample) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        same_sample
+            && self.stretched.len() == other.stretched.len()
+            && self.stretched.iter().zip(&other.stretched).all(|((ka, a), (kb, b))| ka == kb && Arc::ptr_eq(a, b))
+    }
+}
+
 /// Keeps the graph and the live parameters in step with the project.
 #[derive(Debug)]
 pub(crate) struct Compiler {
@@ -48,6 +70,8 @@ pub(crate) struct Compiler {
     cache: SampleCache,
     layout: Option<Layout>,
     samplers: HashMap<ChannelId, SamplerSource>,
+    audio: HashMap<ChannelId, AudioSource>,
+    stretch: StretchCache,
     channels: HashMap<ChannelId, Arc<ChannelLive>>,
     strips: HashMap<InsertId, Arc<StripLive>>,
     /// Inserts the running plan has processors for.
@@ -66,6 +90,8 @@ impl Compiler {
             cache: SampleCache::new(),
             layout: None,
             samplers: HashMap::new(),
+            audio: HashMap::new(),
+            stretch: StretchCache::default(),
             channels: HashMap::new(),
             strips: HashMap::new(),
             built_strips: HashSet::new(),
@@ -93,7 +119,8 @@ impl Compiler {
     pub(crate) fn update(&mut self, project: &Project) -> Result<Option<Plan<MixNode>>, MixError> {
         self.update_live(project);
         let sources = self.sampler_sources(project);
-        let signature = signature(project, &sources);
+        let audio = self.audio_sources(project);
+        let signature = signature(project, &sources, &audio);
         if signature == self.signature
             && let Some(gains) = &self.gains
         {
@@ -109,12 +136,33 @@ impl Compiler {
         let mut desc = GraphDesc { nodes: Vec::new(), edges: Vec::new(), output: Some(keys::insert(master)) };
         let pan_law = project.settings.pan_law;
         for id in &project.rack_order {
-            let Some(source) = sources.get(id) else { continue };
-            let fresh = self.samplers.get(id).is_none_or(|old| !old.same_as(source));
-            let processor = fresh.then(|| {
-                let live = self.channels.get(id).cloned().unwrap_or_default();
-                MixNode::Sampler(Box::new(SamplerNode::new(keys::channel(*id), source.sample.clone(), &source.params, live, pan_law, self.rate)))
-            });
+            let live = || self.channels.get(id).cloned().unwrap_or_default();
+            let processor = if let Some(source) = sources.get(id) {
+                let fresh = self.samplers.get(id).is_none_or(|old| !old.same_as(source));
+                fresh.then(|| {
+                    MixNode::Sampler(Box::new(SamplerNode::new(
+                        keys::channel(*id),
+                        source.sample.clone(),
+                        &source.params,
+                        live(),
+                        pan_law,
+                        self.rate,
+                    )))
+                })
+            } else if let Some(source) = audio.get(id) {
+                let fresh = self.audio.get(id).is_none_or(|old| !old.same_as(source));
+                fresh.then(|| {
+                    MixNode::AudioClip(Box::new(AudioClipNode::new(
+                        keys::channel(*id),
+                        source.sample.clone(),
+                        source.stretched.clone(),
+                        live(),
+                        pan_law,
+                    )))
+                })
+            } else {
+                continue;
+            };
             desc.nodes.push(NodeDesc { key: keys::channel(*id), channels: 2, ports: 0, latency: 0, processor });
             let target = project.channels.get(id).and_then(|c| c.target).filter(|t| project.mixer.insert(*t).is_some()).unwrap_or(master);
             desc.edges.push(EdgeDesc {
@@ -168,8 +216,10 @@ impl Compiler {
         self.gains = Some(compiled.gains);
         self.latency = compiled.latency;
         self.samplers = sources;
+        self.audio = audio;
         self.built_strips = inserts.into_iter().collect();
         self.signature = signature;
+        self.stretch.trim();
         self.cache.trim();
         Ok(Some(compiled.plan))
     }
@@ -207,6 +257,26 @@ impl Compiler {
         }
         sources
     }
+
+    /// The audio clip channels, their samples and the time-stretched copies their clips need, rendering any that
+    /// are new.
+    ///
+    /// Allocates; loads samples and renders stretched copies on first use. Complexity: O(n log n) in clips, plus the
+    /// rendering.
+    fn audio_sources(&mut self, project: &Project) -> HashMap<ChannelId, AudioSource> {
+        let mut sources = HashMap::new();
+        for (id, channel) in &project.channels {
+            if let ChannelKind::AudioClip { sample, .. } = &channel.kind {
+                let sample = self.cache.get(project, *sample, &self.roots);
+                let stretched = match &sample {
+                    Some(data) => stretch_keys(project, *id).into_iter().map(|key| (key, self.stretch.get(data, key))).collect(),
+                    None => Vec::new(),
+                };
+                sources.insert(*id, AudioSource { sample, stretched });
+            }
+        }
+        sources
+    }
 }
 
 /// The key of the edge an audio route compiles to.
@@ -220,7 +290,7 @@ fn route_key(from: RouteSource, to: InsertId) -> u64 {
 
 /// Everything that decides the graph's shape and its processors, flattened. Two equal signatures compile to the same
 /// graph, apart from gains.
-fn signature(project: &Project, sources: &HashMap<ChannelId, SamplerSource>) -> Vec<u64> {
+fn signature(project: &Project, sources: &HashMap<ChannelId, SamplerSource>, audio: &HashMap<ChannelId, AudioSource>) -> Vec<u64> {
     let master = project.mixer.master.id;
     let mut out = vec![project.settings.pan_law as u64, keys::insert(master)];
     for id in &project.rack_order {
@@ -228,6 +298,12 @@ fn signature(project: &Project, sources: &HashMap<ChannelId, SamplerSource>) -> 
             out.push(keys::channel(*id));
             out.push(Arc::as_ptr(&source.params) as usize as u64);
             out.push(source.sample.as_ref().map_or(0, |s| Arc::as_ptr(s) as usize as u64));
+            out.push(project.channels.get(id).and_then(|c| c.target).map_or(0, keys::insert));
+        }
+        if let Some(source) = audio.get(id) {
+            out.push(keys::channel(*id) ^ 0xA0D1);
+            out.push(source.sample.as_ref().map_or(0, |s| Arc::as_ptr(s) as usize as u64));
+            out.extend(source.stretched.iter().flat_map(|(key, data)| [u64::from(*key), Arc::as_ptr(data) as usize as u64]));
             out.push(project.channels.get(id).and_then(|c| c.target).map_or(0, keys::insert));
         }
     }

@@ -1,6 +1,9 @@
-//! The per-block context every graph node can read: rate, transport, and the note events of the block.
+//! The per-block context every graph node can read: rate, transport, the note events of the block, and the audio
+//! clip segments it plays.
 
 use bodo_kit_core::{SampleRate, rt_safe};
+
+use crate::segments::Segments;
 
 /// The most note events one block can carry. More are dropped and counted.
 pub const MAX_EVENTS: usize = 8192;
@@ -54,6 +57,8 @@ pub struct BlockContext {
     directory: Vec<(u64, u32, u32)>,
     /// Events dropped because the block was full, since the engine started.
     pub dropped_events: u64,
+    /// The audio clip segments of the block.
+    pub audio: Segments,
 }
 
 impl BlockContext {
@@ -61,7 +66,15 @@ impl BlockContext {
     ///
     /// Allocates.
     pub fn new(rate: SampleRate) -> Self {
-        Self { rate, frames: 0, playing: false, events: Vec::with_capacity(MAX_EVENTS), directory: Vec::with_capacity(MAX_EVENTS), dropped_events: 0 }
+        Self {
+            rate,
+            frames: 0,
+            playing: false,
+            events: Vec::with_capacity(MAX_EVENTS),
+            directory: Vec::with_capacity(MAX_EVENTS),
+            dropped_events: 0,
+            audio: Segments::new(),
+        }
     }
 
     /// Clears the events for a new block.
@@ -71,6 +84,7 @@ impl BlockContext {
     pub fn clear(&mut self) {
         self.events.clear();
         self.directory.clear();
+        self.audio.clear();
     }
 
     /// Adds an event for the channel with `key`. When the block is full the event is dropped and counted.
@@ -98,6 +112,7 @@ impl BlockContext {
             self.directory.push((key, start as u32, end as u32));
             start = end;
         }
+        self.audio.finish();
     }
 
     /// The events of the channel with `key`, in the order to apply them.

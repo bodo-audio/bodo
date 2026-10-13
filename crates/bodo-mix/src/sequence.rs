@@ -15,6 +15,7 @@ use bodo_model::pattern::PatternLen;
 use bodo_model::playlist::ClipSource;
 use bodo_model::{PatternId, Project};
 
+use crate::audio_clips::AudioIndex;
 use crate::context::{BlockContext, EventKind, NoteEvent};
 use crate::keys;
 
@@ -66,10 +67,12 @@ pub struct SongIndex {
     tracks: Vec<IndexedTrack>,
     /// Every channel key that has notes, sorted, so a stop can release them all.
     channels: Vec<u64>,
+    /// The audio clips.
+    audio: AudioIndex,
 }
 
 impl SongIndex {
-    /// Flattens `project`. Muted tracks and clips are left out; audio and automation clips arrive in M3.
+    /// Flattens `project`. Muted tracks and clips are left out; automation clips arrive in M3.
     ///
     /// Allocates. Complexity: O(N log N) in the notes and clips.
     pub fn build(project: &Project) -> Self {
@@ -136,7 +139,7 @@ impl SongIndex {
                 IndexedTrack { clips, max_len }
             })
             .collect();
-        Self { tempo: (*project.tempo).clone(), patterns, pattern_lookup, tracks, channels }
+        Self { tempo: (*project.tempo).clone(), patterns, pattern_lookup, tracks, channels, audio: AudioIndex::build(project) }
     }
 
     /// The tempo map the index was built with.
@@ -203,6 +206,7 @@ pub fn emit(song: &SongIndex, transport: &Transport, frames: usize, rate: Sample
                     emit_repeats(song, pattern, clip.start - clip.offset, bounds, clip.instance, &window, context);
                 }
             }
+            song.audio.emit(&song.tempo, first, end, hz, context);
         }
         PlayMode::Pattern(id) => {
             if let Some(pattern) = song.pattern_index(keys::pattern(id)).and_then(|i| song.patterns.get(i)) {

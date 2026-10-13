@@ -11,6 +11,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod audio_clips;
 mod compile;
 pub mod context;
 pub mod engine;
@@ -19,7 +20,9 @@ pub mod live;
 pub mod nodes;
 pub mod offline;
 pub mod sample;
+pub mod segments;
 pub mod sequence;
+pub mod stretch;
 
 pub use engine::{AudioEngine, Engine, EngineConfig, EngineStatus, engine};
 pub use offline::{OfflineOptions, render_offline};
