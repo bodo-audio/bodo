@@ -1025,3 +1025,12 @@ Zoom tool	Yakınlaştırma aracı
 {port} (in use)	{port} (kullanımda)
 {start} to {end}	{start} - {end}
 {ticks} ticks	{ticks} tik
+Assign to mixer track	Mikser yoluna ata
+Assign to a free mixer track	Boş bir mikser yoluna ata
+Unassign from mixer track	Mikser yolundan ayır
+Mixer {number} · {name}	Mikser {number} · {name}
+Plays into mixer track {number}, {name}, the one selected in the mixer	Mikserde seçili olan {number} numaralı yola, {name}, çalar
+Plays into a free mixer track; one with its default name takes the channel's name	Boş bir mikser yoluna çalar; adı değiştirilmemiş bir yol kanalın adını alır
+The channel plays into the master again	Kanal yeniden ana çıkışa çalar
+Gives a channel its own mixer track: the one selected in the mixer, or a free one; a track with its default name takes the channel's name.	Bir kanala kendi mikser yolunu verir: mikserde seçili olanı ya da boş bir tanesini; adı değiştirilmemiş bir yol kanalın adını alır.
+Makes a channel play into the master again.	Bir kanalı yeniden ana çıkışa çaldırır.

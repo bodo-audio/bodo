@@ -651,7 +651,44 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chan
     };
     let font = if compact { size::SMALL } else { size::BODY };
     let galley = painter.layout(channel.name.clone(), egui::FontId::proportional(font), text_color, rect.width() - 16.0);
-    painter.with_clip_rect(rect.shrink(2.0)).galley(egui::pos2(rect.left() + 11.0, rect.center().y - galley.size().y / 2.0), galley, text_color);
+    // A channel assigned a mixer track shows it under its name, small: "Mixer 3 · Kick"; in compact rows, the number
+    // at the right.
+    let track = channel.target.and_then(|t| Some((bodo_engine::insert_number(project, t)?, project.mixer.inserts.get(&t)?.name.clone())));
+    let clip = painter.with_clip_rect(rect.shrink(2.0));
+    match &track {
+        Some((number, track_name)) if !compact => {
+            let sub = painter.layout_no_wrap(
+                tf!("Mixer {number} · {name}", number = number, name = track_name),
+                egui::FontId::proportional(rem(0.62)),
+                tk.text_dim,
+            );
+            let top = rect.center().y - (galley.size().y + sub.size().y) / 2.0;
+            clip.galley(egui::pos2(rect.left() + 11.0, top), galley.clone(), text_color);
+            let at = egui::pos2(rect.left() + 11.0, top + galley.size().y - rem(0.1));
+            let line = Rect::from_min_size(at, sub.size());
+            clip.galley(at, sub, tk.text_dim);
+            control::record_rect(
+                ui,
+                ui.id().with(("mixer track", channel.id)),
+                line,
+                &format!("Mixer {number} · {track_name}"),
+                "readout",
+                None,
+                false,
+            );
+        }
+        Some((number, _)) => {
+            clip.galley(egui::pos2(rect.left() + 11.0, rect.center().y - galley.size().y / 2.0), galley.clone(), text_color);
+            clip.text(
+                rect.right_center() - vec2(rem(0.35), 0.0),
+                egui::Align2::RIGHT_CENTER,
+                number.to_string(),
+                egui::FontId::monospace(rem(0.62)),
+                tk.text_dim,
+            );
+        }
+        None => clip.galley(egui::pos2(rect.left() + 11.0, rect.center().y - galley.size().y / 2.0), galley.clone(), text_color),
+    }
     control::record(ui, &response, &channel.name, "channel", Some(selected));
     // Audio clip and automation channels have no notes: double-clicking one makes it the playlist's clip source.
     let plays_notes = plays_steps(channel);
@@ -696,6 +733,7 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
         let _ = app.run("channel.duplicate", json!({ "channel": channel.id }));
         ui.close();
     }
+    mixer_track_items(app, ui, project, channel);
     if plays_notes
         && ui.button(t("Load sample...")).clicked()
         && let Some(file) = app.services.pick_samples.as_ref().map(|pick| pick()).and_then(|files| files.into_iter().next())
@@ -743,6 +781,43 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
         let _ = app.run("channel.remove", json!({ "channels": [channel.id] }));
         ui.close();
     }
+}
+
+/// The channel menu's mixer track items: assign it to the track selected in the mixer, or to a free one when none is
+/// selected; to a free one anyway; or unassign it, so it plays into the master.
+fn mixer_track_items(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) {
+    ui.separator();
+    let master = project.mixer.master.id;
+    let selected = app.session.editor().insert.filter(|i| *i != master && project.mixer.inserts.contains_key(i));
+    let assign = ui.button(t("Assign to mixer track"));
+    control::record(ui, &assign, &format!("{} assign to mixer track", channel.name), "button", None);
+    let hint = match selected.and_then(|i| Some((bodo_engine::insert_number(project, i)?, project.mixer.inserts.get(&i)?.name.clone()))) {
+        Some((number, name)) => tf!("Plays into mixer track {number}, {name}, the one selected in the mixer", number = number, name = name),
+        None => t("Plays into a free mixer track; one with its default name takes the channel's name").to_owned(),
+    };
+    app.hint(&assign, hint);
+    if assign.clicked() {
+        let _ = app.run("channel.assign_insert", json!({ "channel": channel.id }));
+        ui.close();
+    }
+    if selected.is_some() {
+        let free = ui.button(t("Assign to a free mixer track"));
+        control::record(ui, &free, &format!("{} assign to a free mixer track", channel.name), "button", None);
+        if free.clicked() {
+            let _ = app.run("channel.assign_insert", json!({ "channel": channel.id, "free": true }));
+            ui.close();
+        }
+    }
+    if channel.target.is_some() {
+        let unassign = ui.button(t("Unassign from mixer track"));
+        control::record(ui, &unassign, &format!("{} unassign from mixer track", channel.name), "button", None);
+        app.hint(&unassign, t("The channel plays into the master again"));
+        if unassign.clicked() {
+            let _ = app.run("channel.unassign_insert", json!({ "channel": channel.id }));
+            ui.close();
+        }
+    }
+    ui.separator();
 }
 
 /// The MIDI inputs a channel can listen to: none, or a port with every MIDI channel or one of them.

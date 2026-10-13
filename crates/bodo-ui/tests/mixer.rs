@@ -192,6 +192,9 @@ fn meters_show_the_engine_and_a_click_clears_the_clip_light() {
 #[test]
 fn slots_load_switch_move_and_open_their_editor() {
     let mut h = harness(|_| {});
+    // Nothing is selected in a new project's mixer; the insert panel shows the selected strip.
+    h.state_mut().run("edit.select", serde_json::json!({ "insert": 1 })).unwrap();
+    h.run_steps(2);
     click(&mut h, "Insert 1 slot 1");
     // The Delay category's heading comes first, then the effect.
     let at = h.get_all_by_label("Delay").last().map(|n| n.rect().center()).unwrap();

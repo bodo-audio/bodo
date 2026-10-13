@@ -249,3 +249,27 @@ fn clicking_the_group_filter_shows_every_channel_again() {
     let shown: Vec<String> = bodo_ui::control::elements(&h.ctx).iter().filter(|e| e.role == "channel").map(|e| e.label.clone()).collect();
     assert_eq!(shown, ["Clap", "HiHat", "Snare"]);
 }
+
+#[test]
+fn the_channel_menu_assigns_a_mixer_track_and_shows_it_under_the_name() {
+    let mut h = harness();
+    let insert_number = |h: &Harness<'_, BodoApp>| {
+        let project = h.state().session.project();
+        project.channels[&channel(h, "Kick")].target.and_then(|t| bodo_engine::insert_number(project, t)).unwrap_or(0)
+    };
+    assert_eq!(insert_number(&h), 0, "new channels play into the master");
+    let kick = element(&h, "Kick").center();
+    right_click(&mut h, kick);
+    h.get_by_label("Assign to mixer track").click();
+    h.run_steps(3);
+    assert_eq!(insert_number(&h), 1, "no track is selected in the mixer, so a free one");
+    let project = h.state().session.project();
+    assert_eq!(project.mixer.inserts[&project.mixer.order[0]].name, "Kick", "the track takes the channel's name");
+    // Under the name, small: the track it plays into.
+    element(&h, "Mixer 1 · Kick");
+    let kick = element(&h, "Kick").center();
+    right_click(&mut h, kick);
+    h.get_by_label("Unassign from mixer track").click();
+    h.run_steps(3);
+    assert_eq!(insert_number(&h), 0, "back to the master");
+}

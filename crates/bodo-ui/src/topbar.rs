@@ -272,7 +272,10 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
         .map(|frames| format!("  {:.1} ms", f64::from(frames) * 1000.0 / rate))
         .unwrap_or_default();
     let text = if app.audio.is_on() {
-        format!("{}{latency}{memory}", tf!("CPU {load}%  {dropouts} dropouts", load = format!("{:>3.0}", status.load * 100.0), dropouts = status.xruns))
+        format!(
+            "{}{latency}{memory}",
+            tf!("CPU {load}%  {dropouts} dropouts", load = format!("{:>3.0}", status.load * 100.0), dropouts = status.xruns)
+        )
     } else {
         format!("{}{latency}{memory}", t("No sound"))
     };
