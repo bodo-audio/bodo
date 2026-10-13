@@ -337,3 +337,22 @@ fn a_controller_lane_draws_a_point_per_snap_step_and_right_drag_erases() {
     assert!(points(&h).is_empty());
     assert!(h.state().session.project().patterns.values().all(|p| p.automation.is_empty()), "the empty lane is gone");
 }
+
+#[test]
+fn the_tools_menu_articulates_and_randomizes() {
+    let (mut h, _) = setup("draw");
+    add(&mut h, &[(60, 0, 960), (64, 960, 960)]);
+    let menu = element(&h, "Piano roll tools");
+    click_at(&mut h, menu.center());
+    h.get_by_label_contains("Articulate").hover();
+    h.run_steps(3);
+    h.get_by_label("Staccato").click();
+    h.run_steps(3);
+    assert_eq!(shape(&h), [(60, 0, 240), (64, 960, 240)]);
+    click_at(&mut h, menu.center());
+    h.get_by_label("Randomize in C major").click();
+    h.run_steps(3);
+    let added: Vec<Note> = kick(&h).into_iter().filter(|n| n.len.0 == 960).collect();
+    assert!(!added.is_empty(), "randomize adds notes on the beat grid, a beat long");
+    assert!(added.iter().all(|n| [0, 2, 4, 5, 7, 9, 11].contains(&(n.key % 12))), "in C major");
+}

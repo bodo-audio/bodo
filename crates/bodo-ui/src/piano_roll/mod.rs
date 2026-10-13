@@ -208,6 +208,8 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
     let notes = targets(app, pattern, channel);
     let step = app.view.snap.ticks(app.session.project()).max(1);
     let scale = app.view.piano.scale;
+    // Each randomize gives new notes, but the same ones for the same project history, so tests can repeat it.
+    let seed = app.session.revision() + 1;
     let mut chosen: Option<(&str, Value)> = None;
     let menu = ui.menu_button("Tools", |ui| {
         ui.set_min_width(180.0);
@@ -221,10 +223,18 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         item(ui, "Quantize starts and ends", "note.quantize", json!({ "notes": notes, "grid": step, "ends": true }));
         item(ui, "Un-humanize", "note.unhumanize", json!({ "notes": notes }));
         item(ui, "Humanize", "note.humanize", json!({ "notes": notes }));
+        let (root, kind) = scale.map_or(("C", "major"), |s| (s.root.name(), s.kind.name()));
+        let params = json!({ "pattern": pattern.id, "channel": channel, "root": root, "scale": kind, "step": step, "seed": seed });
+        item(ui, &format!("Randomize in {root} {kind}"), "note.randomize", params);
         ui.separator();
         item(ui, "Legato", "note.legato", json!({ "notes": notes }));
         item(ui, "Chop to the snap", "note.chop", json!({ "notes": notes, "length": step }));
         item(ui, "Glue", "note.glue", json!({ "notes": notes }));
+        ui.menu_button("Articulate", |ui| {
+            for (label, amount) in [("Staccato", 0.25), ("Half", 0.5), ("Tenuto", 0.9), ("Full length", 1.0)] {
+                item(ui, label, "note.articulate", json!({ "notes": notes, "amount": amount }));
+            }
+        });
         item(ui, "Strum up", "note.strum", json!({ "notes": notes, "direction": "up" }));
         item(ui, "Strum down", "note.strum", json!({ "notes": notes, "direction": "down" }));
         ui.menu_button("Arpeggiate", |ui| {
