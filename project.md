@@ -148,7 +148,7 @@ All versions were checked against crates.io and GitHub on 2026-10-13. The worksp
 | DSP | `audioadapter` | 5.0.0 | MIT/Apache | Buffer layout adapters |
 | Files | `symphonia` | 0.6.1 | MPL-2.0 | Decoding (WAV, FLAC, MP3, AAC, OGG, ALAC) |
 | Files | `hound` | 3.5.1 | Apache-2.0 | WAV writing |
-| Files | `creek` | 1.2.3 | MIT/Apache | Real-time disk streaming |
+| Files | `bodo_kit_audio::stream` | in-tree | MIT/Apache | Real-time disk streaming ([ADR 0016](docs/adr/0016-disk-streaming-in-kit-audio.md); `creek` still pins Symphonia 0.5) |
 | Hosting | `clack-host`, `clack-extensions` | 0.2.0 | MIT/Apache | CLAP hosting |
 | Hosting | `vst3` (coupler-rs) | 0.3.0 | MIT/Apache | VST3 COM bindings (the SDK has been MIT since 2025-10-29) |
 | Hosting | `objc2-audio-toolbox`, `objc2-avf-audio` | 0.3.2 | Zlib/MIT/Apache | AUv2 and AUv3 hosting and export |
@@ -448,7 +448,7 @@ sequenceDiagram
 
 ### 6.7 Audio clips and streaming
 
-- **Memory vs streaming:** files under the RAM budget (by default 30 s per file, plus a global cache size) are decoded into memory. Longer files stream through `creek`, which prefetches around the playhead and the loop points.
+- **Memory vs streaming:** files under the RAM budget (by default 30 s per file, plus a global cache size) are decoded into memory. Longer files stream from disk through `bodo-kit-audio`, which reads ahead of the playhead ([ADR 0016](docs/adr/0016-disk-streaming-in-kit-audio.md)).
 - **Sample rate:** files that don't match the project rate are converted with `rubato` when loaded, and the result is cached.
 - **Stretching:** `signalsmith-stretch` handles tempo-synced clips and pitch changes. Offline renders can use a higher-quality setting.
 - **Waveforms:** the peaks pyramid stores min/max per 32 samples with fan-out 4, cached on disk, which gives O(log n) range queries for waveform drawing.

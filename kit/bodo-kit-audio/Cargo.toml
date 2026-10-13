@@ -1,0 +1,25 @@
+[package]
+name = "bodo-kit-audio"
+description = "Audio files for Bodo Kit: decoding, WAV writing, resampling, waveform peaks and disk streaming."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+audioadapter-buffers.workspace = true
+bodo-kit-core.workspace = true
+hound.workspace = true
+rtrb.workspace = true
+rubato.workspace = true
+symphonia.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_no_alloc = { workspace = true, features = ["warn_debug"] }
+proptest.workspace = true
+
+[lints]
+workspace = true
