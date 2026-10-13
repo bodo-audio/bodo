@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": 60,
+    "notes": [
+      0
+    ]
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      2
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Slice notes"
+}

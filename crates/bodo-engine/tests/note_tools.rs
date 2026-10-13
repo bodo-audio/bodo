@@ -211,3 +211,33 @@ fn a_lane_brush_across_notes_is_one_undo_step() {
     assert!(first.slide && first.porta && first.fine_pitch_cents == -25.0 && first.mod_y == 1.0);
     assert_eq!(s.execute("note.set_props", json!({ "notes": [ids[0]], "modX": 2.0 })).unwrap_err().code, ErrorCode::InvalidParams);
 }
+
+#[test]
+fn slice_cuts_only_the_notes_that_cross_the_line() {
+    let mut s = session();
+    let ids = add(&mut s, &[(60, 0, 480), (62, 480, 240), (64, 0, 120)]);
+    let result = run(&mut s, "note.slice", json!({ "notes": ids, "at": 240 }));
+    assert_eq!(result["notes"].as_array().unwrap().len(), 4, "the halves of the first note and the two untouched ones");
+    let notes = kick(&s);
+    let c4: Vec<(i64, i64)> = notes.iter().filter(|n| n.key == 60).map(|n| (n.start.0, n.len.0)).collect();
+    assert_eq!(c4, [(0, 240), (240, 240)]);
+    assert_eq!(notes.iter().filter(|n| n.key != 60).count(), 2, "notes that don't cross stay whole");
+}
+
+#[test]
+fn a_painted_or_erased_stroke_is_one_undo_step() {
+    let mut s = session();
+    let before = s.undo_labels().count();
+    for start in [0, 240, 480] {
+        let call = Call::new("note.add_many", json!({ "channel": "Kick", "notes": [{ "key": 60, "start": start, "length": 240 }] }));
+        s.invoke(&call.in_gesture(7)).unwrap();
+    }
+    assert_eq!(kick(&s).len(), 3);
+    assert_eq!(s.undo_labels().count(), before + 1);
+    let ids: Vec<u32> = kick(&s).iter().map(|n| n.id.0).collect();
+    for id in ids {
+        s.invoke(&Call::new("note.remove", json!({ "notes": [id] })).in_gesture(8)).unwrap();
+    }
+    assert!(kick(&s).is_empty());
+    assert_eq!(s.undo_labels().count(), before + 2);
+}

@@ -75,6 +75,18 @@ struct Chop {
     length: Length,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Slice {
+    /// The pattern; the current pattern by default.
+    pattern: Option<PatternRef>,
+    /// The note ids; the selected notes by default.
+    #[serde(default)]
+    notes: Vec<u32>,
+    /// Where to cut. Notes that don't cross it stay whole.
+    at: Position,
+}
+
 /// Which way a strum runs.
 #[derive(Clone, Copy, Debug, Default, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -429,6 +441,30 @@ fn chop(ctx: &mut Ctx<'_>, p: Chop) -> Result<Value, CommandError> {
     })
 }
 
+fn slice(ctx: &mut Ctx<'_>, p: Slice) -> Result<Value, CommandError> {
+    let at = p.at.resolve(&ctx.project)?;
+    run_tool(ctx, p.pattern.as_ref(), &p.notes, String::from("Slice notes"), |_, notes, next| {
+        let mut out = Vec::with_capacity(notes.len() * 2);
+        for note in notes {
+            if note.start < at && at < note.end() {
+                let mut right = note.clone();
+                right.id = fresh(next);
+                right.start = at;
+                right.len = Tick(note.end().0 - at.0);
+                right.quantized_start = None;
+                right.expr = None;
+                let mut left = note;
+                left.len = Tick(at.0 - left.start.0);
+                out.push(left);
+                out.push(right);
+            } else {
+                out.push(note);
+            }
+        }
+        Ok(out)
+    })
+}
+
 fn glue(ctx: &mut Ctx<'_>, p: Notes) -> Result<Value, CommandError> {
     run_tool(ctx, p.pattern.as_ref(), &p.notes, String::from("Glue notes"), |_, notes, _| {
         let mut by_key: BTreeMap<u8, Vec<Note>> = BTreeMap::new();
@@ -692,6 +728,9 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "notes": [0, 1] }));
     r.edit("note.chop", "Chop notes", "Splits notes into pieces of a length.", Effects::UNDOABLE, chop)
         .example(json!({ "notes": [0], "length": "120 ticks" }));
+    r.edit("note.slice", "Slice notes", "Cuts notes in two where they cross a position.", Effects::UNDOABLE, slice)
+        .example(json!({ "notes": [0], "at": 60 }))
+        .merge(super::whole);
     r.edit("note.glue", "Glue notes", "Joins notes of the same key and channel that touch or overlap.", Effects::UNDOABLE, glue)
         .example(json!({ "notes": [0, 1] }));
     r.edit("note.strum", "Strum", "Rolls chords so each voice starts a little after the one before.", Effects::UNDOABLE, strum)

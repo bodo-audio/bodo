@@ -1361,6 +1361,7 @@ Example:
 Adds notes for one channel to a pattern and selects them; returns their ids.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -1620,6 +1621,7 @@ Example:
 Deletes notes from a pattern.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -1726,6 +1728,30 @@ Example:
     0
   ],
   "velocity": 0.5
+}
+```
+
+### `note.slice`
+
+Cuts notes in two where they cross a position.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where to cut. Notes that don't cross it stay whole. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "at": 60,
+  "notes": [
+    0
+  ]
 }
 ```
 

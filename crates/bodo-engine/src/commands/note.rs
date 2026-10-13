@@ -344,8 +344,11 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({
             "channel": "Kick",
             "notes": [{ "key": "C4", "start": "1:1:0", "length": "1 beat" }, { "key": 64, "start": 960, "velocity": 0.6 }]
-        }));
-    r.edit("note.remove", "Delete notes", "Deletes notes from a pattern.", Effects::UNDOABLE, remove).example(json!({ "notes": [0] }));
+        }))
+        .merge(by_pattern);
+    r.edit("note.remove", "Delete notes", "Deletes notes from a pattern.", Effects::UNDOABLE, remove)
+        .example(json!({ "notes": [0] }))
+        .merge(by_pattern);
     r.edit("note.move", "Move notes", "Moves notes by ticks and semitones.", Effects::UNDOABLE, move_notes)
         .example(json!({ "notes": [0], "ticks": 240, "keys": 2 }))
         .merge(by_notes);
