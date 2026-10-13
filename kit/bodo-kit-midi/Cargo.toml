@@ -1,0 +1,18 @@
+[package]
+name = "bodo-kit-midi"
+description = "MIDI events and Standard MIDI File reading and writing for Bodo Kit."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+midly.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true
