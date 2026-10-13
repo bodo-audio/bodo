@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "sample": "factory:Packs/Bodo Drums/Crash.wav",
+    "start": "1:1:0",
+    "track": 3
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041Q",
+    "clip": "clip_0000000000000000000000041R",
+    "length": "4827 ticks",
+    "newChannel": true,
+    "start": "1:1:0",
+    "ticks": 4827,
+    "track": "trk_0000000000000000000000040N"
+  },
+  "undo": "Place Crash at 1:1:0"
+}

@@ -171,7 +171,12 @@ pub fn full() -> (Project, PluginIds) {
         kick_channel,
         clap_channel,
         synth_channel,
-        channel(breaks, "Break", Color::rgb(0x4a, 0xde, 0x80), ChannelKind::AudioClip { sample: break_sample, stretch: StretchMode::Stretch }),
+        channel(
+            breaks,
+            "Break",
+            Color::rgb(0x4a, 0xde, 0x80),
+            ChannelKind::AudioClip { sample: break_sample, stretch: StretchMode::Stretch, tempo: None },
+        ),
         channel(
             ride,
             "Fader ride",

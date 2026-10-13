@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Crash",
+    "sample": "factory:Packs/Bodo Drums/Crash.wav"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041Q",
+    "insert": 0,
+    "name": "Crash",
+    "tempo": 96.0
+  },
+  "undo": "Add audio channel Crash"
+}

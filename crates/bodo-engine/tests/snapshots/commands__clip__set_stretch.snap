@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Crash",
+    "mode": "stretch",
+    "tempo": 120.0
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041Q",
+    "mode": "stretch",
+    "tempo": 120.0
+  },
+  "undo": "Set Crash stretch mode"
+}

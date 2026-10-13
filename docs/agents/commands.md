@@ -55,6 +55,29 @@ Example:
 }
 ```
 
+### `channel.add_audio`
+
+Adds a channel that plays an audio file as clips on the playlist.
+
+- Effects: undoable
+- Menu: Add > Audio clip channel
+
+| Param | Type | Description |
+|---|---|---|
+| `name` | string, optional | Its name; the file's name by default. |
+| `sample` | string | The audio file: a `factory:` path from browser.search, an absolute path, or a path inside the project's folder. |
+| `target` | InsertRef, optional | The mixer insert it plays into; the master by default. |
+| `tempo` | number, optional | The sample's own tempo in BPM, for resample and stretch; the project's current tempo by default. |
+
+Example:
+
+```json
+{
+  "name": "Crash",
+  "sample": "factory:Packs/Bodo Drums/Crash.wav"
+}
+```
+
 ### `channel.duplicate`
 
 Copies a channel's settings into a new channel after it (notes are not copied).
@@ -401,6 +424,51 @@ Example:
 }
 ```
 
+### `clip.place_audio`
+
+Places a clip of an audio clip channel on a playlist track; it lasts the whole sample by default.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The audio clip channel whose sample the clip plays. |
+| `length` | Length, optional | How long it plays; the whole sample by default. |
+| `start` | Position | Where the clip starts. |
+| `track` | TrackRef, optional | The track; the selected track (or the first) by default. |
+
+Example:
+
+```json
+{
+  "channel": "Crash",
+  "start": "2:1:0",
+  "track": 3
+}
+```
+
+### `clip.place_sound`
+
+Places an audio file on a playlist track as an audio clip, reusing the channel that already plays it or making one.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `sample` | string | The audio file: a `factory:` path, an absolute path, or a path inside the project's folder. |
+| `start` | Position | Where the clip starts. |
+| `track` | TrackRef, optional | The track; the selected track (or the first) by default. |
+
+Example:
+
+```json
+{
+  "sample": "factory:Packs/Bodo Drums/Crash.wav",
+  "start": "1:1:0",
+  "track": 3
+}
+```
+
 ### `clip.remove`
 
 Removes clips from the playlist.
@@ -456,6 +524,50 @@ Example:
 ```json
 {
   "color": "#22d3ee"
+}
+```
+
+### `clip.set_fades`
+
+Sets the fade-in and fade-out of clips; 0 removes a fade.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `clips` | array of ClipRef, optional | The clips; the selected clips by default. |
+| `fadeIn` | Length, optional | The fade-in's length; 0 removes it, and it is unchanged when left out. |
+| `fadeOut` | Length, optional | The fade-out's length; 0 removes it, and it is unchanged when left out. |
+
+Example:
+
+```json
+{
+  "fadeIn": "1 beat",
+  "fadeOut": 0
+}
+```
+
+### `clip.set_stretch`
+
+Sets how an audio clip channel follows the tempo: none, resample or stretch.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The audio clip channel. |
+| `mode` | Mode | How its clips follow the tempo. |
+| `tempo` | number, optional | The sample's own tempo in BPM; unchanged when left out. |
+
+Example:
+
+```json
+{
+  "channel": "Crash",
+  "mode": "stretch",
+  "tempo": 120.0
 }
 ```
 

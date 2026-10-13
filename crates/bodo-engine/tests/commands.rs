@@ -26,11 +26,17 @@ fn fixture() -> Session {
 const FILE_COMMANDS: [&str; 6] =
     ["project.open", "project.save", "project.save_as", "project.import_midi", "pattern.export_midi", "project.export_midi"];
 
+/// Commands whose examples act on an audio clip channel named Crash, which the fixture gets first for them.
+const NEED_AUDIO: [&str; 2] = ["clip.place_audio", "clip.set_stretch"];
+
 #[test]
 fn every_example_runs_validly_and_undoes_exactly() {
     let ids: Vec<&'static str> = fixture().registry().iter().map(|c| c.id).collect();
     for id in ids.into_iter().filter(|id| !FILE_COMMANDS.contains(id)) {
         let mut session = fixture();
+        if NEED_AUDIO.contains(&id) {
+            run(&mut session, "channel.add_audio", json!({ "sample": "factory:Packs/Bodo Drums/Crash.wav", "name": "Crash" }));
+        }
         let spec = session.registry().get(id).unwrap();
         let example = spec.example.clone().unwrap_or_else(|| panic!("{id} has no example"));
         let undoable = spec.effects.undoable;

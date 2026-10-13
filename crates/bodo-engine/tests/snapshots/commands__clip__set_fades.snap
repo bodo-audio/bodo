@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "fadeIn": "1 beat",
+    "fadeOut": 0
+  },
+  "result": {
+    "clips": 1
+  },
+  "undo": "Set clip fades"
+}

@@ -67,6 +67,10 @@ pub enum ChannelKind {
         /// How the sample follows tempo changes.
         #[serde(default)]
         stretch: StretchMode,
+        /// The sample's own tempo in BPM, which Resample and Stretch match to the project's. Bodo records the project's
+        /// tempo here when the channel is made, unless the sample's tempo is known.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        tempo: Option<f64>,
     },
     /// An automation clip channel.
     Automation(Arc<AutomationLane>),

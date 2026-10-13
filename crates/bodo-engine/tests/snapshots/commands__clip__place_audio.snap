@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Crash",
+    "start": "2:1:0",
+    "track": 3
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041Q",
+    "clip": "clip_0000000000000000000000041R",
+    "length": "4827 ticks",
+    "start": "2:1:0",
+    "ticks": 4827,
+    "track": "trk_0000000000000000000000040N"
+  },
+  "undo": "Place Crash at 2:1:0"
+}
