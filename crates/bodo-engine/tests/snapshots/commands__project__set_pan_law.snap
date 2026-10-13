@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "law": "linear6dB"
+  },
+  "result": {
+    "law": "linear6dB"
+  },
+  "undo": "Set pan law"
+}

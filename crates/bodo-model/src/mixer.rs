@@ -295,6 +295,13 @@ impl Default for StripEq {
     }
 }
 
+impl StripEq {
+    /// Whether every band is at 0 dB, so the EQ leaves the sound alone.
+    pub fn is_flat(&self) -> bool {
+        [self.low, self.mid, self.high].iter().all(|b| b.gain_db == 0.0)
+    }
+}
+
 /// When delay compensation is bypassed, for low-latency monitoring.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

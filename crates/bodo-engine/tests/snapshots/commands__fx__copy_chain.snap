@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2
+  },
+  "result": {
+    "effects": 1,
+    "insert": 2
+  },
+  "undo": null
+}

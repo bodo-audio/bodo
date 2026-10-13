@@ -1,0 +1,81 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "effect": "bodo.ducker"
+  },
+  "result": {
+    "category": "dynamics",
+    "description": "Lowers the signal while the sidechain plays, for sidechain pumping.",
+    "format": "native",
+    "name": "Ducker",
+    "params": [
+      {
+        "default": 12.0,
+        "id": 0,
+        "kind": {
+          "type": "linear"
+        },
+        "max": 48.0,
+        "min": 0.0,
+        "name": "Depth",
+        "tags": [
+          "amount",
+          "pumping",
+          "sidechain"
+        ],
+        "unit": "decibels"
+      },
+      {
+        "default": -30.0,
+        "id": 1,
+        "kind": {
+          "type": "linear"
+        },
+        "max": 0.0,
+        "min": -60.0,
+        "name": "Threshold",
+        "tags": [
+          "sensitivity",
+          "trigger"
+        ],
+        "unit": "decibels"
+      },
+      {
+        "default": 5.0,
+        "id": 2,
+        "kind": {
+          "type": "logarithmic"
+        },
+        "max": 100.0,
+        "min": 0.10000000149011612,
+        "name": "Attack",
+        "tags": [
+          "speed",
+          "response"
+        ],
+        "unit": "milliseconds"
+      },
+      {
+        "default": 150.0,
+        "id": 3,
+        "kind": {
+          "type": "logarithmic"
+        },
+        "max": 1000.0,
+        "min": 10.0,
+        "name": "Release",
+        "tags": [
+          "recovery",
+          "groove"
+        ],
+        "unit": "milliseconds"
+      }
+    ],
+    "sidechain": true,
+    "uid": "bodo.ducker"
+  },
+  "undo": null
+}

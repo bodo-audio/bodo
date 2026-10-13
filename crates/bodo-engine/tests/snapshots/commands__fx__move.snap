@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": 1,
+    "insert": 2,
+    "to": 3
+  },
+  "result": {
+    "from": 1,
+    "insert": 2,
+    "to": 3
+  },
+  "undo": "Move slot 1 to 3"
+}

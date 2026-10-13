@@ -13,7 +13,7 @@ use crate::error::CommandError;
 use crate::session::Ctx;
 
 /// File extensions the browser lists and channels accept.
-pub const AUDIO_EXTENSIONS: [&str; 9] = ["wav", "wave", "flac", "aif", "aiff", "mp3", "ogg", "m4a", "aac"];
+pub const AUDIO_EXTENSIONS: [&str; 10] = ["wav", "wave", "w64", "flac", "aif", "aiff", "mp3", "ogg", "m4a", "aac"];
 
 /// Whether `path` has an audio file extension.
 pub fn is_audio_file(path: &Path) -> bool {

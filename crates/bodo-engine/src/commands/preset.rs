@@ -209,7 +209,7 @@ fn instantiate(ctx: &mut Ctx<'_>, preset: &ChannelPreset, id: ChannelId, target:
         ChannelKind::Instrument { plugin } => {
             let mut plugin = plugin.clone();
             let state = preset.states.get(&plugin.instance.to_string()).cloned().unwrap_or_default();
-            plugin.instance = ctx.ids().plugin();
+            plugin.instance = ctx.ids().plugin_instance();
             plugin.state = state.into();
             ChannelKind::Instrument { plugin }
         }
@@ -300,7 +300,7 @@ fn load_mixer(ctx: &mut Ctx<'_>, p: LoadMixer) -> Result<Value, CommandError> {
         slot.sidechain = None;
         if let Some(plugin) = &mut slot.plugin {
             let state = preset.states.get(&plugin.instance.to_string()).cloned().unwrap_or_default();
-            plugin.instance = ctx.ids().plugin();
+            plugin.instance = ctx.ids().plugin_instance();
             plugin.state = state.into();
         }
     }

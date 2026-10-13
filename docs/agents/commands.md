@@ -1134,6 +1134,7 @@ Selects channels, clips, notes, an insert or a track; commands with empty params
 | `channels` | array of ChannelRef, optional | Channels to select in the channel rack. |
 | `clips` | array of ClipRef, optional | Clips to select on the playlist. |
 | `insert` | InsertRef, optional | The insert to select in the mixer. |
+| `inserts` | array of InsertRef, optional | Mixer inserts to select together, for editing them as a group; the last one becomes the selected insert. |
 | `notes` | array of integer, optional | Notes of the current pattern to select, by id. |
 | `toggle` | boolean, optional | Flip each given item in or out of the selection, as Shift does with the select tool. |
 | `track` | TrackRef, optional | The playlist track to select. |
@@ -1183,6 +1184,204 @@ Example:
 
 ```json
 {}
+```
+
+## fx
+
+### `fx.copy_chain`
+
+Copies an insert's FX slots, for fx.paste_chain.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert whose effects to copy; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "insert": 2
+}
+```
+
+### `fx.load`
+
+Loads a native effect into an FX slot, the first empty one by default.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `effect` | string | The effect by uid or name, such as `bodo.delay` or `Delay`. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `params` | object, optional | Parameter values, by id or name, in each parameter's unit; the others start at their defaults. |
+| `slot` | integer, optional | The slot, 1 to 10; the first empty slot by default. |
+
+Example:
+
+```json
+{
+  "effect": "bodo.ducker",
+  "insert": 2,
+  "params": {
+    "Depth": 18
+  },
+  "slot": 1
+}
+```
+
+### `fx.move`
+
+Moves an FX slot to another place in the chain; the slots between shift.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `from` | integer | The slot to move, 1 to 10. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `to` | integer | Where it goes, 1 to 10; the slots between shift over. |
+
+Example:
+
+```json
+{
+  "from": 1,
+  "insert": 2,
+  "to": 3
+}
+```
+
+### `fx.paste_chain`
+
+Replaces the FX slots of one or more inserts with the copied ones, each effect a new instance.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `inserts` | array of InsertRef, optional | The inserts to paste into; the selected inserts by default. |
+
+Example:
+
+```json
+{
+  "inserts": [
+    3,
+    4
+  ]
+}
+```
+
+### `fx.remove`
+
+Empties an FX slot.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "slot": 1
+}
+```
+
+### `fx.set_enabled`
+
+Turns an FX slot on or off; a slot that is off keeps its latency. Toggles without `on`.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `on` | boolean, optional | On or off; toggles when left out. |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "on": false,
+  "slot": 1
+}
+```
+
+### `fx.set_mix`
+
+Sets an FX slot's dry/wet mix.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `mix` | number | Dry/wet mix, 0 (dry) to 1 (wet). |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "mix": 0.5,
+  "slot": 1
+}
+```
+
+### `fx.set_sidechain`
+
+Feeds an FX slot's sidechain input from a channel or insert, adding the sidechain route.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `from` | RouteFromRef, optional | The channel or insert to listen to; null to stop. A sidechain route is added when there is none. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "from": "insert:1",
+  "insert": 2,
+  "slot": 1
+}
+```
+
+### `fx.swap`
+
+Swaps two FX slots.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `a` | integer | One slot, 1 to 10. |
+| `b` | integer | The other slot, 1 to 10. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "a": 1,
+  "b": 2,
+  "insert": 2
+}
 ```
 
 ## library
@@ -1295,6 +1494,32 @@ Example:
 }
 ```
 
+### `mixer.adjust`
+
+Moves the faders, pans or stereo separation of several inserts together, by the same amount.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `inserts` | array of InsertRef, optional | The inserts; the selected inserts by default. |
+| `pan` | number, optional | Amount to add to each pan, clamped to -1..1. |
+| `separation` | number, optional | Amount to add to each stereo separation, clamped to -1..1. |
+| `volumeDb` | number, optional | dB to add to each fader, clamped to -144..6. |
+
+Example:
+
+```json
+{
+  "inserts": [
+    1,
+    2
+  ],
+  "volumeDb": -1.5
+}
+```
+
 ### `mixer.arm`
 
 Arms an insert for recording, or disarms it; toggles without `on`. An armed insert monitors its input.
@@ -1392,6 +1617,46 @@ Example:
 }
 ```
 
+### `mixer.reorder_insert`
+
+Moves an insert to another place in the mixer.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert to move (not the master). |
+| `to` | integer | Its new number, from 1. |
+
+Example:
+
+```json
+{
+  "insert": 3,
+  "to": 1
+}
+```
+
+### `mixer.route_exclusive`
+
+Routes a channel or insert to one insert, or the master, only, removing its other audio routes.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `from` | RouteFromRef | Where it starts: a channel or an insert. |
+| `to` | InsertRef | The insert it goes to, or the master. |
+
+Example:
+
+```json
+{
+  "from": "insert:1",
+  "to": "insert:5"
+}
+```
+
 ### `mixer.set_color`
 
 Sets an insert's color.
@@ -1408,6 +1673,53 @@ Example:
 ```json
 {
   "color": "#f87171",
+  "insert": 1
+}
+```
+
+### `mixer.set_eq`
+
+Sets the frequency, gain or Q of a band of an insert's EQ.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `band` | Band | Which band. |
+| `frequency` | number, optional | The band's frequency in Hz, from 20 to 20000. |
+| `gainDb` | number, optional | Its gain in dB, from -24 to 24. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `q` | number, optional | Its Q (for shelves, the slope), from 0.1 to 10. |
+
+Example:
+
+```json
+{
+  "band": "mid",
+  "frequency": 2500,
+  "gainDb": -3.0,
+  "insert": 1,
+  "q": 1.4
+}
+```
+
+### `mixer.set_icon`
+
+Sets the icon an insert shows, by name, or none.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `icon` | string, optional | The icon's name, such as `drum`, `guitar` or `microphone`; null for none. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "icon": "drum",
   "insert": 1
 }
 ```
@@ -1435,6 +1747,51 @@ Example:
 }
 ```
 
+### `mixer.set_latency_offset`
+
+Sets an insert's track latency: positive declares latency, negative delays the insert.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `frames` | integer, optional | The track latency in frames: positive declares latency the insert has (everything else waits for it), negative delays the insert. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `ms` | number, optional | The same in milliseconds, at the project's sample rate. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "ms": -2.5
+}
+```
+
+### `mixer.set_output`
+
+Sends an insert straight to device outputs as well, or stops.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channels` | array, optional | Device output channels, counted from 0: one for mono, two for stereo; null for no direct output. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "channels": [
+    2,
+    3
+  ],
+  "insert": 3
+}
+```
+
 ### `mixer.set_pan`
 
 Sets an insert's pan from -1 to 1.
@@ -1453,6 +1810,26 @@ Example:
 {
   "insert": 2,
   "pan": -0.2
+}
+```
+
+### `mixer.set_pdc_bypass`
+
+Sets when an insert skips delay compensation: never, always or whileRecording.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `mode` | Bypass | When to bypass delay compensation. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "mode": "whileRecording"
 }
 ```
 
@@ -1518,7 +1895,7 @@ Example:
 
 ### `mixer.set_route`
 
-Sets a route's send level or tap point.
+Sets a route's send level, tap point, or whether it only feeds sidechains.
 
 - Effects: undoable
 - Calls in one gesture fold into one undo step.
@@ -1527,6 +1904,7 @@ Sets a route's send level or tap point.
 |---|---|---|
 | `from` | RouteFromRef | Where it starts: a channel or an insert. |
 | `level` | number, optional | The send level as a linear gain from 0 to 2. |
+| `sidechain` | boolean, optional | True to feed only the target's plugin sidechains, false to carry audio. |
 | `tap` | Tap, optional | Where on the source strip it taps. |
 | `to` | InsertRef | The insert it goes to. |
 
@@ -1581,6 +1959,26 @@ Example:
 }
 ```
 
+### `mixer.set_to_master`
+
+Sets whether an insert feeds the master; toggles without `on`.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `on` | boolean, optional | On or off; toggles when left out. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "on": false
+}
+```
+
 ### `mixer.set_volume`
 
 Sets an insert's fader in dB.
@@ -1598,6 +1996,27 @@ Example:
 ```json
 {
   "db": -3.0,
+  "insert": 1
+}
+```
+
+### `mixer.solo`
+
+Solos or unsolos an insert, alone with `exclusive`; toggles without `on`.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `exclusive` | boolean, optional | Solo this insert alone, unsoloing every other. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `on` | boolean, optional | On or off; toggles when left out. |
+
+Example:
+
+```json
+{
+  "exclusive": true,
   "insert": 1
 }
 ```
@@ -2553,6 +2972,85 @@ Example:
 }
 ```
 
+## plugin
+
+### `plugin.describe`
+
+Describes an effect and its parameters: ids, units, ranges and defaults.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `effect` | string | The effect by uid or name, such as `bodo.delay` or `Delay`. |
+
+Example:
+
+```json
+{
+  "effect": "bodo.ducker"
+}
+```
+
+### `plugin.get_params`
+
+Lists the parameters of the effect in an FX slot with their values.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `slot` | integer | The slot, 1 to 10. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "slot": 1
+}
+```
+
+### `plugin.list`
+
+Lists the effects FX slots can load, with their parameters.
+
+- Effects: none
+
+No params.
+
+Example:
+
+```json
+{}
+```
+
+### `plugin.set_param`
+
+Sets a parameter of the effect in an FX slot, in its own unit.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `param` | value | The parameter, by id or name. |
+| `slot` | integer | The slot, 1 to 10. |
+| `value` | number | Its value, in its own unit; clamped to its range. |
+
+Example:
+
+```json
+{
+  "insert": 2,
+  "param": "Depth",
+  "slot": 1,
+  "value": 24
+}
+```
+
 ## preset
 
 ### `preset.load_channel`
@@ -2931,6 +3429,24 @@ Example:
 }
 ```
 
+### `project.set_pan_law`
+
+Sets how mono sources spread as they pan, for the whole project.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `law` | Law | How mono sources spread as they pan. |
+
+Example:
+
+```json
+{
+  "law": "linear6dB"
+}
+```
+
 ### `project.set_tempo`
 
 Sets the tempo at the start of the song.
@@ -2974,6 +3490,54 @@ Example:
       "start": "2:1:0"
     }
   ]
+}
+```
+
+## render
+
+### `render.export_mix`
+
+Renders the song, or one pattern, through the master to an audio file.
+
+- Effects: disk
+- Menu: File > Export mix
+
+| Param | Type | Description |
+|---|---|---|
+| `end` | Position, optional | Where to stop; the end of the song or of one pass of the pattern by default. One second of tail follows. |
+| `format` | Format, optional | The file format; WAV by default. |
+| `path` | string | The file to write: an absolute path, or one relative to the project's folder. The format's extension is added when it has none. |
+| `pattern` | PatternRef, optional | Loop this pattern instead of playing the playlist. |
+
+Example:
+
+```json
+{
+  "path": "Song.wav"
+}
+```
+
+### `render.export_stems`
+
+Renders the song, or one pattern, to one audio file per insert in a folder, delay compensated so they line up.
+
+- Effects: disk
+- Menu: File > Export stems
+
+| Param | Type | Description |
+|---|---|---|
+| `end` | Position, optional | Where to stop; the end of the song or of one pass of the pattern by default. One second of tail follows. |
+| `folder` | string | The folder the stems go in: an absolute path, or one relative to the project's folder. It is made when needed. |
+| `format` | Format, optional | The file format; WAV by default. |
+| `mix` | boolean, optional | Also write the whole mix, through the master, as `Mix`. |
+| `pattern` | PatternRef, optional | Loop this pattern instead of playing the playlist. |
+
+Example:
+
+```json
+{
+  "folder": "Stems",
+  "format": "flac"
 }
 ```
 
@@ -3064,6 +3628,24 @@ Example:
 
 ```json
 {}
+```
+
+### `transport.loop_record`
+
+Turns loop recording on or off: each pass of a loop becomes its own take, and MIDI passes add up.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `on` | boolean, optional | On or off; toggles when left out. |
+
+Example:
+
+```json
+{
+  "on": true
+}
 ```
 
 ### `transport.metronome`

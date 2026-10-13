@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "a": 1,
+    "b": 2,
+    "insert": 2
+  },
+  "result": {
+    "a": 1,
+    "b": 2,
+    "insert": 2
+  },
+  "undo": "Swap slots 1 and 2"
+}

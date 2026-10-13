@@ -1,0 +1,332 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "plugins": [
+      {
+        "category": "utility",
+        "description": "Sets gain, pan and stereo width, inverts polarity, or sums to mono.",
+        "format": "native",
+        "name": "Utility",
+        "params": [
+          {
+            "default": 0.0,
+            "id": 0,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 24.0,
+            "min": -60.0,
+            "name": "Gain",
+            "tags": [
+              "volume",
+              "level",
+              "loudness"
+            ],
+            "unit": "decibels"
+          },
+          {
+            "default": 0.0,
+            "id": 1,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 1.0,
+            "min": -1.0,
+            "name": "Pan",
+            "tags": [
+              "balance",
+              "stereo"
+            ],
+            "unit": "pan"
+          },
+          {
+            "default": 100.0,
+            "id": 2,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 200.0,
+            "min": 0.0,
+            "name": "Width",
+            "tags": [
+              "stereo",
+              "wide",
+              "narrow",
+              "mid side"
+            ],
+            "unit": "percent"
+          },
+          {
+            "default": 0.0,
+            "id": 3,
+            "kind": {
+              "type": "toggle"
+            },
+            "max": 1.0,
+            "min": 0.0,
+            "name": "Invert polarity",
+            "tags": [
+              "phase",
+              "polarity"
+            ],
+            "unit": "none"
+          },
+          {
+            "default": 0.0,
+            "id": 4,
+            "kind": {
+              "type": "toggle"
+            },
+            "max": 1.0,
+            "min": 0.0,
+            "name": "Mono",
+            "tags": [
+              "mono",
+              "sum",
+              "compatibility"
+            ],
+            "unit": "none"
+          }
+        ],
+        "sidechain": false,
+        "uid": "bodo.utility"
+      },
+      {
+        "category": "filter",
+        "description": "Low, high or band pass filter with resonance, for sweeps and tone shaping.",
+        "format": "native",
+        "name": "Filter",
+        "params": [
+          {
+            "default": 0.0,
+            "id": 0,
+            "kind": {
+              "choices": [
+                "Low pass",
+                "High pass",
+                "Band pass"
+              ],
+              "type": "choice"
+            },
+            "max": 2.0,
+            "min": 0.0,
+            "name": "Mode",
+            "tags": [
+              "filter type"
+            ],
+            "unit": "none"
+          },
+          {
+            "default": 1000.0,
+            "id": 1,
+            "kind": {
+              "type": "logarithmic"
+            },
+            "max": 20000.0,
+            "min": 20.0,
+            "name": "Cutoff",
+            "tags": [
+              "brightness",
+              "frequency",
+              "tone",
+              "sweep"
+            ],
+            "unit": "hertz"
+          },
+          {
+            "default": 20.0,
+            "id": 2,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 100.0,
+            "min": 0.0,
+            "name": "Resonance",
+            "tags": [
+              "peak",
+              "emphasis",
+              "q"
+            ],
+            "unit": "percent"
+          }
+        ],
+        "sidechain": false,
+        "uid": "bodo.filter"
+      },
+      {
+        "category": "delay",
+        "description": "Tempo-synced echo with feedback, a high cut and optional ping-pong.",
+        "format": "native",
+        "name": "Delay",
+        "params": [
+          {
+            "default": 5.0,
+            "id": 0,
+            "kind": {
+              "choices": [
+                "1/16",
+                "1/8 triplet",
+                "1/8",
+                "1/8 dotted",
+                "1/4 triplet",
+                "1/4",
+                "1/4 dotted",
+                "1/2",
+                "1 bar"
+              ],
+              "type": "choice"
+            },
+            "max": 8.0,
+            "min": 0.0,
+            "name": "Time",
+            "tags": [
+              "time",
+              "rhythm",
+              "sync"
+            ],
+            "unit": "none"
+          },
+          {
+            "default": 35.0,
+            "id": 1,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 95.0,
+            "min": 0.0,
+            "name": "Feedback",
+            "tags": [
+              "repeats",
+              "decay"
+            ],
+            "unit": "percent"
+          },
+          {
+            "default": 30.0,
+            "id": 2,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 100.0,
+            "min": 0.0,
+            "name": "Mix",
+            "tags": [
+              "wet",
+              "amount"
+            ],
+            "unit": "percent"
+          },
+          {
+            "default": 0.0,
+            "id": 3,
+            "kind": {
+              "type": "toggle"
+            },
+            "max": 1.0,
+            "min": 0.0,
+            "name": "Ping-pong",
+            "tags": [
+              "stereo",
+              "bounce"
+            ],
+            "unit": "none"
+          },
+          {
+            "default": 8000.0,
+            "id": 4,
+            "kind": {
+              "type": "logarithmic"
+            },
+            "max": 20000.0,
+            "min": 500.0,
+            "name": "High cut",
+            "tags": [
+              "darkness",
+              "tone",
+              "warmth"
+            ],
+            "unit": "hertz"
+          }
+        ],
+        "sidechain": false,
+        "uid": "bodo.delay"
+      },
+      {
+        "category": "dynamics",
+        "description": "Lowers the signal while the sidechain plays, for sidechain pumping.",
+        "format": "native",
+        "name": "Ducker",
+        "params": [
+          {
+            "default": 12.0,
+            "id": 0,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 48.0,
+            "min": 0.0,
+            "name": "Depth",
+            "tags": [
+              "amount",
+              "pumping",
+              "sidechain"
+            ],
+            "unit": "decibels"
+          },
+          {
+            "default": -30.0,
+            "id": 1,
+            "kind": {
+              "type": "linear"
+            },
+            "max": 0.0,
+            "min": -60.0,
+            "name": "Threshold",
+            "tags": [
+              "sensitivity",
+              "trigger"
+            ],
+            "unit": "decibels"
+          },
+          {
+            "default": 5.0,
+            "id": 2,
+            "kind": {
+              "type": "logarithmic"
+            },
+            "max": 100.0,
+            "min": 0.10000000149011612,
+            "name": "Attack",
+            "tags": [
+              "speed",
+              "response"
+            ],
+            "unit": "milliseconds"
+          },
+          {
+            "default": 150.0,
+            "id": 3,
+            "kind": {
+              "type": "logarithmic"
+            },
+            "max": 1000.0,
+            "min": 10.0,
+            "name": "Release",
+            "tags": [
+              "recovery",
+              "groove"
+            ],
+            "unit": "milliseconds"
+          }
+        ],
+        "sidechain": true,
+        "uid": "bodo.ducker"
+      }
+    ]
+  },
+  "undo": null
+}

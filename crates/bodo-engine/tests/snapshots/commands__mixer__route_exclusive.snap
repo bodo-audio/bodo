@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": "insert:1",
+    "to": "insert:5"
+  },
+  "result": {
+    "from": {
+      "id": "ins_00000000000000000000000402",
+      "type": "insert"
+    },
+    "to": 5
+  },
+  "undo": "Route to Insert 5 only"
+}

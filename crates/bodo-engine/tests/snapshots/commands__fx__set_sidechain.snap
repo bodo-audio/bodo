@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": "insert:1",
+    "insert": 2,
+    "slot": 1
+  },
+  "result": {
+    "insert": 2,
+    "sidechain": {
+      "id": "ins_00000000000000000000000402",
+      "type": "insert"
+    },
+    "slot": 1
+  },
+  "undo": "Sidechain slot 1"
+}

@@ -1,0 +1,53 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "effect": "bodo.ducker",
+    "insert": 2,
+    "params": {
+      "Depth": 18
+    },
+    "slot": 1
+  },
+  "result": {
+    "insert": 2,
+    "slot": {
+      "effect": "bodo.ducker",
+      "enabled": true,
+      "instance": "plug_0000000000000000000000041P",
+      "mix": 1.0,
+      "name": "Ducker",
+      "params": [
+        {
+          "id": 0,
+          "name": "Depth",
+          "text": "18.0 dB",
+          "value": 18.0
+        },
+        {
+          "id": 1,
+          "name": "Threshold",
+          "text": "-30.0 dB",
+          "value": -30.0
+        },
+        {
+          "id": 2,
+          "name": "Attack",
+          "text": "5.0 ms",
+          "value": 5.0
+        },
+        {
+          "id": 3,
+          "name": "Release",
+          "text": "150.0 ms",
+          "value": 150.0
+        }
+      ],
+      "sidechain": null,
+      "slot": 1
+    }
+  },
+  "undo": "Load Ducker in slot 1"
+}

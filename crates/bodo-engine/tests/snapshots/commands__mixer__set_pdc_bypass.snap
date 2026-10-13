@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 1,
+    "mode": "whileRecording"
+  },
+  "result": {
+    "insert": 1,
+    "mode": "whileRecording"
+  },
+  "undo": "Set Insert 1 delay compensation bypass"
+}

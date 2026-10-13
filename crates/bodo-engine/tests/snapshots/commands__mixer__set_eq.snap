@@ -1,0 +1,22 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "band": "mid",
+    "frequency": 2500,
+    "gainDb": -3.0,
+    "insert": 1,
+    "q": 1.4
+  },
+  "result": {
+    "band": {
+      "frequency": 2500.0,
+      "gainDb": -3.0,
+      "q": 1.399999976158142
+    },
+    "insert": 1
+  },
+  "undo": "Set Insert 1 EQ"
+}

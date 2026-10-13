@@ -33,6 +33,9 @@ struct Select {
     notes: Vec<u32>,
     /// The insert to select in the mixer.
     insert: Option<InsertRef>,
+    /// Mixer inserts to select together, for editing them as a group; the last one becomes the selected insert.
+    #[serde(default)]
+    inserts: Vec<InsertRef>,
     /// The playlist track to select.
     track: Option<TrackRef>,
     /// Add to the selection instead of replacing it.
@@ -160,6 +163,7 @@ fn selection(ctx: &Ctx<'_>) -> Value {
         "clips": ctx.editor.clips,
         "notes": ctx.editor.notes.iter().map(|n| n.0).collect::<Vec<_>>(),
         "insert": ctx.editor.insert,
+        "inserts": ctx.editor.inserts,
         "track": ctx.editor.track,
     })
 }
@@ -199,8 +203,28 @@ fn select(ctx: &mut Ctx<'_>, p: Select) -> Result<Value, CommandError> {
         }
         apply(&mut ctx.editor.notes, p.notes.iter().map(|n| NoteId(*n)), p.add, p.toggle);
     }
+    if !p.inserts.is_empty() {
+        let ids = ctx.inserts(&p.inserts)?;
+        if !p.add && !p.toggle {
+            ctx.editor.insert = None;
+        }
+        apply(&mut ctx.editor.inserts, ids.iter().copied(), p.add, p.toggle);
+        // The selected insert is the last one picked that is still in the group.
+        let current = ids.iter().rev().find(|id| ctx.editor.inserts.contains(id)).copied();
+        ctx.editor.insert = current.or(ctx.editor.insert.filter(|id| !ids.contains(id))).or_else(|| ctx.editor.inserts.iter().next().copied());
+    }
     if let Some(r) = &p.insert {
-        ctx.editor.insert = Some(ctx.insert(Some(r))?);
+        let id = ctx.insert(Some(r))?;
+        // Picking one insert alone ends a group selection; with `add` it joins the group.
+        if p.add {
+            if let Some(previous) = ctx.editor.insert {
+                ctx.editor.inserts.insert(previous);
+            }
+            ctx.editor.inserts.insert(id);
+        } else if p.inserts.is_empty() {
+            ctx.editor.inserts.clear();
+        }
+        ctx.editor.insert = Some(id);
     }
     if let Some(r) = &p.track {
         ctx.editor.track = Some(ctx.track(Some(r))?);
@@ -229,6 +253,7 @@ fn deselect(ctx: &mut Ctx<'_>) -> Value {
     ctx.editor.channels.clear();
     ctx.editor.clips.clear();
     ctx.editor.notes.clear();
+    ctx.editor.inserts.clear();
     selection(ctx)
 }
 

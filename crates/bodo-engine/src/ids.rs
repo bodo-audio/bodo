@@ -57,6 +57,6 @@ impl IdSource {
         /// A new sample id.
         sample -> SampleId;
         /// A new plugin instance id.
-        plugin -> PluginInstanceId;
+        plugin_instance -> PluginInstanceId;
     }
 }

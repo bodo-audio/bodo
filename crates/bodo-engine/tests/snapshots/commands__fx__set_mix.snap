@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "mix": 0.5,
+    "slot": 1
+  },
+  "result": {
+    "insert": 2,
+    "mix": 0.5,
+    "slot": 1
+  },
+  "undo": "Set slot 1 mix"
+}

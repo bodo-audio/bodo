@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bodo_kit_core::Tick;
+use bodo_model::mixer::FxSlot;
 use bodo_model::{ChannelId, Clip, ClipId, InsertId, Note, NoteId, PatternId, Project, TrackId};
 
 /// What `edit.copy` or `edit.cut` took, ready for `edit.paste`.
@@ -52,11 +53,16 @@ pub struct EditorState {
     pub notes: BTreeSet<NoteId>,
     /// The selected mixer insert.
     pub insert: Option<InsertId>,
+    /// Mixer inserts selected together with the selected insert, for editing them as a group.
+    pub inserts: BTreeSet<InsertId>,
     /// The selected playlist track.
     pub track: Option<TrackId>,
     /// What was copied last.
     #[serde(skip)]
     pub clipboard: Option<Arc<Clipboard>>,
+    /// The FX slots `fx.copy_chain` copied, for `fx.paste_chain`.
+    #[serde(skip)]
+    pub chain: Option<Arc<[FxSlot]>>,
 }
 
 impl EditorState {
@@ -87,6 +93,7 @@ impl EditorState {
         if self.insert.is_some_and(|i| project.mixer.insert(i).is_none()) {
             self.insert = None;
         }
+        self.inserts.retain(|i| project.mixer.insert(*i).is_some());
         if self.track.is_some_and(|t| !project.tracks.contains_key(&t)) {
             self.track = None;
         }
@@ -122,6 +129,8 @@ pub struct TransportState {
     pub count_in: bool,
     /// The song's loop region, start and end, when Song mode loops.
     pub loop_region: Option<(Tick, Tick)>,
+    /// Whether each pass of a loop becomes its own take while recording.
+    pub loop_record: bool,
 }
 
 /// Something the frontend has to act on after a command. Read them with `Session::take_events`.
@@ -145,4 +154,6 @@ pub enum Event {
     Metronome(bool),
     /// Count in a bar before recording, or don't.
     CountIn(bool),
+    /// Make each loop pass its own take while recording, or don't.
+    LoopRecord(bool),
 }

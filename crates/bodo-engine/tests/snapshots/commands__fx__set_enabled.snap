@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "on": false,
+    "slot": 1
+  },
+  "result": {
+    "enabled": false,
+    "insert": 2,
+    "slot": 1
+  },
+  "undo": "Disable slot 1"
+}

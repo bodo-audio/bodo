@@ -48,6 +48,13 @@ fn count_in(ctx: &mut Ctx<'_>, p: Switch) -> Value {
     json!({ "countIn": on })
 }
 
+fn loop_record(ctx: &mut Ctx<'_>, p: Switch) -> Value {
+    let on = p.on.unwrap_or(!ctx.transport.loop_record);
+    ctx.transport.loop_record = on;
+    ctx.emit(Event::LoopRecord(on));
+    json!({ "loopRecord": on })
+}
+
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SetLoop {
@@ -162,6 +169,14 @@ pub(super) fn register(r: &mut Registry) {
         Ok(count_in(ctx, p))
     })
     .example(json!({}));
+    r.edit(
+        "transport.loop_record",
+        "Loop record",
+        "Turns loop recording on or off: each pass of a loop becomes its own take, and MIDI passes add up.",
+        Effects::NONE,
+        |ctx, p| Ok(loop_record(ctx, p)),
+    )
+    .example(json!({ "on": true }));
     r.edit("transport.set_loop", "Set loop region", "Loops Song mode over a region of the playlist, or stops looping.", Effects::NONE, set_loop)
         .example(json!({ "start": "1:1:0", "end": "5:1:0" }));
 }

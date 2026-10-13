@@ -59,12 +59,22 @@ pub struct CommandError {
     /// For an ambiguous or unknown name: the entities it could mean.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub candidates: Vec<String>,
+    /// For a route refused because it would close a loop: the loop, as insert references (`insert:3`), from the
+    /// route's source around to the insert that leads back to it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cycle: Option<Box<Vec<String>>>,
 }
 
 impl CommandError {
     /// An error with `code` and `message`.
     pub fn new(code: ErrorCode, message: impl Into<String>) -> Self {
-        Self { code, message: message.into(), hint: None, candidates: Vec::new() }
+        Self { code, message: message.into(), hint: None, candidates: Vec::new(), cycle: None }
+    }
+
+    /// The same error with the loop a refused route would close.
+    pub fn with_cycle(mut self, cycle: Vec<String>) -> Self {
+        self.cycle = (!cycle.is_empty()).then(|| Box::new(cycle));
+        self
     }
 
     /// Params that don't fit the command.
@@ -111,6 +121,9 @@ impl fmt::Display for CommandError {
         write!(f, "error[{}]: {}", self.code.as_str(), self.message)?;
         if !self.candidates.is_empty() {
             write!(f, "\n  candidates: {}", self.candidates.join(", "))?;
+        }
+        if let Some(cycle) = &self.cycle {
+            write!(f, "\n  loop: {}", cycle.join(" -> "))?;
         }
         if let Some(hint) = &self.hint {
             write!(f, "\n  hint: {hint}")?;

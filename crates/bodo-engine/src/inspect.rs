@@ -257,15 +257,38 @@ pub fn pattern(session: &Session, r: Option<&PatternRef>) -> Result<Inspection, 
 pub fn mixer(session: &Session) -> Inspection {
     let project = session.project();
     let mixer = &project.mixer;
+    let latency = bodo_mix::mix_latency(project, false).ok();
+    let rate = f64::from(project.settings.sample_rate.hz());
+    let total = latency.as_ref().map_or(0, |l| l.total);
+    let own = |id: InsertId| latency.as_ref().and_then(|l| l.inserts.iter().find(|(i, _)| *i == id)).map_or(0, |(_, l)| l.own);
     let mut text =
-        format!("Mixer: master {:.1} dB{}, {} inserts\n", mixer.master.volume_db, if mixer.master.muted { " muted" } else { "" }, mixer.order.len());
+        format!("Mixer: master {:.1} dB{}, {} inserts", mixer.master.volume_db, if mixer.master.muted { " muted" } else { "" }, mixer.order.len());
+    if total > 0 {
+        text.push_str(&format!(", {total} frames ({:.1} ms) of delay compensation", f64::from(total) * 1000.0 / rate));
+    }
+    text.push('\n');
+    let master_effects = effects(&mixer.master);
+    if !master_effects.is_empty() {
+        text.push_str(&format!("  master effects: {}\n", master_effects.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join(", ")));
+    }
     let mut inserts = Vec::new();
     for (n, id) in mixer.order.iter().enumerate() {
         let Some(insert) = mixer.inserts.get(id) else { continue };
         let fed: Vec<String> =
             project.rack_order.iter().filter_map(|c| project.channels.get(c)).filter(|c| c.target == Some(*id)).map(|c| c.name.clone()).collect();
-        let default =
-            insert.volume_db == 0.0 && insert.pan == 0.0 && insert.stereo_sep == 0.0 && !insert.muted && !insert.polarity_invert && !insert.swap_lr;
+        let slots = effects(insert);
+        let default = insert.volume_db == 0.0
+            && insert.pan == 0.0
+            && insert.stereo_sep == 0.0
+            && !insert.muted
+            && !insert.solo
+            && insert.to_master
+            && !insert.polarity_invert
+            && !insert.swap_lr
+            && insert.latency_offset.0 == 0
+            && insert.eq.is_flat()
+            && insert.icon.is_none()
+            && slots.is_empty();
         if default && fed.is_empty() {
             continue;
         }
@@ -276,16 +299,43 @@ pub fn mixer(session: &Session) -> Inspection {
         if insert.stereo_sep != 0.0 {
             parts.push(format!("separation {:+.2}", insert.stereo_sep));
         }
-        for (on, word) in [(insert.muted, "muted"), (insert.polarity_invert, "polarity inverted"), (insert.swap_lr, "left/right swapped")] {
+        let flags = [
+            (insert.muted, "muted"),
+            (insert.solo, "solo"),
+            (!insert.to_master, "not to the master"),
+            (insert.polarity_invert, "polarity inverted"),
+            (insert.swap_lr, "left/right swapped"),
+            (!insert.eq.is_flat(), "EQ"),
+        ];
+        for (on, word) in flags {
             if on {
                 parts.push(word.to_owned());
             }
+        }
+        if insert.latency_offset.0 != 0 {
+            parts.push(format!("track latency {:+} frames", insert.latency_offset.0));
+        }
+        if !slots.is_empty() {
+            parts.push(format!("effects {}", slots.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>().join(", ")));
         }
         if !fed.is_empty() {
             parts.push(format!("from {}", fed.join(", ")));
         }
         text.push_str(&format!("  insert {} {}: {}\n", n + 1, insert.name, parts.join(", ")));
-        inserts.push(json!({ "number": n + 1, "id": insert.id, "name": insert.name, "db": insert.volume_db, "pan": insert.pan, "muted": insert.muted, "channels": fed }));
+        inserts.push(json!({
+            "number": n + 1,
+            "id": insert.id,
+            "name": insert.name,
+            "icon": insert.icon,
+            "db": insert.volume_db,
+            "pan": insert.pan,
+            "muted": insert.muted,
+            "solo": insert.solo,
+            "toMaster": insert.to_master,
+            "latency": own(*id),
+            "effects": slots.iter().map(|(value, _)| value.clone()).collect::<Vec<_>>(),
+            "channels": fed,
+        }));
     }
     let routes: Vec<Value> = mixer
         .routes
@@ -296,8 +346,32 @@ pub fn mixer(session: &Session) -> Inspection {
             json!({ "from": source_label(project, key.from), "to": insert_label(project, key.to), "level": route.send_level, "sidechain": !kind.is_empty() })
         })
         .collect();
-    Inspection {
-        text,
-        data: json!({ "master": { "db": mixer.master.volume_db, "muted": mixer.master.muted }, "inserts": inserts, "routes": routes }),
-    }
+    let master = json!({
+        "db": mixer.master.volume_db,
+        "muted": mixer.master.muted,
+        "effects": master_effects.iter().map(|(value, _)| value.clone()).collect::<Vec<_>>(),
+    });
+    Inspection { text, data: json!({ "master": master, "inserts": inserts, "routes": routes, "latency": total }) }
+}
+
+/// The effects loaded in `insert`'s slots: each as data and as text such as `1 Delay (off)`.
+///
+/// Complexity: O(s) in slots.
+fn effects(insert: &bodo_model::MixerInsert) -> Vec<(Value, String)> {
+    insert
+        .slots
+        .iter()
+        .enumerate()
+        .filter_map(|(n, slot)| {
+            let plugin = slot.plugin.as_ref()?;
+            let name = bodo_mix::fx::find(&plugin.uid).map_or_else(|| plugin.uid.clone(), |i| i.name.to_owned());
+            let mut text = format!("{} {name}", n + 1);
+            if !slot.enabled {
+                text.push_str(" (off)");
+            } else if slot.mix < 1.0 {
+                text.push_str(&format!(" ({:.0}% wet)", slot.mix * 100.0));
+            }
+            Some((json!({ "slot": n + 1, "effect": plugin.uid, "name": name, "enabled": slot.enabled, "mix": slot.mix }), text))
+        })
+        .collect()
 }

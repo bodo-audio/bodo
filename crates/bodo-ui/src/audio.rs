@@ -259,6 +259,7 @@ impl Audio {
                     let transport = session.transport();
                     engine.set_metronome(transport.metronome);
                     engine.set_count_in(transport.count_in);
+                    engine.set_loop_record(transport.loop_record);
                     engine.set_loop(transport.loop_region);
                     let live = engine.live_input();
                     let router = MidiRouter::new(live.clone());
@@ -406,6 +407,7 @@ impl Audio {
                 Event::Metronome(on) => running.engine.set_metronome(on),
                 Event::CountIn(on) => running.engine.set_count_in(on),
                 Event::Loop(region) => running.engine.set_loop(region),
+                Event::LoopRecord(on) => running.engine.set_loop_record(on),
             }
         }
         if reopen || session.project().settings.sample_rate != running.stream.rate() {

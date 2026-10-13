@@ -237,6 +237,27 @@ impl Ctx<'_> {
         }
     }
 
+    /// The inserts `refs` name in their order, or else the selected inserts in mixer order: the group selection
+    /// together with the selected insert.
+    ///
+    /// Complexity: O(r * i) in refs and inserts.
+    pub fn inserts(&self, refs: &[InsertRef]) -> Result<Vec<InsertId>, CommandError> {
+        if !refs.is_empty() {
+            let mut ids: Vec<InsertId> = Vec::with_capacity(refs.len());
+            for r in refs {
+                let id = resolve::insert(&self.project, r)?;
+                if !ids.contains(&id) {
+                    ids.push(id);
+                }
+            }
+            return Ok(ids);
+        }
+        let mixer = &self.project.mixer;
+        let picked = |id: &InsertId| self.editor.inserts.contains(id) || self.editor.insert == Some(*id);
+        let ids: Vec<InsertId> = std::iter::once(mixer.master.id).chain(mixer.order.iter().copied()).filter(picked).collect();
+        if ids.is_empty() { Err(CommandError::nothing_selected("insert")) } else { Ok(ids) }
+    }
+
     /// The channel or insert a route starts from.
     ///
     /// Complexity: O(c + i) in channels and inserts.

@@ -6,6 +6,7 @@ mod browser;
 mod channel;
 mod clip;
 mod edit;
+mod fx;
 mod import;
 mod library;
 mod midi;
@@ -17,6 +18,7 @@ mod playlist;
 mod preset;
 mod project;
 mod record;
+mod render;
 mod sampler;
 mod transport;
 
@@ -41,10 +43,12 @@ pub(crate) fn register(registry: &mut Registry) {
     note_tools::register(registry);
     record::register(registry);
     sampler::register(registry);
+    render::register(registry);
     browser::register(registry);
     channel::register(registry);
     clip::register(registry);
     edit::register(registry);
+    fx::register(registry);
     mixer::register(registry);
     note::register(registry);
     pattern::register(registry);

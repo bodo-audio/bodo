@@ -22,9 +22,9 @@ fn fixture() -> Session {
     session
 }
 
-/// Commands that read or write files outside the test's control; the beat, MIDI, recording and library tests cover
-/// them.
-const FILE_COMMANDS: [&str; 17] = [
+/// Commands that read or write files outside the test's control; the beat, MIDI, recording, library and render tests
+/// cover them.
+const FILE_COMMANDS: [&str; 19] = [
     "project.open",
     "project.save",
     "project.save_as",
@@ -42,6 +42,8 @@ const FILE_COMMANDS: [&str; 17] = [
     "preset.load_mixer",
     "preset.save_score",
     "preset.load_score",
+    "render.export_mix",
+    "render.export_stems",
 ];
 
 /// Commands whose examples act on an audio clip channel named Crash, which the fixture gets first for them.
@@ -78,6 +80,19 @@ fn every_example_runs_validly_and_undoes_exactly() {
                 let example = session.registry().get(setup).unwrap().example.clone().unwrap();
                 session.execute(setup, example).unwrap();
             }
+        }
+        // Slot edits act on the effect fx.load's example loads; pasting needs a copied chain.
+        let needs_effect = (id.starts_with("fx.") || id.starts_with("plugin.")) && !["fx.load", "plugin.list", "plugin.describe"].contains(&id);
+        let setups: &[&str] = if id == "fx.paste_chain" {
+            &["fx.load", "fx.copy_chain"]
+        } else if needs_effect {
+            &["fx.load"]
+        } else {
+            &[]
+        };
+        for setup in setups {
+            let example = session.registry().get(setup).unwrap().example.clone().unwrap();
+            session.execute(setup, example).unwrap();
         }
         let spec = session.registry().get(id).unwrap();
         let example = spec.example.clone().unwrap_or_else(|| panic!("{id} has no example"));
@@ -145,30 +160,110 @@ fn routes_that_close_a_loop_are_refused_with_the_path() {
     let error = session.execute("mixer.add_route", json!({ "from": "insert:6", "to": "insert:1" })).unwrap_err();
     assert_eq!(error.code, bodo_engine::ErrorCode::Rejected);
     assert!(error.message.contains("insert 1") && error.message.contains("insert 6"), "{error}");
+    // The loop is in the error's JSON too, as references an agent can act on, from the new route's source around.
+    let json = serde_json::to_value(&error).unwrap();
+    assert_eq!(json["cycle"], json!(["insert:6", "insert:1", "insert:5"]), "{json}");
+    // Sidechains count: a ducker on insert 1 listening to insert 6 would close the same loop.
+    run(&mut session, "fx.load", json!({ "insert": 1, "slot": 1, "effect": "Ducker" }));
+    let error = session.execute("fx.set_sidechain", json!({ "insert": 1, "slot": 1, "from": "insert:6" })).unwrap_err();
+    assert_eq!(serde_json::to_value(&error).unwrap()["cycle"], json!(["insert:6", "insert:1", "insert:5"]));
 }
 
 /// One random edit.
 #[derive(Clone, Debug)]
 enum Op {
-    Toggle { channel: usize, step: u32 },
-    Steps { channel: usize, pattern: String },
+    Toggle {
+        channel: usize,
+        step: u32,
+    },
+    Steps {
+        channel: usize,
+        pattern: String,
+    },
     NewPattern,
     SelectPattern(i32),
     DeletePattern,
-    Place { track: usize, bar: u32, bars: u32 },
-    MoveSelectedClip { bars: i64, track: usize },
-    AddNotes { key: u8, step: u32 },
-    MoveSelectedNotes { ticks: i64, keys: i32 },
-    Volume { channel: usize, volume: f32 },
+    Place {
+        track: usize,
+        bar: u32,
+        bars: u32,
+    },
+    MoveSelectedClip {
+        bars: i64,
+        track: usize,
+    },
+    AddNotes {
+        key: u8,
+        step: u32,
+    },
+    MoveSelectedNotes {
+        ticks: i64,
+        keys: i32,
+    },
+    Volume {
+        channel: usize,
+        volume: f32,
+    },
     AddChannel,
     RemoveChannel(usize),
-    Route { from: usize, to: usize },
-    Sampler { channel: usize, start: f32, end: f32, cutoff: f32, arp: bool },
-    AddLayer { children: Vec<usize> },
-    SetLayer { layer: usize, children: Vec<usize> },
-    AddMidiOut { midi_channel: u8 },
+    Route {
+        from: usize,
+        to: usize,
+    },
+    Sampler {
+        channel: usize,
+        start: f32,
+        end: f32,
+        cutoff: f32,
+        arp: bool,
+    },
+    AddLayer {
+        children: Vec<usize>,
+    },
+    SetLayer {
+        layer: usize,
+        children: Vec<usize>,
+    },
+    AddMidiOut {
+        midi_channel: u8,
+    },
+    /// A mixer or FX command with its params.
+    Mixer(&'static str, Value),
     Undo,
     Redo,
+}
+
+/// Random mixer and FX edits: effects, slots, sidechains, solo, routing, latency, EQ, group moves and removals.
+fn mixer_op() -> impl Strategy<Value = Op> {
+    let insert = 0..=8usize;
+    let slot = 1..=10usize;
+    let effect = prop::sample::select(vec!["bodo.utility", "bodo.filter", "bodo.delay", "bodo.ducker", "bodo.latency-test"]);
+    prop_oneof![
+        (insert.clone(), slot.clone(), effect).prop_map(|(i, s, e)| Op::Mixer("fx.load", json!({ "insert": i, "slot": s, "effect": e }))),
+        (insert.clone(), slot.clone()).prop_map(|(i, s)| Op::Mixer("fx.remove", json!({ "insert": i, "slot": s }))),
+        (insert.clone(), slot.clone(), slot.clone()).prop_map(|(i, a, b)| Op::Mixer("fx.move", json!({ "insert": i, "from": a, "to": b }))),
+        (insert.clone(), slot.clone(), slot.clone()).prop_map(|(i, a, b)| Op::Mixer("fx.swap", json!({ "insert": i, "a": a, "b": b }))),
+        (insert.clone(), slot.clone(), insert.clone())
+            .prop_map(|(i, s, f)| Op::Mixer("fx.set_sidechain", json!({ "insert": i, "slot": s, "from": format!("insert:{f}") }))),
+        (insert.clone(), slot.clone(), 0..5u32, -100.0..20000.0f32)
+            .prop_map(|(i, s, p, v)| Op::Mixer("plugin.set_param", json!({ "insert": i, "slot": s, "param": p, "value": v }))),
+        (insert.clone(), slot.clone(), 0.0..=1.0f32).prop_map(|(i, s, m)| Op::Mixer("fx.set_mix", json!({ "insert": i, "slot": s, "mix": m }))),
+        (insert.clone(), slot.clone()).prop_map(|(i, s)| Op::Mixer("fx.set_enabled", json!({ "insert": i, "slot": s }))),
+        insert.clone().prop_map(|i| Op::Mixer("fx.copy_chain", json!({ "insert": i }))),
+        (insert.clone(), insert.clone()).prop_map(|(a, b)| Op::Mixer("fx.paste_chain", json!({ "inserts": [a, b] }))),
+        (insert.clone(), any::<bool>()).prop_map(|(i, x)| Op::Mixer("mixer.solo", json!({ "insert": i, "exclusive": x }))),
+        (insert.clone(), insert.clone()).prop_map(|(a, b)| Op::Mixer("mixer.route_exclusive", json!({ "from": format!("insert:{a}"), "to": b }))),
+        (insert.clone(), insert.clone()).prop_map(|(a, b)| Op::Mixer("mixer.remove_route", json!({ "from": format!("insert:{a}"), "to": b }))),
+        (insert.clone(), insert.clone())
+            .prop_map(|(a, b)| Op::Mixer("mixer.add_route", json!({ "from": format!("insert:{a}"), "to": b, "sidechain": true }))),
+        insert.clone().prop_map(|i| Op::Mixer("mixer.set_to_master", json!({ "insert": i }))),
+        (insert.clone(), -2000..=2000i64).prop_map(|(i, f)| Op::Mixer("mixer.set_latency_offset", json!({ "insert": i, "frames": f }))),
+        (insert.clone(), -30.0..30.0f32).prop_map(|(i, g)| Op::Mixer("mixer.set_eq", json!({ "insert": i, "band": "mid", "gainDb": g }))),
+        (insert.clone(), insert.clone(), -12.0..12.0f32).prop_map(|(a, b, d)| Op::Mixer("mixer.adjust", json!({ "inserts": [a, b], "volumeDb": d }))),
+        (1..=8usize, 1..=8usize).prop_map(|(i, to)| Op::Mixer("mixer.reorder_insert", json!({ "insert": i, "to": to }))),
+        (1..=8usize).prop_map(|i| Op::Mixer("mixer.remove_insert", json!({ "insert": i }))),
+        Just(Op::Mixer("mixer.add_insert", json!({}))),
+    ]
 }
 
 fn op() -> impl Strategy<Value = Op> {
@@ -232,6 +327,7 @@ fn apply(session: &mut Session, op: &Op) {
             session.invoke(&call("channel.set_layer", json!({ "channel": layer + 1, "children": children })))
         }
         Op::AddMidiOut { midi_channel } => session.invoke(&call("channel.add_midi_out", json!({ "port": "Synth", "midiChannel": midi_channel }))),
+        Op::Mixer(id, params) => session.invoke(&call(id, params.clone())),
         Op::Undo => {
             session.undo();
             return;
@@ -262,6 +358,26 @@ proptest! {
         while session.redo().is_some() {}
         let tip = session.project().clone();
         while session.undo().is_some() {}
+        prop_assert_eq!(&**session.project(), &*start);
+        while session.redo().is_some() {}
+        prop_assert_eq!(&**session.project(), &*tip);
+    }
+
+    #[test]
+    fn random_mixer_edits_keep_the_project_valid_and_compilable(ops in prop::collection::vec(prop_oneof![3 => mixer_op(), 1 => op().prop_filter("the fixture's own steps stay", |o| !matches!(o, Op::Undo | Op::Redo))], 1..40)) {
+        let mut session = fixture();
+        let start = session.project().clone();
+        let base = session.undo_labels().count();
+        for op in &ops {
+            apply(&mut session, op);
+            prop_assert!(session.project().validate().is_ok(), "{op:?}: {:?}", session.project().validate());
+            // Whatever the edits did, the mixer still compiles: no loops, and delay compensation has an answer.
+            prop_assert!(bodo_mix::mix_latency(session.project(), false).is_ok(), "{op:?} left a mixer that doesn't compile");
+        }
+        while session.redo().is_some() {}
+        let tip = session.project().clone();
+        // Undo back to the fixture, not through the steps that built it.
+        while session.undo_labels().count() > base && session.undo().is_some() {}
         prop_assert_eq!(&**session.project(), &*start);
         while session.redo().is_some() {}
         prop_assert_eq!(&**session.project(), &*tip);

@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "param": "Depth",
+    "slot": 1,
+    "value": 24
+  },
+  "result": {
+    "insert": 2,
+    "name": "Depth",
+    "param": 0,
+    "slot": 1,
+    "text": "24.0 dB",
+    "value": 24.0
+  },
+  "undo": "Set Ducker Depth"
+}

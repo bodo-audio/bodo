@@ -5,8 +5,9 @@
 
 use std::sync::Arc;
 
+use bodo_kit_dsp::pan::PanLaw;
 use bodo_kit_graph::{DagError, IncrementalDag};
-use bodo_model::mixer::{Route, RouteKey, RouteKind, RouteSource, SendTap};
+use bodo_model::mixer::{HwPort, PdcBypass, Route, RouteKey, RouteKind, RouteSource, SendTap};
 use bodo_model::{InsertId, MixerInsert, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -122,6 +123,8 @@ struct SetRoute {
     level: Option<f32>,
     /// Where on the source strip it taps.
     tap: Option<Tap>,
+    /// True to feed only the target's plugin sidechains, false to carry audio.
+    sidechain: Option<bool>,
 }
 
 /// Where a send takes its signal.
@@ -264,9 +267,18 @@ fn set_swap_lr(ctx: &mut Ctx<'_>, p: Switch) -> Result<Value, CommandError> {
     Ok(json!({ "insert": insert_number(&ctx.project, id), "swapped": on }))
 }
 
+/// The channel or insert a route starts from, checked: the master is the output, so no route starts there.
+pub(super) fn route_from(ctx: &Ctx<'_>, from: &RouteFromRef) -> Result<RouteSource, CommandError> {
+    let from = ctx.route_source(from)?;
+    if from == RouteSource::Insert(ctx.project.mixer.master.id) {
+        return Err(CommandError::rejected("the master is the output; no route starts from it"));
+    }
+    Ok(from)
+}
+
 /// The ends of a route, checked: it never targets the master or runs from an insert to itself.
 fn route_key(ctx: &Ctx<'_>, from: &RouteFromRef, to: &InsertRef) -> Result<RouteKey, CommandError> {
-    let from = ctx.route_source(from)?;
+    let from = route_from(ctx, from)?;
     let to = ctx.insert(Some(to))?;
     if to == ctx.project.mixer.master.id {
         return Err(CommandError::rejected("routes never target the master; every insert reaches it on its own"));
@@ -277,26 +289,41 @@ fn route_key(ctx: &Ctx<'_>, from: &RouteFromRef, to: &InsertRef) -> Result<Route
     Ok(RouteKey { from, to })
 }
 
-/// The inserts on the loop that a route from `from` to `to` would close, if it would.
+/// The inserts on the loop that a route from `from` to `to` would close, if it would, from the route's source around.
 ///
 /// Complexity: O(V + E) in inserts and routes.
-fn cycle(project: &Project, key: RouteKey) -> Option<Vec<String>> {
+pub(super) fn cycle(project: &Project, key: RouteKey) -> Option<Vec<InsertId>> {
     if !matches!(key.from, RouteSource::Insert(_)) {
         return None;
     }
     let mut dag = IncrementalDag::new();
     let nodes: std::collections::HashMap<InsertId, _> = project.mixer.inserts.keys().map(|id| (*id, dag.add_node())).collect();
     let names: std::collections::HashMap<_, InsertId> = nodes.iter().map(|(id, node)| (*node, *id)).collect();
-    for existing in project.mixer.routes.keys().chain(std::iter::once(&key)) {
+    let others = project.mixer.routes.keys().filter(|k| **k != key);
+    for existing in others.chain(std::iter::once(&key)) {
         if let (RouteSource::Insert(a), Some(&b)) = (existing.from, nodes.get(&existing.to))
             && let Some(&a) = nodes.get(&a)
             && let Err(DagError::Cycle { path }) = dag.add_edge(a, b)
         {
-            let number = |id: InsertId| insert_number(project, id).map_or_else(|| id.to_string(), |n| format!("insert {n}"));
-            return Some(path.iter().filter_map(|n| names.get(n)).map(|id| number(*id)).collect());
+            return Some(path.iter().filter_map(|n| names.get(n)).copied().collect());
         }
     }
     None
+}
+
+/// The error for a route that would close the loop `path`: it names the inserts and lists them as references.
+pub(super) fn loop_error(project: &Project, path: &[InsertId]) -> CommandError {
+    // `insert 2 (Drums)`, or just `insert 2` while it has its default name.
+    let name = |id: InsertId| match (insert_number(project, id), project.mixer.insert(id)) {
+        (Some(n), Some(i)) if i.name == format!("Insert {n}") => format!("insert {n}"),
+        (Some(n), Some(i)) => format!("insert {n} ({})", i.name),
+        _ => id.to_string(),
+    };
+    let reference = |id: InsertId| insert_number(project, id).map_or_else(|| id.to_string(), |n| format!("insert:{n}"));
+    let names: Vec<String> = path.iter().chain(path.first()).map(|id| name(*id)).collect();
+    CommandError::rejected(format!("that route would close a loop: {}", names.join(" -> ")))
+        .with_cycle(path.iter().map(|id| reference(*id)).collect())
+        .with_hint("remove one of the routes in the loop first")
 }
 
 fn add_route(ctx: &mut Ctx<'_>, p: AddRoute) -> Result<Value, CommandError> {
@@ -304,7 +331,7 @@ fn add_route(ctx: &mut Ctx<'_>, p: AddRoute) -> Result<Value, CommandError> {
     let level = p.level.unwrap_or(1.0);
     in_range("level", f64::from(level), 0.0..=2.0)?;
     if let Some(path) = cycle(&ctx.project, key) {
-        return Err(CommandError::rejected(format!("that route would close a loop: {}", path.join(" -> "))));
+        return Err(loop_error(&ctx.project, &path));
     }
     let kind = if p.sidechain { RouteKind::Sidechain } else { RouteKind::Audio };
     Arc::make_mut(&mut ctx.project.mixer).routes.insert(key, Route { send_level: level, tap: SendTap::PostFader, kind });
@@ -351,11 +378,401 @@ fn set_route(ctx: &mut Ctx<'_>, p: SetRoute) -> Result<Value, CommandError> {
     if let Some(tap) = p.tap {
         route.tap = tap.into();
     }
+    if let Some(sidechain) = p.sidechain {
+        route.kind = if sidechain { RouteKind::Sidechain } else { RouteKind::Audio };
+    }
     if ctx.project.mixer.routes.get(&key) != Some(&route) {
-        Arc::make_mut(&mut ctx.project.mixer).routes.insert(key, route);
+        let mixer = Arc::make_mut(&mut ctx.project.mixer);
+        mixer.routes.insert(key, route);
+        // A route that carries audio again no longer feeds the target's sidechains.
+        if route.kind == RouteKind::Audio {
+            unhook_sidechain(mixer, key);
+        }
     }
     ctx.set_label("Set route");
-    Ok(json!({ "level": route.send_level, "tap": route.tap }))
+    Ok(json!({ "level": route.send_level, "tap": route.tap, "sidechain": route.kind == RouteKind::Sidechain }))
+}
+
+/// Clears the sidechain of every slot of `key.to` that listens to `key.from`.
+fn unhook_sidechain(mixer: &mut bodo_model::Mixer, key: RouteKey) {
+    let strip = if mixer.master.id == key.to { Some(&mut mixer.master) } else { mixer.inserts.get_mut(&key.to) };
+    if let Some(insert) = strip
+        && insert.slots.iter().any(|s| s.sidechain == Some(key.from))
+    {
+        for slot in &mut Arc::make_mut(insert).slots {
+            if slot.sidechain == Some(key.from) {
+                slot.sidechain = None;
+            }
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetIcon {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// The icon's name, such as `drum`, `guitar` or `microphone`; null for none.
+    icon: Option<String>,
+}
+
+fn set_icon(ctx: &mut Ctx<'_>, p: SetIcon) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let icon = p.icon.map(|i| i.trim().to_lowercase()).filter(|i| !i.is_empty());
+    if icon.as_ref().is_some_and(|i| i.len() > 40 || !i.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')) {
+        return Err(CommandError::invalid("an icon name is a word of letters, digits and dashes"));
+    }
+    ctx.edit_insert(id, |i| i.icon.clone_from(&icon))?;
+    ctx.set_label(format!("Set {} icon", label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "icon": icon }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Solo {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// On or off; toggles when left out.
+    on: Option<bool>,
+    /// Solo this insert alone, unsoloing every other.
+    #[serde(default)]
+    exclusive: bool,
+}
+
+fn solo(ctx: &mut Ctx<'_>, p: Solo) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let on = p.on.unwrap_or_else(|| !ctx.project.mixer.insert(id).is_some_and(|i| i.solo));
+    if p.exclusive {
+        let mixer = Arc::make_mut(&mut ctx.project.mixer);
+        update_where(&mut mixer.inserts, |i| i.solo && i.id != id, |i| Arc::make_mut(i).solo = false);
+        if mixer.master.solo && mixer.master.id != id {
+            Arc::make_mut(&mut mixer.master).solo = false;
+        }
+    }
+    ctx.edit_insert(id, |i| i.solo = on)?;
+    ctx.set_label(format!("{} {}", if on { "Solo" } else { "Unsolo" }, label(&ctx.project, id)));
+    let soloed: Vec<usize> = ctx
+        .project
+        .mixer
+        .order
+        .iter()
+        .filter(|i| ctx.project.mixer.inserts.get(*i).is_some_and(|s| s.solo))
+        .filter_map(|i| insert_number(&ctx.project, *i))
+        .collect();
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "solo": on, "soloed": soloed }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetLatency {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// The track latency in frames: positive declares latency the insert has (everything else waits for it),
+    /// negative delays the insert.
+    frames: Option<i64>,
+    /// The same in milliseconds, at the project's sample rate.
+    ms: Option<f64>,
+}
+
+fn set_latency(ctx: &mut Ctx<'_>, p: SetLatency) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let rate = f64::from(ctx.project.settings.sample_rate.hz());
+    let frames = match (p.frames, p.ms) {
+        (Some(frames), None) => frames,
+        (None, Some(ms)) => {
+            in_range("ms", ms, -1000.0..=1000.0)?;
+            (ms * rate / 1000.0).round() as i64
+        }
+        _ => return Err(CommandError::invalid("give frames or ms")),
+    };
+    let limit = rate as i64;
+    if frames.abs() > limit {
+        return Err(CommandError::invalid(format!("track latency must be within a second ({limit} frames) either way")));
+    }
+    ctx.edit_insert(id, |i| i.latency_offset = bodo_kit_core::Frames(frames))?;
+    ctx.set_label(format!("Set {} track latency", label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "frames": frames, "ms": frames as f64 * 1000.0 / rate }))
+}
+
+/// When delay compensation is bypassed.
+#[derive(Clone, Copy, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+enum Bypass {
+    /// Never: the insert is always lined up with the rest.
+    Never,
+    /// Always: the insert is never delayed to line up.
+    Always,
+    /// While recording, for monitoring through it without delay.
+    WhileRecording,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetPdcBypass {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// When to bypass delay compensation.
+    mode: Bypass,
+}
+
+fn set_pdc_bypass(ctx: &mut Ctx<'_>, p: SetPdcBypass) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let mode = match p.mode {
+        Bypass::Never => PdcBypass::Never,
+        Bypass::Always => PdcBypass::Always,
+        Bypass::WhileRecording => PdcBypass::WhileRecording,
+    };
+    ctx.edit_insert(id, |i| i.pdc_bypass = mode)?;
+    ctx.set_label(format!("Set {} delay compensation bypass", label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "mode": mode }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetOutput {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// Device output channels, counted from 0: one for mono, two for stereo; null for no direct output.
+    channels: Option<Vec<u16>>,
+}
+
+fn set_output(ctx: &mut Ctx<'_>, p: SetOutput) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    let port = match p.channels {
+        None => None,
+        Some(channels) if (1..=2).contains(&channels.len()) && channels.iter().all(|c| *c < 256) => Some(HwPort { channels }),
+        Some(_) => return Err(CommandError::invalid("give one output channel for mono or two for stereo, each below 256")),
+    };
+    ctx.edit_insert(id, |i| i.output.clone_from(&port))?;
+    ctx.set_label(format!("Set {} output", label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "output": port.map(|p| p.channels) }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ToMaster {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// On or off; toggles when left out.
+    on: Option<bool>,
+}
+
+fn set_to_master(ctx: &mut Ctx<'_>, p: ToMaster) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    if id == ctx.project.mixer.master.id {
+        return Err(CommandError::rejected("the master is the output; it doesn't route to itself"));
+    }
+    let on = p.on.unwrap_or_else(|| !ctx.project.mixer.insert(id).is_some_and(|i| i.to_master));
+    ctx.edit_insert(id, |i| i.to_master = on)?;
+    ctx.set_label(format!("{} {} to the master", if on { "Route" } else { "Unroute" }, label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "toMaster": on }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RouteExclusively {
+    /// Where it starts: a channel or an insert.
+    from: RouteFromRef,
+    /// The insert it goes to, or the master.
+    to: InsertRef,
+}
+
+fn route_exclusively(ctx: &mut Ctx<'_>, p: RouteExclusively) -> Result<Value, CommandError> {
+    let from = route_from(ctx, &p.from)?;
+    let to = ctx.insert(Some(&p.to))?;
+    let master = ctx.project.mixer.master.id;
+    match from {
+        RouteSource::Channel(channel) => {
+            let mixer = Arc::make_mut(&mut ctx.project.mixer);
+            remove_where(&mut mixer.routes, |k, r| k.from == from && r.kind == RouteKind::Audio);
+            ctx.edit_channel(channel, |c| c.target = (to != master).then_some(to))?;
+        }
+        RouteSource::Insert(source) => {
+            if source == to {
+                return Err(CommandError::rejected("an insert can't route to itself"));
+            }
+            if to != master {
+                let key = RouteKey { from, to };
+                let mut trial = ctx.project.clone();
+                remove_where(&mut Arc::make_mut(&mut trial.mixer).routes, |k, r| k.from == from && r.kind == RouteKind::Audio);
+                if let Some(path) = cycle(&trial, key) {
+                    return Err(loop_error(&ctx.project, &path));
+                }
+            }
+            let mixer = Arc::make_mut(&mut ctx.project.mixer);
+            remove_where(&mut mixer.routes, |k, r| k.from == from && r.kind == RouteKind::Audio);
+            if to != master {
+                mixer.routes.insert(RouteKey { from, to }, Route { send_level: 1.0, tap: SendTap::PostFader, kind: RouteKind::Audio });
+            }
+            ctx.edit_insert(source, |i| i.to_master = to == master)?;
+        }
+    }
+    ctx.set_label(format!("Route to {} only", label(&ctx.project, to)));
+    Ok(json!({ "from": from, "to": insert_number(&ctx.project, to) }))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MoveInsert {
+    /// The insert to move (not the master).
+    insert: Option<InsertRef>,
+    /// Its new number, from 1.
+    to: usize,
+}
+
+fn move_insert(ctx: &mut Ctx<'_>, p: MoveInsert) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    if id == ctx.project.mixer.master.id {
+        return Err(CommandError::rejected("the master stays first"));
+    }
+    let count = ctx.project.mixer.order.len();
+    if p.to == 0 || p.to > count {
+        return Err(CommandError::invalid(format!("to must be from 1 to {count}")));
+    }
+    let mixer = Arc::make_mut(&mut ctx.project.mixer);
+    mixer.order.retain(|i| *i != id);
+    mixer.order.insert(p.to - 1, id);
+    ctx.set_label(format!("Move {}", label(&ctx.project, id)));
+    Ok(json!({ "insert": p.to }))
+}
+
+/// A band of the strip EQ.
+#[derive(Clone, Copy, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+enum Band {
+    /// The low shelf.
+    Low,
+    /// The peaking mid band.
+    Mid,
+    /// The high shelf.
+    High,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetEq {
+    /// The insert; the selected insert by default.
+    insert: Option<InsertRef>,
+    /// Which band.
+    band: Band,
+    /// The band's frequency in Hz, from 20 to 20000.
+    frequency: Option<f32>,
+    /// Its gain in dB, from -24 to 24.
+    gain_db: Option<f32>,
+    /// Its Q (for shelves, the slope), from 0.1 to 10.
+    q: Option<f32>,
+}
+
+fn set_eq(ctx: &mut Ctx<'_>, p: SetEq) -> Result<Value, CommandError> {
+    let id = ctx.insert(p.insert.as_ref())?;
+    if let Some(f) = p.frequency {
+        in_range("frequency", f64::from(f), 20.0..=20_000.0)?;
+    }
+    if let Some(g) = p.gain_db {
+        in_range("gainDb", f64::from(g), -24.0..=24.0)?;
+    }
+    if let Some(q) = p.q {
+        in_range("q", f64::from(q), 0.1..=10.0)?;
+    }
+    let mut band = None;
+    ctx.edit_insert(id, |i| {
+        let target = match p.band {
+            Band::Low => &mut i.eq.low,
+            Band::Mid => &mut i.eq.mid,
+            Band::High => &mut i.eq.high,
+        };
+        if let Some(f) = p.frequency {
+            target.frequency = f;
+        }
+        if let Some(g) = p.gain_db {
+            target.gain_db = g;
+        }
+        if let Some(q) = p.q {
+            target.q = q;
+        }
+        band = Some(*target);
+    })?;
+    ctx.set_label(format!("Set {} EQ", label(&ctx.project, id)));
+    Ok(json!({ "insert": insert_number(&ctx.project, id), "band": band.map(|b| json!({ "frequency": b.frequency, "gainDb": b.gain_db, "q": b.q })) }))
+}
+
+/// Merge key: the insert and the band.
+fn by_band(params: &Value) -> String {
+    format!("{}{}", super::field(params, "insert"), super::field(params, "band"))
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Adjust {
+    /// The inserts; the selected inserts by default.
+    #[serde(default)]
+    inserts: Vec<InsertRef>,
+    /// dB to add to each fader, clamped to -144..6.
+    volume_db: Option<f32>,
+    /// Amount to add to each pan, clamped to -1..1.
+    pan: Option<f32>,
+    /// Amount to add to each stereo separation, clamped to -1..1.
+    separation: Option<f32>,
+}
+
+fn adjust(ctx: &mut Ctx<'_>, p: Adjust) -> Result<Value, CommandError> {
+    let ids = ctx.inserts(&p.inserts)?;
+    for (name, value) in [("volumeDb", p.volume_db), ("pan", p.pan), ("separation", p.separation)] {
+        if value.is_some_and(|v| !v.is_finite()) {
+            return Err(CommandError::invalid(format!("{name} must be a number")));
+        }
+    }
+    for id in &ids {
+        ctx.edit_insert(*id, |i| {
+            if let Some(db) = p.volume_db {
+                i.volume_db = (i.volume_db + db).clamp(SILENT_DB, 6.0);
+            }
+            if let Some(pan) = p.pan {
+                i.pan = (i.pan + pan).clamp(-1.0, 1.0);
+            }
+            if let Some(sep) = p.separation {
+                i.stereo_sep = (i.stereo_sep + sep).clamp(-1.0, 1.0);
+            }
+        })?;
+    }
+    ctx.set_label(format!("Adjust {} inserts", ids.len()));
+    let numbers: Vec<Option<usize>> = ids.iter().map(|id| insert_number(&ctx.project, *id)).collect();
+    Ok(json!({ "inserts": numbers }))
+}
+
+/// Merge key: the inserts adjusted.
+fn by_inserts(params: &Value) -> String {
+    super::field(params, "inserts")
+}
+
+/// The pan law, a project setting.
+#[derive(Clone, Copy, Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+enum Law {
+    /// Each side -3 dB at center: constant loudness. The default.
+    ConstantPower3dB,
+    /// Each side -4.5 dB at center.
+    Compromise4_5dB,
+    /// Each side -6 dB at center: the gains add up to one.
+    Linear6dB,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetPanLaw {
+    /// How mono sources spread as they pan.
+    law: Law,
+}
+
+fn set_pan_law(ctx: &mut Ctx<'_>, p: SetPanLaw) -> Result<Value, CommandError> {
+    let law = match p.law {
+        Law::ConstantPower3dB => PanLaw::ConstantPower3dB,
+        Law::Compromise4_5dB => PanLaw::Compromise4_5dB,
+        Law::Linear6dB => PanLaw::Linear6dB,
+    };
+    Arc::make_mut(&mut ctx.project.settings).pan_law = law;
+    ctx.set_label("Set pan law");
+    Ok(json!({ "law": law }))
 }
 
 pub(super) fn register(r: &mut Registry) {
@@ -397,7 +814,68 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "from": "insert:1", "to": "insert:5", "level": 0.7 }));
     r.edit("mixer.remove_route", "Remove route", "Removes a route.", Effects::UNDOABLE, remove_route)
         .example(json!({ "from": "insert:1", "to": "insert:5" }));
-    r.edit("mixer.set_route", "Set route", "Sets a route's send level or tap point.", Effects::UNDOABLE, set_route)
-        .example(json!({ "from": "insert:1", "to": "insert:5", "level": 0.5 }))
-        .merge(by_route);
+    r.edit(
+        "mixer.set_route",
+        "Set route",
+        "Sets a route's send level, tap point, or whether it only feeds sidechains.",
+        Effects::UNDOABLE,
+        set_route,
+    )
+    .example(json!({ "from": "insert:1", "to": "insert:5", "level": 0.5 }))
+    .merge(by_route);
+    r.edit(
+        "mixer.route_exclusive",
+        "Route exclusively",
+        "Routes a channel or insert to one insert, or the master, only, removing its other audio routes.",
+        Effects::UNDOABLE,
+        route_exclusively,
+    )
+    .example(json!({ "from": "insert:1", "to": "insert:5" }));
+    r.edit(
+        "mixer.set_to_master",
+        "Route to master",
+        "Sets whether an insert feeds the master; toggles without `on`.",
+        Effects::UNDOABLE,
+        set_to_master,
+    )
+    .example(json!({ "insert": 2, "on": false }));
+    r.edit("mixer.solo", "Solo insert", "Solos or unsolos an insert, alone with `exclusive`; toggles without `on`.", Effects::UNDOABLE, solo)
+        .example(json!({ "insert": 1, "exclusive": true }));
+    r.edit("mixer.set_icon", "Set insert icon", "Sets the icon an insert shows, by name, or none.", Effects::UNDOABLE, set_icon)
+        .example(json!({ "insert": 1, "icon": "drum" }));
+    r.edit(
+        "mixer.set_latency_offset",
+        "Set track latency",
+        "Sets an insert's track latency: positive declares latency, negative delays the insert.",
+        Effects::UNDOABLE,
+        set_latency,
+    )
+    .example(json!({ "insert": 1, "ms": -2.5 }))
+    .merge(by_insert);
+    r.edit(
+        "mixer.set_pdc_bypass",
+        "Set delay compensation bypass",
+        "Sets when an insert skips delay compensation: never, always or whileRecording.",
+        Effects::UNDOABLE,
+        set_pdc_bypass,
+    )
+    .example(json!({ "insert": 1, "mode": "whileRecording" }));
+    r.edit("mixer.set_output", "Set direct output", "Sends an insert straight to device outputs as well, or stops.", Effects::UNDOABLE, set_output)
+        .example(json!({ "insert": 3, "channels": [2, 3] }));
+    r.edit("mixer.reorder_insert", "Move insert", "Moves an insert to another place in the mixer.", Effects::UNDOABLE, move_insert)
+        .example(json!({ "insert": 3, "to": 1 }));
+    r.edit("mixer.set_eq", "Set strip EQ", "Sets the frequency, gain or Q of a band of an insert's EQ.", Effects::UNDOABLE, set_eq)
+        .example(json!({ "insert": 1, "band": "mid", "frequency": 2500, "gainDb": -3.0, "q": 1.4 }))
+        .merge(by_band);
+    r.edit(
+        "mixer.adjust",
+        "Adjust inserts",
+        "Moves the faders, pans or stereo separation of several inserts together, by the same amount.",
+        Effects::UNDOABLE,
+        adjust,
+    )
+    .example(json!({ "inserts": [1, 2], "volumeDb": -1.5 }))
+    .merge(by_inserts);
+    r.edit("project.set_pan_law", "Set pan law", "Sets how mono sources spread as they pan, for the whole project.", Effects::UNDOABLE, set_pan_law)
+        .example(json!({ "law": "linear6dB" }));
 }

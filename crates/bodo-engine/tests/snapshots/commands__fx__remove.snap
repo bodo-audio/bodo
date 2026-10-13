@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "slot": 1
+  },
+  "result": {
+    "effect": null,
+    "insert": 2,
+    "slot": 1
+  },
+  "undo": "Remove the effect in slot 1"
+}

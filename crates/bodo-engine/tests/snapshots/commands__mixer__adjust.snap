@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "inserts": [
+      1,
+      2
+    ],
+    "volumeDb": -1.5
+  },
+  "result": {
+    "inserts": [
+      1,
+      2
+    ]
+  },
+  "undo": "Adjust 2 inserts"
+}

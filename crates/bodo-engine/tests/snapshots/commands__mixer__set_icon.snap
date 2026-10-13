@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "icon": "drum",
+    "insert": 1
+  },
+  "result": {
+    "icon": "drum",
+    "insert": 1
+  },
+  "undo": "Set Insert 1 icon"
+}

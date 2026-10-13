@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 1,
+    "ms": -2.5
+  },
+  "result": {
+    "frames": -120,
+    "insert": 1,
+    "ms": -2.5
+  },
+  "undo": "Set Insert 1 track latency"
+}

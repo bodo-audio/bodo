@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "exclusive": true,
+    "insert": 1
+  },
+  "result": {
+    "insert": 1,
+    "solo": true,
+    "soloed": [
+      1
+    ]
+  },
+  "undo": "Solo Insert 1"
+}

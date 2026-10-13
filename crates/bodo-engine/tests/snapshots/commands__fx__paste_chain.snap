@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "inserts": [
+      3,
+      4
+    ]
+  },
+  "result": {
+    "effects": 1,
+    "inserts": [
+      3,
+      4
+    ]
+  },
+  "undo": "Paste effects into 2 inserts"
+}

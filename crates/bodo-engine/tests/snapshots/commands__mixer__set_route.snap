@@ -10,6 +10,7 @@ expression: snapshot
   },
   "result": {
     "level": 0.5,
+    "sidechain": false,
     "tap": "postFader"
   },
   "undo": null

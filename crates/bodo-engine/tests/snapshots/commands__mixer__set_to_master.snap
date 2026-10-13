@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "on": false
+  },
+  "result": {
+    "insert": 2,
+    "toMaster": false
+  },
+  "undo": "Unroute Insert 2 to the master"
+}

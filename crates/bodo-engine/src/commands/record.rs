@@ -86,8 +86,10 @@ enum Format {
     Float32,
     /// 24-bit WAV.
     Int24,
-    /// FLAC (written as 32-bit float WAV until the FLAC writer arrives).
+    /// 24-bit FLAC, lossless and about half the size.
     Flac,
+    /// 32-bit float Wave64, for takes longer than WAV's 4 GB.
+    W64,
 }
 
 impl From<Format> for RecordFormat {
@@ -96,6 +98,7 @@ impl From<Format> for RecordFormat {
             Format::Float32 => Self::Float32,
             Format::Int24 => Self::Int24,
             Format::Flac => Self::Flac,
+            Format::W64 => Self::W64,
         }
     }
 }
