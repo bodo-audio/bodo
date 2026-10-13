@@ -1,0 +1,22 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "amount": 0.5,
+    "notes": [
+      0,
+      1
+    ]
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      1
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Articulate notes"
+}

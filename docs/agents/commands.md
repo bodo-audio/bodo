@@ -1417,6 +1417,30 @@ Example:
 }
 ```
 
+### `note.articulate`
+
+Sets each note's length to a share of the time until the next one, from staccato to legato.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `amount` | number | How much of the time until the next note each note lasts, from 0.05 (staccato) to 1 (legato). The last note keeps that share of its own length. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "amount": 0.5,
+  "notes": [
+    0,
+    1
+  ]
+}
+```
+
 ### `note.chop`
 
 Splits notes into pieces of a length.
@@ -1613,6 +1637,39 @@ Example:
     1
   ],
   "strength": 0.5
+}
+```
+
+### `note.randomize`
+
+Fills a stretch of a pattern with random notes of a scale on a grid, from a seed.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel that plays the notes; the piano roll's channel by default. |
+| `density` | number, optional | The share of grid steps that get a note, from 0 to 1; 0.5 by default. |
+| `high` | integer, optional | The highest key; C5 (72) by default. |
+| `length` | Length, optional | How long a stretch to fill; the pattern's length by default. |
+| `low` | integer, optional | The lowest key; C4 (60) by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `root` | Root, optional | The scale's root: a note name such as "A" or "F#", or a MIDI key; C by default. |
+| `scale` | string, optional | The scale, such as "minor" or "dorian"; major by default. |
+| `seed` | integer, optional | The seed: the same seed gives the same notes. 1 by default. |
+| `start` | Position, optional | Where the notes may start; the pattern's start by default. |
+| `step` | Length, optional | The grid the notes start on, and their length; one step by default. |
+
+Example:
+
+```json
+{
+  "channel": "Kick",
+  "density": 0.5,
+  "length": "1 bar",
+  "root": "A",
+  "scale": "minor",
+  "seed": 7
 }
 ```
 

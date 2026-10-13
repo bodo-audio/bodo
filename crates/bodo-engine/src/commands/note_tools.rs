@@ -77,6 +77,46 @@ struct Chop {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Articulate {
+    /// The pattern; the current pattern by default.
+    pattern: Option<PatternRef>,
+    /// The note ids; the selected notes by default.
+    #[serde(default)]
+    notes: Vec<u32>,
+    /// How much of the time until the next note each note lasts, from 0.05 (staccato) to 1 (legato). The last note
+    /// keeps that share of its own length.
+    amount: f64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Randomize {
+    /// The pattern; the current pattern by default.
+    pattern: Option<PatternRef>,
+    /// The channel that plays the notes; the piano roll's channel by default.
+    channel: Option<ChannelRef>,
+    /// Where the notes may start; the pattern's start by default.
+    start: Option<Position>,
+    /// How long a stretch to fill; the pattern's length by default.
+    length: Option<Length>,
+    /// The grid the notes start on, and their length; one step by default.
+    step: Option<Length>,
+    /// The scale's root: a note name such as "A" or "F#", or a MIDI key; C by default.
+    root: Option<Root>,
+    /// The scale, such as "minor" or "dorian"; major by default.
+    scale: Option<String>,
+    /// The lowest key; C4 (60) by default.
+    low: Option<u8>,
+    /// The highest key; C5 (72) by default.
+    high: Option<u8>,
+    /// The share of grid steps that get a note, from 0 to 1; 0.5 by default.
+    density: Option<f64>,
+    /// The seed: the same seed gives the same notes. 1 by default.
+    seed: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Slice {
     /// The pattern; the current pattern by default.
     pattern: Option<PatternRef>,
@@ -465,6 +505,76 @@ fn slice(ctx: &mut Ctx<'_>, p: Slice) -> Result<Value, CommandError> {
     })
 }
 
+fn articulate(ctx: &mut Ctx<'_>, p: Articulate) -> Result<Value, CommandError> {
+    in_range("amount", p.amount, 0.05..=1.0)?;
+    run_tool(ctx, p.pattern.as_ref(), &p.notes, String::from("Articulate notes"), |_, notes, _| {
+        let starts: BTreeSet<Tick> = notes.iter().map(|n| n.start).collect();
+        Ok(notes
+            .into_iter()
+            .map(|mut note| {
+                let room = starts.range(Tick(note.start.0 + 1)..).next().map_or(note.len.0, |next| next.0 - note.start.0);
+                note.len = Tick(((room as f64 * p.amount).round() as i64).max(1));
+                note
+            })
+            .collect())
+    })
+}
+
+/// The pitch class `root` names.
+fn root_class(root: &Root) -> Result<PitchClass, CommandError> {
+    match root {
+        Root::Key(key) => Ok(PitchClass::of(*key)),
+        Root::Name(name) => Ok(PitchClass::parse_with_octave(name).map_err(|e| CommandError::invalid(e.to_string()))?.0),
+    }
+}
+
+fn randomize(ctx: &mut Ctx<'_>, p: Randomize) -> Result<Value, CommandError> {
+    let pattern = ctx.pattern(p.pattern.as_ref())?;
+    let channel = ctx.channel(p.channel.as_ref())?;
+    let root = p.root.as_ref().map(root_class).transpose()?.unwrap_or(PitchClass::new(0));
+    let kind: ScaleKind = match &p.scale {
+        Some(name) => name.parse().map_err(|e: bodo_kit_music::ScaleError| CommandError::invalid(e.to_string()))?,
+        None => ScaleKind::Major,
+    };
+    let scale = Scale::new(root, kind);
+    let (low, high) = (p.low.unwrap_or(60), p.high.unwrap_or(72));
+    let keys = scale.keys(low.min(high), high.max(low).min(127));
+    if keys.is_empty() {
+        return Err(CommandError::invalid(format!("{scale} has no keys from {low} to {high}")));
+    }
+    let density = p.density.unwrap_or(0.5);
+    in_range("density", density, 0.0..=1.0)?;
+    let start = p.start.as_ref().map(|s| s.resolve(&ctx.project)).transpose()?.unwrap_or(Tick::ZERO).max(Tick::ZERO);
+    let step = p.step.as_ref().map(|s| s.resolve(&ctx.project, start)).transpose()?.unwrap_or(STEP).max(Tick(1));
+    let length = match &p.length {
+        Some(length) => length.resolve(&ctx.project, start)?,
+        None => crate::pattern_length(&ctx.project, pattern),
+    };
+    let mut rng = bodo_kit_music::Rng::new(p.seed.unwrap_or(1));
+    let added = ctx.edit_pattern(pattern, |pat| {
+        if pat.binding.is_some_and(|b| b != channel) {
+            return Err(CommandError::rejected(format!("{} is bound to another channel", pat.name)));
+        }
+        let mut added = Vec::new();
+        let mut at = start.0;
+        while at < start.0 + length.0 {
+            if rng.next_f64() < density {
+                let id = fresh(&mut pat.next_note_id);
+                let mut note = Note::new(id, keys[rng.below(keys.len())], Tick(at), step);
+                note.velocity = ((0.55 + 0.45 * rng.next_f64()) * f64::from(u16::MAX)).round() as u16;
+                pat.notes.entry(channel).or_default().insert(note);
+                added.push(id);
+            }
+            at += step.0;
+        }
+        Ok((!added.is_empty(), added))
+    })?;
+    ctx.editor.channel = Some(channel);
+    ctx.editor.notes = added.iter().copied().collect();
+    ctx.set_label(format!("Randomize notes in {scale}"));
+    Ok(json!({ "pattern": pattern, "channel": channel, "scale": scale.to_string(), "notes": added.iter().map(|n| n.0).collect::<Vec<_>>() }))
+}
+
 fn glue(ctx: &mut Ctx<'_>, p: Notes) -> Result<Value, CommandError> {
     run_tool(ctx, p.pattern.as_ref(), &p.notes, String::from("Glue notes"), |_, notes, _| {
         let mut by_key: BTreeMap<u8, Vec<Note>> = BTreeMap::new();
@@ -622,10 +732,7 @@ fn unhumanize(ctx: &mut Ctx<'_>, p: Notes) -> Result<Value, CommandError> {
 }
 
 fn limit_to_scale(ctx: &mut Ctx<'_>, p: LimitToScale) -> Result<Value, CommandError> {
-    let root = match &p.root {
-        Root::Key(key) => PitchClass::of(*key),
-        Root::Name(name) => PitchClass::parse_with_octave(name).map_err(|e| CommandError::invalid(e.to_string()))?.0,
-    };
+    let root = root_class(&p.root)?;
     let kind: ScaleKind = p.scale.parse().map_err(|e: bodo_kit_music::ScaleError| CommandError::invalid(e.to_string()))?;
     let scale = Scale::new(root, kind);
     run_tool(ctx, p.pattern.as_ref(), &p.notes, format!("Limit notes to {scale}"), |_, notes, _| {
@@ -731,6 +838,22 @@ pub(super) fn register(r: &mut Registry) {
     r.edit("note.slice", "Slice notes", "Cuts notes in two where they cross a position.", Effects::UNDOABLE, slice)
         .example(json!({ "notes": [0], "at": 60 }))
         .merge(super::whole);
+    r.edit(
+        "note.articulate",
+        "Articulate notes",
+        "Sets each note's length to a share of the time until the next one, from staccato to legato.",
+        Effects::UNDOABLE,
+        articulate,
+    )
+    .example(json!({ "notes": [0, 1], "amount": 0.5 }));
+    r.edit(
+        "note.randomize",
+        "Randomize notes",
+        "Fills a stretch of a pattern with random notes of a scale on a grid, from a seed.",
+        Effects::UNDOABLE,
+        randomize,
+    )
+    .example(json!({ "channel": "Kick", "root": "A", "scale": "minor", "length": "1 bar", "density": 0.5, "seed": 7 }));
     r.edit("note.glue", "Glue notes", "Joins notes of the same key and channel that touch or overlap.", Effects::UNDOABLE, glue)
         .example(json!({ "notes": [0, 1] }));
     r.edit("note.strum", "Strum", "Rolls chords so each voice starts a little after the one before.", Effects::UNDOABLE, strum)

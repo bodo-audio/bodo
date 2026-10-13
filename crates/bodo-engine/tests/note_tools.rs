@@ -241,3 +241,33 @@ fn a_painted_or_erased_stroke_is_one_undo_step() {
     assert!(kick(&s).is_empty());
     assert_eq!(s.undo_labels().count(), before + 2);
 }
+
+#[test]
+fn articulate_shortens_notes_to_a_share_of_the_room_they_have() {
+    let mut s = session();
+    let ids = add(&mut s, &[(60, 0, 960), (62, 960, 960), (64, 1920, 480)]);
+    run(&mut s, "note.articulate", json!({ "notes": ids, "amount": 0.5 }));
+    assert_eq!(lengths(&kick(&s)), [480, 480, 240], "half the gap to the next note; the last one half its own length");
+    let err = s.execute("note.articulate", json!({ "notes": ids, "amount": 0.0 })).unwrap_err();
+    assert_eq!(err.code, ErrorCode::InvalidParams);
+}
+
+#[test]
+fn randomize_fills_the_grid_with_keys_of_the_scale_from_a_seed() {
+    let mut s = session();
+    let params = json!({ "channel": "Kick", "root": "A", "scale": "minor", "low": 57, "high": 69, "length": "1 bar", "density": 0.75, "seed": 3 });
+    run(&mut s, "note.randomize", params.clone());
+    let notes = kick(&s);
+    assert!(!notes.is_empty() && notes.len() <= 16);
+    let a_minor = [9, 11, 0, 2, 4, 5, 7];
+    for note in &notes {
+        assert!(a_minor.contains(&(note.key % 12)) && (57..=69).contains(&note.key), "{} is out of A minor or the range", note.key);
+        assert_eq!((note.start.0 % 240, note.len.0), (0, 240), "on the step grid, a step long");
+    }
+    assert_eq!(s.editor().notes.len(), notes.len(), "the new notes are selected");
+    // The same seed on a fresh pattern gives the same notes.
+    let mut again = session();
+    run(&mut again, "note.randomize", params);
+    assert_eq!(starts(&kick(&again)), starts(&notes));
+    assert_eq!(keys(&kick(&again)), keys(&notes));
+}
