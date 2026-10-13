@@ -2,7 +2,7 @@
 
 These are the rules for anyone, human or coding agent, who changes code in this repository. The full specification is in [`project.md`](project.md), and decisions are recorded in [`docs/adr/`](docs/adr/).
 
-> **Current state:** the repository holds documentation only. The workspace, `xtask` and CI arrive in milestone M0 ([project.md section 20](project.md#20-roadmap)). Commands below marked *(M0)* only work once M0 lands.
+> **Current state:** milestone M0 ([project.md section 20](project.md#20-roadmap)) is in progress. The workspace, the `xtask` gates, the CI workflow, `bodo-kit-core` and `bodo-kit-midi` exist; [`docs/STATUS.md`](docs/STATUS.md) tracks the rest. Commands below marked with a later milestone don't work yet.
 
 ## 1. Repository map
 
@@ -17,7 +17,7 @@ These are the rules for anyone, human or coding agent, who changes code in this 
 
 ## 2. Layers
 
-A crate may depend only on crates in **strictly lower** layers. `cargo xtask layers` *(M0)* enforces this.
+A crate may depend only on crates in **strictly lower** layers. `cargo xtask layers` enforces this; [ADR 0011](docs/adr/0011-enforcing-the-layer-unsafe-and-license-rules.md) spells out the details, and [`docs/architecture.md`](docs/architecture.md) lists the exceptions.
 
 | Layer | Crates |
 |---|---|
@@ -38,17 +38,19 @@ Hard rules:
 - **`egui` only in** `bodo-kit-ui`, `bodo-ui` and apps.
 - **Stock plugins** depend on Kit (L0 to L4) only.
 
-## 3. Build and test *(M0)*
+## 3. Build and test
 
 ```sh
-cargo xtask ci          # everything CI runs: fmt, clippy, tests, layers, unsafe audit, deny, text checks, goldens
-cargo xtask layers      # layer rules only
-cargo xtask deny        # license and advisory policy
-cargo test -p <crate>   # one crate
-cargo xtask kit new <name> --kind effect|instrument   # scaffold a Bodo Kit plugin
+cargo xtask ci            # everything CI runs: fmt, clippy, tests, docs, release build, layers, unsafe audit, text, deny
+cargo xtask layers        # layer rules only
+cargo xtask unsafe-audit  # unsafe-code boundary only
+cargo xtask text          # text style only
+cargo xtask deny          # license and advisory policy (needs `cargo install cargo-deny --locked`)
+cargo test -p <crate>     # one crate
+cargo xtask kit new <name> --kind effect|instrument   # scaffold a Bodo Kit plugin (M6)
 ```
 
-A change is done only when `cargo xtask ci` passes locally.
+A change is done only when `cargo xtask ci` passes locally. Golden renders join `ci` when the first DSP lands.
 
 ## 4. Real-time rules (audio thread and RT workers)
 
