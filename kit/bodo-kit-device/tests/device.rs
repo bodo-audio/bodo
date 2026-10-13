@@ -102,12 +102,27 @@ fn listing_devices_works_without_hardware() {
     }
 }
 
-/// Plays a short tone on the default output device. Run it by hand: `cargo test -p bodo-kit-device -- --ignored`.
+/// Prints every host and device, so a CI log shows what the machine offers. Needs an audio device.
+#[test]
+#[ignore = "needs an audio device"]
+fn prints_the_devices() {
+    for host in hosts() {
+        println!("host {} (default: {})", host.name, host.is_default);
+        match devices(Some(&host.name)) {
+            Ok(list) => list.iter().for_each(|d| println!("  {d:?}")),
+            Err(err) => println!("  could not list devices: {err}"),
+        }
+    }
+}
+
+/// Plays a short tone on the default output device, with its default buffer size. Run it by hand, or in the CI job
+/// that installs a virtual sound card: `cargo test -p bodo-kit-device -- --ignored`.
 #[test]
 #[ignore = "needs an audio device"]
 fn plays_a_tone_on_the_default_device() {
     let mut phase = 0.0f32;
-    let stream = open(&DeviceConfig::default(), move |block: &mut Block<'_>| {
+    let config = DeviceConfig { buffer_frames: None, ..DeviceConfig::default() };
+    let stream = open(&config, move |block: &mut Block<'_>| {
         let step = 440.0 * std::f32::consts::TAU / block.rate.hz() as f32;
         for i in 0..block.frames {
             let sample = phase.sin() * 0.1;

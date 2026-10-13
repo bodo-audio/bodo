@@ -65,3 +65,20 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo build -p bodo-kit-device --features asio --locked
+
+  devices:
+    # Real audio I/O through a virtual sound card: VB-CABLE on Windows, a PulseAudio null sink on Linux.
+    name: Audio devices (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libasound2-plugins
+      - uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p bodo-kit-device --release --locked -- --ignored --nocapture --test-threads=1
