@@ -112,7 +112,8 @@ impl SongInputs {
             && Arc::ptr_eq(&self.meter, &project.meter)
             && self.patterns.ptr_eq(&project.patterns)
             && self.tracks.ptr_eq(&project.tracks)
-            && self.track_order.ptr_eq(&project.track_order)
+            // imbl keeps tiny vectors inline, where pointers never match; comparing those by value is cheap.
+            && (self.track_order.ptr_eq(&project.track_order) || self.track_order == project.track_order)
     }
 }
 
