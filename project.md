@@ -119,7 +119,7 @@ The agent always runs locally inside Bodo. Bodo Cloud is only a model gateway th
 
 ## 3. Technology stack
 
-All versions were checked against crates.io and GitHub on 2026-10-13. The workspace `Cargo.toml` pins exact versions, and a bot opens weekly update PRs.
+All versions were checked against crates.io and GitHub on 2026-10-13. The workspace `Cargo.toml` names full versions, the committed `Cargo.lock` pins the exact versions every build uses (ADR 0011), and a bot opens weekly update PRs.
 
 | Area | Crate / tool | Version | License | Use |
 |---|---|---|---|---|

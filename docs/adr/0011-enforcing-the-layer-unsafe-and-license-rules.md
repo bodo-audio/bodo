@@ -1,6 +1,6 @@
 # ADR 0011: Enforcing the layer, unsafe and license rules
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-13
 - **Deciders:** hasan-muzak
 
