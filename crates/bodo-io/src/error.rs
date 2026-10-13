@@ -109,6 +109,14 @@ pub enum IoError {
         /// What is wrong.
         message: String,
     },
+    /// A preset file (a channel, mixer or score preset) is not the kind expected, or can't be read.
+    #[error("{}: {message}", .path.display())]
+    Preset {
+        /// The preset file.
+        path: PathBuf,
+        /// What is wrong.
+        message: String,
+    },
     /// The project could not be turned into JSON.
     #[error("the project could not be written as JSON: {message}")]
     Encode {

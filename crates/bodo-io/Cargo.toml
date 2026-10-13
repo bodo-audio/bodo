@@ -8,6 +8,7 @@ rust-version.workspace = true
 publish.workspace = true
 
 [dependencies]
+base64.workspace = true
 blake3.workspace = true
 bodo-kit-core.workspace = true
 bodo-kit-midi.workspace = true

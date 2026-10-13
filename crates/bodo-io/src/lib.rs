@@ -7,6 +7,7 @@
 //! - [`convert`] packs a folder into a `.bodo` file or unpacks one, keeping every entry.
 //! - [`mod@paths`] holds the rules for sample paths, and [`hash_file`] the BLAKE3 hash that finds moved samples.
 //! - [`midi`] imports and exports Standard MIDI Files.
+//! - [`preset`] reads and writes channel presets, mixer presets and scores.
 //!
 //! Plugin states never go into `project.json`: each one is a binary blob in `plugins/<instance>.state`.
 
@@ -19,6 +20,7 @@ mod error;
 mod json;
 pub mod midi;
 pub mod paths;
+pub mod preset;
 
 pub use backup::backups;
 pub use container::{DEFAULT_BACKUPS, SaveOptions, convert, load, save};
