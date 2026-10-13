@@ -1,0 +1,18 @@
+[package]
+name = "bodo-kit-music"
+description = "Music theory and performance for Bodo Kit: scales, chords, quantize, strum, arpeggios and humanize."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bodo-kit-core.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+
+[lints]
+workspace = true

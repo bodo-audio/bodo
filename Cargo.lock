@@ -803,6 +803,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bodo-kit-music"
+version = "0.0.0"
+dependencies = [
+ "bodo-kit-core",
+ "proptest",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "bodo-kit-ui"
 version = "0.0.0"
 dependencies = [

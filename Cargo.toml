@@ -20,6 +20,7 @@ bodo-kit-dsp = { path = "kit/bodo-kit-dsp" }
 bodo-kit-graph = { path = "kit/bodo-kit-graph" }
 bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
+bodo-kit-music = { path = "kit/bodo-kit-music" }
 bodo-kit-ui = { path = "kit/bodo-kit-ui" }
 
 # Bodo DAW
