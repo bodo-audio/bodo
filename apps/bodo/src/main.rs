@@ -61,13 +61,12 @@ impl eframe::App for App {
         if let Some(menu) = &mut self.menu {
             menu.update(&mut self.app);
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.app.quit_requested && self.app.session.is_dirty() && !self.app.quit_after_shot {
-            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
-            self.app.request_quit();
-        }
-        if std::mem::take(&mut self.app.quit_requested) {
+        if self.app.take_quit() {
             bodo_ui::end_session(&self.app);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.app.allow_close() {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         }
         let title = format!("{} - Bodo", self.app.title());
         if title != self.title {

@@ -283,6 +283,8 @@ pub struct BodoApp {
     pub quit_requested: bool,
     /// Quit once the requested screenshot is saved (`--screenshot`).
     pub quit_after_shot: bool,
+    /// Set once the user has confirmed quitting: the window's close requests then go through.
+    closing: bool,
     autosave: autosave::Autosave,
     shown_theme: Option<egui::Theme>,
     status: Option<(String, bool, Instant)>,
@@ -308,6 +310,7 @@ impl BodoApp {
             data_dir: None,
             quit_requested: false,
             quit_after_shot: false,
+            closing: false,
             autosave: autosave::Autosave::default(),
             shown_theme: None,
             status: None,
@@ -670,6 +673,26 @@ impl BodoApp {
     /// Closes Bodo, asking first when there are unsaved changes.
     pub fn request_quit(&mut self) {
         dialogs::guard_unsaved(self, dialogs::Pending::Quit);
+    }
+
+    /// Whether the window may close now that it was asked to. With unsaved changes, the first request opens the save
+    /// dialog and is refused; once the user has answered it, by saving or by choosing not to, close requests go through.
+    pub fn allow_close(&mut self) -> bool {
+        if self.closing || self.quit_after_shot || !self.session.is_dirty() {
+            return true;
+        }
+        self.request_quit();
+        false
+    }
+
+    /// Takes a quit the user confirmed, if there is one: the app should close its window now, and later close
+    /// requests go through.
+    pub fn take_quit(&mut self) -> bool {
+        if std::mem::take(&mut self.quit_requested) {
+            self.closing = true;
+            return true;
+        }
+        false
     }
 
     /// Sets the hint bar's text for this frame, for the control under the pointer.
