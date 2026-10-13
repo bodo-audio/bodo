@@ -1,6 +1,6 @@
 //! The Bodo render engine (project.md section 6).
 //!
-//! - [`engine`]: builds the two sides of an engine for a project: [`Engine`] on the control thread and
+//! - [`mod@engine`]: builds the two sides of an engine for a project: [`Engine`] on the control thread and
 //!   [`AudioEngine`] on the audio thread, which any `bodo-kit-device` stream can run.
 //! - [`render_offline`]: the same engine, faster than real time and deterministic, for export.
 //! - [`sequence`]: the sequencer and transport.

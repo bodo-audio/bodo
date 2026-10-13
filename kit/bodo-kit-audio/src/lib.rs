@@ -1,7 +1,7 @@
 //! Audio files for Bodo Kit.
 //!
 //! - [`decode`]: reading WAV, AIFF, FLAC, MP3, AAC, ALAC and Ogg Vorbis into memory, or packet by packet.
-//! - [`resample`]: converting to the project's sample rate on load.
+//! - [`mod@resample`]: converting to the project's sample rate on load.
 //! - [`wav`]: writing WAV files.
 //! - [`peaks`]: the peaks pyramid for drawing waveforms.
 //! - [`stream`]: streaming long files from disk to the audio thread.
