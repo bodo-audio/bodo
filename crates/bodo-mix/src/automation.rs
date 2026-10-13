@@ -172,48 +172,12 @@ impl Lane {
                 Some(b) => {
                     let span = (b.at - a.at) as f64;
                     let u = if span > 0.0 { (local - a.at as f64) / span } else { 1.0 };
-                    shape(a.curve, a.value, b.value, u)
+                    a.curve.between(a.value, b.value, u)
                 }
             },
         };
         self.target.value_of(normalized)
     }
-}
-
-/// The value between `from` and `to` a fraction `u` of the way along a segment with `curve`.
-///
-/// - Hold keeps `from` until the next point.
-/// - Exp bends the line: its tension (-1 to 1) sets how far, with positive values rising late.
-/// - SCurve eases in and out, steeper as its tension rises from -1 to 1.
-/// - Stairs climbs in that many equal steps; Sine follows half a cosine; Pulse jumps halfway.
-fn shape(curve: CurveShape, from: f32, to: f32, u: f64) -> f32 {
-    let u = u.clamp(0.0, 1.0);
-    let k = match curve {
-        CurveShape::Hold => 0.0,
-        CurveShape::Linear => u,
-        CurveShape::Exp(tension) => {
-            let s = 6.0 * f64::from(tension.clamp(-1.0, 1.0));
-            if s.abs() < 1e-3 { u } else { (s * u).exp_m1() / s.exp_m1() }
-        }
-        CurveShape::SCurve(tension) => {
-            let p = 1.0 + 2.0 * (f64::from(tension.clamp(-1.0, 1.0)) + 1.0);
-            let (a, b) = (u.powf(p), (1.0 - u).powf(p));
-            if a + b > 0.0 { a / (a + b) } else { u }
-        }
-        CurveShape::Stairs(steps) => {
-            let n = f64::from(steps.max(1));
-            (u * n).floor() / n
-        }
-        CurveShape::Sine => 0.5 - 0.5 * (core::f64::consts::PI * u).cos(),
-        CurveShape::Pulse => {
-            if u < 0.5 {
-                0.0
-            } else {
-                1.0
-            }
-        }
-    };
-    from + (to - from) * k as f32
 }
 
 /// Where lanes play on the playlist: a clip of an automation channel, or a clip of a pattern with lanes.
@@ -361,25 +325,6 @@ pub fn apply(index: &AutomationIndex, tempo: &bodo_kit_core::TempoMap, transport
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn curves_shape_the_segment() {
-        assert_eq!(shape(CurveShape::Linear, 0.0, 1.0, 0.25), 0.25);
-        assert_eq!(shape(CurveShape::Hold, 0.2, 1.0, 0.9), 0.2);
-        assert_eq!(shape(CurveShape::Pulse, 0.0, 1.0, 0.49), 0.0);
-        assert_eq!(shape(CurveShape::Pulse, 0.0, 1.0, 0.5), 1.0);
-        assert_eq!(shape(CurveShape::Stairs(4), 0.0, 1.0, 0.6), 0.5);
-        assert!((shape(CurveShape::Sine, 0.0, 1.0, 0.5) - 0.5).abs() < 1e-6);
-        assert!(shape(CurveShape::Exp(0.5), 0.0, 1.0, 0.5) < 0.5, "positive tension rises late");
-        assert!(shape(CurveShape::Exp(-0.5), 0.0, 1.0, 0.5) > 0.5);
-        assert!((shape(CurveShape::Exp(0.0), 0.0, 1.0, 0.3) - 0.3).abs() < 1e-6);
-        assert!((shape(CurveShape::SCurve(-1.0), 0.0, 1.0, 0.3) - 0.3).abs() < 1e-6, "the gentlest S curve is a line");
-        assert!(shape(CurveShape::SCurve(1.0), 0.0, 1.0, 0.25) < 0.25);
-        for curve in [CurveShape::Linear, CurveShape::Exp(0.7), CurveShape::SCurve(0.3), CurveShape::Sine] {
-            assert_eq!(shape(curve, 0.2, 0.9, 0.0), 0.2);
-            assert!((shape(curve, 0.2, 0.9, 1.0) - 0.9).abs() < 1e-6, "{curve:?}");
-        }
-    }
 
     #[test]
     fn values_set_get_and_clear() {

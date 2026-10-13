@@ -27,6 +27,52 @@ pub enum CurveShape {
     Pulse,
 }
 
+impl CurveShape {
+    /// How far from one point's value to the next the curve is, a fraction `u` (0 to 1) of the way along.
+    ///
+    /// - Hold keeps the first value until the next point.
+    /// - Exp bends the line: its tension (-1 to 1) sets how far, with positive values rising late.
+    /// - SCurve eases in and out, steeper as its tension rises from -1 to 1.
+    /// - Stairs climbs in that many equal steps; Sine follows half a cosine; Pulse jumps halfway.
+    ///
+    /// RT-safe.
+    pub fn ease(self, u: f64) -> f64 {
+        let u = u.clamp(0.0, 1.0);
+        match self {
+            Self::Hold => 0.0,
+            Self::Linear => u,
+            Self::Exp(tension) => {
+                let s = 6.0 * f64::from(tension.clamp(-1.0, 1.0));
+                if s.abs() < 1e-3 { u } else { (s * u).exp_m1() / s.exp_m1() }
+            }
+            Self::SCurve(tension) => {
+                let p = 1.0 + 2.0 * (f64::from(tension.clamp(-1.0, 1.0)) + 1.0);
+                let (a, b) = (u.powf(p), (1.0 - u).powf(p));
+                if a + b > 0.0 { a / (a + b) } else { u }
+            }
+            Self::Stairs(steps) => {
+                let n = f64::from(steps.max(1));
+                (u * n).floor() / n
+            }
+            Self::Sine => 0.5 - 0.5 * (core::f64::consts::PI * u).cos(),
+            Self::Pulse => {
+                if u < 0.5 {
+                    0.0
+                } else {
+                    1.0
+                }
+            }
+        }
+    }
+
+    /// The value between `from` and `to` a fraction `u` of the way along a segment with this curve.
+    ///
+    /// RT-safe.
+    pub fn between(self, from: f32, to: f32, u: f64) -> f32 {
+        from + (to - from) * self.ease(u) as f32
+    }
+}
+
 /// A point of an automation lane.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,6 +244,30 @@ pub struct AutomationLane {
     pub default: f32,
 }
 
+impl AutomationLane {
+    /// The normalized value (0 to 1) at `local` ticks from the lane's start: the default before the first point, the
+    /// last point's value after the last.
+    ///
+    /// Complexity: O(log n) in points.
+    pub fn normalized_at(&self, local: f64) -> f32 {
+        let index = self
+            .points
+            .binary_search_by(|p| if (p.at.0 as f64) <= local { core::cmp::Ordering::Less } else { core::cmp::Ordering::Greater })
+            .unwrap_or_else(|i| i);
+        match index.checked_sub(1).and_then(|i| self.points.get(i)) {
+            None => self.default,
+            Some(a) => match self.points.get(index) {
+                None => a.value,
+                Some(b) => {
+                    let span = (b.at.0 - a.at.0) as f64;
+                    let u = if span > 0.0 { (local - a.at.0 as f64) / span } else { 1.0 };
+                    a.curve.between(a.value, b.value, u)
+                }
+            },
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -226,5 +296,39 @@ mod tests {
         assert_eq!(ParamTarget::Channel(channel, ChannelParam::Volume).value_of(0.8), 1.0);
         assert_eq!(ParamTarget::Channel(channel, ChannelParam::Pan).value_of(0.5), 0.0);
         assert_eq!(ParamTarget::Channel(channel, ChannelParam::Pitch).value_of(1.0), 2400.0);
+    }
+
+    #[test]
+    fn curves_shape_the_segment() {
+        assert_eq!(CurveShape::Linear.between(0.0, 1.0, 0.25), 0.25);
+        assert_eq!(CurveShape::Hold.between(0.2, 1.0, 0.9), 0.2);
+        assert_eq!(CurveShape::Pulse.between(0.0, 1.0, 0.49), 0.0);
+        assert_eq!(CurveShape::Pulse.between(0.0, 1.0, 0.5), 1.0);
+        assert_eq!(CurveShape::Stairs(4).between(0.0, 1.0, 0.6), 0.5);
+        assert!((CurveShape::Sine.between(0.0, 1.0, 0.5) - 0.5).abs() < 1e-6);
+        assert!(CurveShape::Exp(0.5).between(0.0, 1.0, 0.5) < 0.5, "positive tension rises late");
+        assert!(CurveShape::Exp(-0.5).between(0.0, 1.0, 0.5) > 0.5);
+        assert!((CurveShape::Exp(0.0).between(0.0, 1.0, 0.3) - 0.3).abs() < 1e-6);
+        assert!((CurveShape::SCurve(-1.0).between(0.0, 1.0, 0.3) - 0.3).abs() < 1e-6, "the gentlest S curve is a line");
+        assert!(CurveShape::SCurve(1.0).between(0.0, 1.0, 0.25) < 0.25);
+        for curve in [CurveShape::Linear, CurveShape::Exp(0.7), CurveShape::SCurve(0.3), CurveShape::Sine] {
+            assert_eq!(curve.between(0.2, 0.9, 0.0), 0.2);
+            assert!((curve.between(0.2, 0.9, 1.0) - 0.9).abs() < 1e-6, "{curve:?}");
+        }
+    }
+
+    #[test]
+    fn lanes_hold_their_ends_and_follow_their_curves() {
+        let point = |at, value, curve| AutoPoint { at: Tick(at), value, curve };
+        let lane = AutomationLane {
+            target: ParamTarget::Tempo,
+            points: Vector::from(vec![point(100, 0.2, CurveShape::Linear), point(300, 0.6, CurveShape::Hold), point(400, 1.0, CurveShape::Linear)]),
+            default: 0.5,
+        };
+        assert_eq!(lane.normalized_at(0.0), 0.5, "the default before the first point");
+        assert_eq!(lane.normalized_at(100.0), 0.2);
+        assert!((lane.normalized_at(200.0) - 0.4).abs() < 1e-6);
+        assert_eq!(lane.normalized_at(350.0), 0.6, "hold");
+        assert_eq!(lane.normalized_at(1000.0), 1.0, "the last value after the last point");
     }
 }
