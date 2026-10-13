@@ -1,7 +1,8 @@
 //! A mixer insert or the master, in the stage order of ADR 0009.
 //!
 //! M1 runs these stages: input sum (done by the graph), reverse polarity, swap left/right, stereo separation, pan,
-//! fader and the 5 ms mute ramp. FX slots, the strip EQ, send taps other than post-fader, solo and negative track
+//! fader and the 5 ms mute ramp. An armed insert with a hardware input adds that input to its sum, and while
+//! recording it feeds its record tap to the recorder (project.md section 9.6). FX slots, the strip EQ, send taps other than post-fader, solo and negative track
 //! latency arrive with the full mixer in M4. With every control at its default the strip is a bit-exact
 //! pass-through, which null tests rely on.
 
@@ -13,10 +14,12 @@ use bodo_kit_dsp::gain::{db_to_gain, ramp_gain};
 use bodo_kit_dsp::pan::StereoPan;
 use bodo_kit_dsp::stereo::{invert_polarity, stereo_separation, swap_channels};
 use bodo_kit_graph::NodeIo;
+use bodo_model::mixer::RecordTap;
 
 use crate::automation::{Param, param_key};
 use crate::context::BlockContext;
 use crate::live::StripLive;
+use crate::record::{CaptureSlot, StripCapture};
 
 /// The length of the mute ramp, so muting never clicks.
 const MUTE_RAMP_SECONDS: f64 = 0.005;
@@ -30,6 +33,7 @@ pub struct StripNode {
     fader: f32,
     mute: f32,
     pan: f32,
+    capture: StripCapture,
 }
 
 impl StripNode {
@@ -38,7 +42,12 @@ impl StripNode {
         let fader = db_to_gain(live.volume_db.get());
         let mute = if live.muted.load(Ordering::Relaxed) { 0.0 } else { 1.0 };
         let pan = live.pan.get();
-        Self { key, live, fader, mute, pan }
+        Self { key, live, fader, mute, pan, capture: StripCapture::default() }
+    }
+
+    /// The same strip, recording through captures that arrive on `receiver`.
+    pub fn with_capture(self, receiver: bodo_kit_core::handoff::Receiver<CaptureSlot>) -> Self {
+        Self { capture: StripCapture::new(receiver), ..self }
     }
 
     /// Processes one block.
@@ -46,11 +55,23 @@ impl StripNode {
     /// RT-safe. Complexity: O(n) in the frames.
     #[rt_safe]
     pub fn process(&mut self, io: &mut NodeIo<'_>, context: &BlockContext) {
+        self.capture.update();
         match io.inputs.first() {
             Some(input) => io.output.copy_from(input),
             None => io.output.clear(),
         }
         let Some((left, right)) = io.output.stereo_mut() else { return };
+        // 0: an armed insert monitors its hardware input.
+        if self.live.armed.load(Ordering::Relaxed)
+            && let Some((from_left, from_right)) = self.live.input_channels()
+        {
+            for (out, input) in [(&mut *left, context.input(from_left)), (&mut *right, context.input(from_right))] {
+                for (o, i) in out.iter_mut().zip(input) {
+                    *o += *i;
+                }
+            }
+        }
+        self.capture.offer(RecordTap::Input, left, right, context);
         // 1-2: polarity and swap, before the FX, like a console preamp.
         if self.live.polarity_invert.load(Ordering::Relaxed) {
             invert_polarity(left);
@@ -59,6 +80,9 @@ impl StripNode {
         if self.live.swap_lr.load(Ordering::Relaxed) {
             swap_channels(left, right);
         }
+        // 3-4: the FX slots and the strip EQ arrive in M4, so both taps see the signal after the swap.
+        self.capture.offer(RecordTap::PreFx, left, right, context);
+        self.capture.offer(RecordTap::PostFx, left, right, context);
         // Automation, where it plays, stands in for the live settings.
         let automated = |param, live: f32| context.params.get(param_key(self.key, param)).unwrap_or(live);
         // 5-6: stereo separation, then pan.
@@ -74,6 +98,8 @@ impl StripNode {
         ramp_gain(right, self.fader * self.mute, fader * mute);
         self.fader = fader;
         self.mute = mute;
+        // 9: the post-fader point.
+        self.capture.offer(RecordTap::PostFader, left, right, context);
     }
 }
 

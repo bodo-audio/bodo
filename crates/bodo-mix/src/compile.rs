@@ -21,6 +21,7 @@ use crate::audio_clips::stretch_keys;
 use crate::keys;
 use crate::live::{ChannelLive, StripLive};
 use crate::nodes::{AudioClipNode, MixNode, SamplerNode, StripNode};
+use crate::record::CaptureLinks;
 use crate::sample::SampleCache;
 use crate::stretch::StretchCache;
 
@@ -76,6 +77,8 @@ pub(crate) struct Compiler {
     strips: HashMap<InsertId, Arc<StripLive>>,
     /// Inserts the running plan has processors for.
     built_strips: HashSet<InsertId>,
+    /// The control side's links to each strip's recording capture.
+    captures: CaptureLinks,
     signature: Vec<u64>,
     gains: Option<EdgeGains>,
     latency: LatencyReport,
@@ -95,6 +98,7 @@ impl Compiler {
             channels: HashMap::new(),
             strips: HashMap::new(),
             built_strips: HashSet::new(),
+            captures: CaptureLinks::default(),
             signature: Vec::new(),
             gains: None,
             latency: LatencyReport::default(),
@@ -106,6 +110,11 @@ impl Compiler {
     pub(crate) fn set_roots(&mut self, roots: SampleRoots) {
         self.roots = roots;
         self.cache.retry_failed();
+    }
+
+    /// The links to every strip's recording capture.
+    pub(crate) fn captures_mut(&mut self) -> &mut CaptureLinks {
+        &mut self.captures
     }
 
     pub(crate) fn latency(&self) -> &LatencyReport {
@@ -177,7 +186,10 @@ impl Compiler {
         let inserts: Vec<InsertId> = project.mixer.order.iter().copied().chain(std::iter::once(master)).collect();
         for id in &inserts {
             let fresh = !self.built_strips.contains(id);
-            let processor = fresh.then(|| MixNode::Strip(StripNode::new(keys::insert(*id), self.strips.get(id).cloned().unwrap_or_default())));
+            let processor = fresh.then(|| {
+                let strip = StripNode::new(keys::insert(*id), self.strips.get(id).cloned().unwrap_or_default());
+                MixNode::Strip(strip.with_capture(self.captures.link(*id)))
+            });
             desc.nodes.push(NodeDesc { key: keys::insert(*id), channels: 2, ports: 1, latency: 0, processor });
             let insert = project.mixer.insert(*id);
             if *id != master && insert.is_some_and(|i| i.to_master) {
@@ -218,6 +230,7 @@ impl Compiler {
         self.samplers = sources;
         self.audio = audio;
         self.built_strips = inserts.into_iter().collect();
+        self.captures.retain(|id| self.built_strips.contains(id));
         self.signature = signature;
         self.stretch.trim();
         self.cache.trim();
@@ -242,6 +255,8 @@ impl Compiler {
             live.polarity_invert.store(insert.polarity_invert, Ordering::Relaxed);
             live.swap_lr.store(insert.swap_lr, Ordering::Relaxed);
             live.muted.store(insert.muted, Ordering::Relaxed);
+            live.armed.store(insert.armed, Ordering::Relaxed);
+            live.set_input(insert.input.as_ref().map_or(&[], |port| port.channels.as_slice()));
         }
         self.strips.retain(|id, _| project.mixer.insert(*id).is_some());
     }

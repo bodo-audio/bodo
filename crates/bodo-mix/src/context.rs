@@ -1,13 +1,17 @@
-//! The per-block context every graph node can read: rate, transport, the note events of the block, and the audio
-//! clip segments it plays.
+//! The per-block context every graph node can read: rate, transport, the device's input, the note events of the
+//! block, and the audio clip segments it plays.
 
 use bodo_kit_core::{SampleRate, rt_safe};
+use bodo_kit_dsp::AudioBuffer;
 
 use crate::automation::ParamValues;
 use crate::segments::Segments;
 
 /// The most note events one block can carry. More are dropped and counted.
 pub const MAX_EVENTS: usize = 8192;
+
+/// The most device input channels a block carries; inserts can take input from any of them.
+pub const MAX_INPUTS: usize = 32;
 
 /// What a note event does.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -52,6 +56,12 @@ pub struct BlockContext {
     pub frames: usize,
     /// Whether the transport is playing.
     pub playing: bool,
+    /// The transport's frame at the start of the block.
+    pub frame: i64,
+    /// The device's input for the block, [`MAX_INPUTS`] channels; `input_channels` of them are real.
+    input: AudioBuffer,
+    /// How many of `input`'s channels the device filled this block.
+    input_channels: usize,
     /// Note events of the block, sorted by channel key and then applied order. Capacity [`MAX_EVENTS`].
     events: Vec<(u64, NoteEvent)>,
     /// One entry per channel with events: its key and its range in `events`. Sorted by key.
@@ -74,12 +84,38 @@ impl BlockContext {
             rate,
             frames: 0,
             playing: false,
+            frame: 0,
+            input: AudioBuffer::for_blocks(MAX_INPUTS),
+            input_channels: 0,
             events: Vec::with_capacity(MAX_EVENTS),
             directory: Vec::with_capacity(MAX_EVENTS),
             dropped_events: 0,
             audio: Segments::new(),
             params: ParamValues::new(),
         }
+    }
+
+    /// Copies `frames` frames of `source` from frame `offset` as the block's input, or makes the input silent.
+    ///
+    /// RT-safe. Complexity: O(channels * frames).
+    #[rt_safe]
+    pub fn set_input(&mut self, source: Option<&AudioBuffer>, offset: usize, frames: usize) {
+        self.input.set_frames(frames);
+        self.input_channels = source.map_or(0, |s| s.channels().min(MAX_INPUTS));
+        for (index, channel) in self.input.channels_mut().enumerate().take(self.input_channels) {
+            let from = source.map(|s| s.channel(index)).unwrap_or(&[]);
+            let available = from.len().saturating_sub(offset).min(channel.len());
+            channel[..available].copy_from_slice(&from[offset..offset + available]);
+            channel[available..].fill(0.0);
+        }
+    }
+
+    /// Device input channel `index` for the block, or an empty slice when the device has no such input.
+    ///
+    /// RT-safe.
+    #[rt_safe]
+    pub fn input(&self, index: usize) -> &[f32] {
+        if index < self.input_channels { self.input.channel(index) } else { &[] }
     }
 
     /// Clears the events for a new block.

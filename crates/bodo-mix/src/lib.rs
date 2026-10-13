@@ -25,6 +25,7 @@ mod metronome;
 pub mod midi_record;
 pub mod nodes;
 pub mod offline;
+pub mod record;
 pub mod sample;
 pub mod segments;
 pub mod sequence;
@@ -34,6 +35,7 @@ pub use engine::{AudioEngine, Engine, EngineConfig, EngineStatus, engine};
 pub use input::{LiveInput, MidiRouter};
 pub use midi_record::{CapturedTake, RecordedNote, TakeTarget};
 pub use offline::{OfflineOptions, render_offline};
+pub use record::{Compensation, RecordError, Take};
 pub use sequence::PlayMode;
 
 /// Why the engine could not start or update.
@@ -48,4 +50,7 @@ pub enum MixError {
     /// The graph reported internal faults while rendering.
     #[error("the render hit {0} internal fault(s)")]
     Faults(u64),
+    /// Recording could not start or finish.
+    #[error(transparent)]
+    Record(#[from] record::RecordError),
 }

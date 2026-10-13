@@ -99,3 +99,58 @@ fn live_notes_the_metronome_and_recording_do_not_allocate() {
     assert_eq!(violation_count(), 0);
     assert!(control.take_midi_recording().is_some());
 }
+
+#[test]
+fn recording_does_not_allocate_on_the_audio_thread() {
+    use bodo_model::mixer::{HwPort, RecordTap};
+
+    let dir = temp_dir("rt-record");
+    write_tone(&dir);
+    let mut b = Builder::new();
+    let sample = b.sample("tone.wav");
+    let channel = b.sampler(sample, None, SamplerParams { loop_mode: LoopMode::Forward, ..SamplerParams::default() });
+    let pattern = b.pattern(Some(3840), &[(channel, 60, 0, 3840)]);
+    b.clip(pattern, 0, 3840 * 4, 0);
+    let (armed, tapped) = (b.insert(2), b.insert(3));
+    let mut project = b.build();
+    let mut mixer = (*project.mixer).clone();
+    for (id, tap) in [(armed, RecordTap::Input), (tapped, RecordTap::PostFader)] {
+        let mut insert = (*mixer.inserts[&id]).clone();
+        insert.input = Some(HwPort { channels: vec![0, 1] });
+        insert.armed = true;
+        insert.record_tap = tap;
+        mixer.inserts.insert(id, Arc::new(insert));
+    }
+    project.mixer = Arc::new(mixer);
+    let (mut control, mut audio) = engine(&project, &SampleRoots::new(&dir), EngineConfig { max_frames: 128, ..EngineConfig::default() }).unwrap();
+    assert_eq!(control.start_recording(&project, &dir.join("Recorded"), bodo_mix::Compensation::default()).unwrap(), 2);
+    control.play();
+    let mut input = AudioBuffer::new(2, 128);
+    input.channel_mut(0).fill(0.25);
+    let mut output = AudioBuffer::new(2, 128);
+    reset_violation_count();
+    assert_no_alloc(|| {
+        for _ in 0..200 {
+            audio.render_with_input(128, Some(&input), &mut output);
+        }
+    });
+    assert_eq!(violation_count(), 0);
+    control.stop();
+    control.stop_recording();
+    reset_violation_count();
+    assert_no_alloc(|| {
+        for _ in 0..4 {
+            audio.render_with_input(128, Some(&input), &mut output);
+        }
+    });
+    assert_eq!(violation_count(), 0, "handing the captures back doesn't free them on the audio thread");
+    let takes = (0..2_000)
+        .find_map(|_| {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+            control.finish_recording()
+        })
+        .unwrap()
+        .unwrap();
+    assert_eq!(takes.len(), 2);
+    assert!(takes.iter().all(|t| t.frames == 200 * 128), "{takes:?}");
+}

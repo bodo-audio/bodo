@@ -5,6 +5,9 @@
 
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
+/// No device input channel, in [`StripLive::input_left`] and [`StripLive::input_right`].
+pub const NO_INPUT: u32 = 0;
+
 /// An `f32` that can be shared between threads.
 #[derive(Debug, Default)]
 pub struct AtomicF32(AtomicU32);
@@ -60,4 +63,30 @@ pub struct StripLive {
     pub swap_lr: AtomicBool,
     /// Muted.
     pub muted: AtomicBool,
+    /// Armed for recording; an armed insert also monitors its hardware input.
+    pub armed: AtomicBool,
+    /// The device input channel feeding the left side, plus one, or [`NO_INPUT`].
+    pub input_left: AtomicU32,
+    /// The device input channel feeding the right side, plus one, or [`NO_INPUT`].
+    pub input_right: AtomicU32,
+}
+
+impl StripLive {
+    /// The device input channels feeding this strip, left and right, when it has an input.
+    pub fn input_channels(&self) -> Option<(usize, usize)> {
+        let (left, right) = (self.input_left.load(Ordering::Relaxed), self.input_right.load(Ordering::Relaxed));
+        (left != NO_INPUT && right != NO_INPUT).then(|| (left as usize - 1, right as usize - 1))
+    }
+
+    /// Feeds the strip from device input `channels`: one for mono, two for stereo, none for no input.
+    pub fn set_input(&self, channels: &[u16]) {
+        let code = |c: Option<&u16>| c.map_or(NO_INPUT, |c| u32::from(*c) + 1);
+        let (left, right) = match channels {
+            [mono] => (code(Some(mono)), code(Some(mono))),
+            [left, right, ..] => (code(Some(left)), code(Some(right))),
+            [] => (NO_INPUT, NO_INPUT),
+        };
+        self.input_left.store(left, Ordering::Relaxed);
+        self.input_right.store(right, Ordering::Relaxed);
+    }
 }

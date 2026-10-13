@@ -5,6 +5,7 @@
 //! sequencer and the graph, copies the master into the device's output and adds the metronome. Neither side ever
 //! waits for the other.
 
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
@@ -26,6 +27,7 @@ use crate::input::{LIVE_CAPACITY, LiveEvent, LiveInput};
 use crate::metronome::{Metronome, count_in_beats};
 use crate::midi_record::{CAPTURE_CAPACITY, Capture, CapturedNote, CapturedTake};
 use crate::nodes::MixNode;
+use crate::record::{Compensation, Recorder, Take};
 use crate::sequence::{PlayMode, SongIndex, Transport, all_notes_off, emit, frame_at};
 use crate::{MixError, automation, keys};
 
@@ -108,6 +110,7 @@ pub struct Engine {
     captures: Consumer<Capture>,
     capture_start: Option<i64>,
     captured: Vec<CapturedNote>,
+    recorder: Recorder,
 }
 
 /// What a song index is built from. Snapshots share unchanged parts, so comparing pointers tells cheaply whether an
@@ -251,6 +254,7 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         captures: captures_rx,
         capture_start: None,
         captured: Vec::new(),
+        recorder: Recorder::default(),
     };
     let audio = AudioEngine {
         runner: graph,
@@ -310,6 +314,7 @@ impl Engine {
     pub fn flush(&mut self) {
         self.plans.collect();
         self.songs.collect();
+        self.compiler.captures_mut().collect();
         if let Some(plan) = self.pending_plan.take()
             && let Err(plan) = self.plans.send(*plan)
         {
@@ -415,6 +420,32 @@ impl Engine {
         }
     }
 
+    /// Starts recording every armed insert of `project` into WAV files in `folder`, from the next block the transport
+    /// plays. `compensation` is the device's round trip, which moves the takes back on the timeline. Returns how many
+    /// inserts record.
+    ///
+    /// Creates the files and starts the disk thread. Complexity: O(i) in inserts.
+    pub fn start_recording(&mut self, project: &Project, folder: &Path, compensation: Compensation) -> Result<usize, MixError> {
+        Ok(self.recorder.start(project, folder, compensation, self.compiler.captures_mut())?)
+    }
+
+    /// Stops recording; [`Engine::finish_recording`] returns the takes once the audio side has let go and the files
+    /// are written.
+    pub fn stop_recording(&mut self) {
+        self.recorder.stop(self.compiler.captures_mut());
+    }
+
+    /// The takes of a stopped recording, once they are written; `None` while recording or finishing. Call it every
+    /// frame after [`Engine::stop_recording`]; the audio side must keep running until the takes come back.
+    pub fn finish_recording(&mut self) -> Option<Result<Vec<Take>, MixError>> {
+        self.recorder.finish(self.compiler.captures_mut()).map(|done| done.map_err(MixError::from))
+    }
+
+    /// Whether a recording is running or finishing.
+    pub fn is_recording(&self) -> bool {
+        self.recorder.is_active()
+    }
+
     /// What delay compensation decided for the current graph.
     pub fn latency(&self) -> &LatencyReport {
         self.compiler.latency()
@@ -422,16 +453,25 @@ impl Engine {
 }
 
 impl AudioEngine {
-    /// Renders `frames` frames into `output`, stereo, in pieces of at most the configured block size.
+    /// Renders `frames` frames into `output`, stereo, in pieces of at most the configured block size, with silent
+    /// input.
     ///
     /// RT-safe. Complexity: per block, O(V + E) for the graph plus the sequencer's queries and the processors' work.
     #[rt_safe]
     pub fn render(&mut self, frames: usize, output: &mut AudioBuffer) {
+        self.render_with_input(frames, None, output);
+    }
+
+    /// Renders `frames` frames into `output`, with the device's `input` for inserts that monitor or record it.
+    ///
+    /// RT-safe. Complexity: per block, O(V + E) for the graph plus the sequencer's queries and the processors' work.
+    #[rt_safe]
+    pub fn render_with_input(&mut self, frames: usize, input: Option<&AudioBuffer>, output: &mut AudioBuffer) {
         output.set_frames(frames);
         let mut done = 0;
         while done < frames {
             let len = (frames - done).min(self.max_frames);
-            let rendered = self.render_block(len);
+            let rendered = self.render_block(len, input, done);
             if rendered == 0 {
                 break;
             }
@@ -461,9 +501,10 @@ impl AudioEngine {
         }
     }
 
-    /// Runs one block of at most `max_frames` and advances the transport. A block never spans the end of a count-in.
-    /// In Song mode with a loop, a block ends at the loop's end and the next one starts at the loop's start.
-    fn render_block(&mut self, frames: usize) -> usize {
+    /// Runs one block of at most `max_frames`, with `input` from frame `offset` on, and advances the transport. A block
+    /// never spans the end of a count-in. In Song mode with a loop, a block ends at the loop's end and the next one
+    /// starts at the loop's start.
+    fn render_block(&mut self, frames: usize, input: Option<&AudioBuffer>, offset: usize) -> usize {
         // A loop wrap at the end of the last block is a jump for this one.
         let mut jumped = std::mem::take(&mut self.wrapped);
         while let Some(command) = self.commands.pop() {
@@ -519,6 +560,8 @@ impl AudioEngine {
             context.clear();
             context.frames = frames;
             context.playing = playing;
+            context.frame = transport.frame;
+            context.set_input(input, offset, frames);
             if jumped {
                 // Back to the project's own values until a lane plays again.
                 context.params.clear();
@@ -644,6 +687,6 @@ impl AudioCallback for AudioEngine {
     /// RT-safe.
     #[rt_safe]
     fn process(&mut self, block: &mut Block<'_>) {
-        self.render(block.frames, block.output);
+        self.render_with_input(block.frames, Some(block.input), block.output);
     }
 }
