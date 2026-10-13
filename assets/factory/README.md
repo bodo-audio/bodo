@@ -4,7 +4,7 @@ The sounds and other content that ship with Bodo, so you can start making music 
 
 ## Bodo Drums
 
-`Packs/Bodo Drums/` is a drum kit of eleven one-shots: `Kick`, `Snare`, `Clap`, `HiHat`, `Open Hat`, `Rim`, `Low Tom`, `High Tom`, `Crash`, `Shaker` and `808 Bass` (tuned to C2). Each is a 48 kHz mono 24-bit WAV, peak-normalized to -1 dBFS.
+`Packs/Bodo Drums/` is a drum kit of eleven one-shots: `Kick`, `Snare`, `Clap`, `HiHat`, `Open Hat`, `Rim`, `Low Tom`, `High Tom`, `Crash`, `Shaker` and `808 Bass` (tuned to C2). Each is a 48 kHz mono 24-bit WAV, peak-normalized to -6 dBFS, which leaves headroom for hits that land together.
 
 Every sound is synthesized from scratch by `cargo xtask factory` (`xtask/src/factory.rs`) out of oscillators, seeded noise, envelopes and filters. Nothing is sampled or copied from another product or library. To change a sound, edit the generator, run `cargo xtask factory` and commit the new files. A run on the same machine always writes the same files; another platform may round a few samples differently in the last bit, so the committed files are the reference.
 

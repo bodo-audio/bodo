@@ -3,7 +3,8 @@
 //! The Bodo Drums kit is generated here from oscillators, seeded noise, envelopes and filters. Nothing is sampled or
 //! copied from anywhere, so the kit is released as CC0-1.0 (`assets/factory/README.md`) and anyone may use it in
 //! their music. Every sound is written to `assets/factory/Packs/Bodo Drums/<name>.wav` as 48 kHz mono 24-bit WAV,
-//! peak-normalized to -1 dBFS and trimmed where it decays below -90 dBFS.
+//! peak-normalized to -6 dBFS, which leaves headroom for hits that land together, and trimmed where it decays below
+//! -90 dBFS.
 //!
 //! The noise is seeded, so a run on the same machine always writes the same files. Other platforms may round a
 //! sine or an exponential differently in the last bit, so the committed files are the reference.
@@ -20,8 +21,8 @@ use crate::workspace;
 
 /// The sample rate of the factory content.
 const RATE: f64 = 48_000.0;
-/// The peak every sound is normalized to: -1 dBFS.
-const PEAK: f64 = 0.891_250_938_133_745_5;
+/// The peak every sound is normalized to: -6 dBFS, so a kick, an 808 and a hat landing together stay below 0 dBFS.
+const PEAK: f64 = 0.501_187_233_627_272_2;
 /// Where a sound's tail is cut: -90 dBFS.
 const FLOOR: f64 = 3.162_277_660_168_379_5e-5;
 /// The fade-in that keeps the first sample from clicking, in seconds.
@@ -437,7 +438,7 @@ mod tests {
             let samples = render(sound);
             let seconds = samples.len() as f64 / RATE;
             let peak = samples.iter().fold(0.0f32, |peak, s| peak.max(s.abs()));
-            assert!((dbfs(peak) + 1.0).abs() < 0.01, "{}: peak {:.2} dBFS", sound.name, dbfs(peak));
+            assert!((dbfs(peak) + 6.0).abs() < 0.01, "{}: peak {:.2} dBFS", sound.name, dbfs(peak));
             assert!(seconds > 0.05 && seconds < 3.5, "{}: {seconds:.3} s", sound.name);
             let (first, last) = (samples[0], samples[samples.len() - 1]);
             assert!(dbfs(first) < -80.0 && dbfs(last) < -80.0, "{}: ends at {first} and {last}", sound.name);
