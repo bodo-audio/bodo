@@ -28,6 +28,8 @@ pub(crate) enum Handle {
     FadeOut,
     /// A point of an automation clip, by its index in the lane.
     Point(usize),
+    /// The bend of the curve from point `index` to the next, halfway between them.
+    Tension(usize),
 }
 
 /// A handle drawn this frame, for hit testing.
@@ -253,8 +255,22 @@ pub(crate) fn curve(
         .binary_search_by(|p| if (origin + p.at.0 as f64) < first_tick - 1.0 { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater })
         .unwrap_or_else(|i| i);
     let mut handles = Vec::new();
-    for (index, point) in lane.points.iter().enumerate().skip(from) {
+    for (index, point) in lane.points.iter().enumerate().skip(from.saturating_sub(1)) {
         let tick = origin + point.at.0 as f64;
+        // The tension handle halfway to the next point, where the curve passes, for segments that move.
+        if let Some(next) = lane.points.get(index + 1)
+            && next.value != point.value
+        {
+            let middle = origin + (point.at.0 + next.at.0) as f64 / 2.0;
+            if middle >= first_tick && middle <= last_tick && scale.x(origin + next.at.0 as f64) - scale.x(tick) > 4.0 * HANDLE {
+                let at = pos2(scale.x(middle), value_y(rect, lane.normalized_at(middle - origin)));
+                painter.circle(at, HANDLE - 0.5, fill, Stroke::new(1.0, color));
+                handles.push(ShownHandle { clip: clip.id, handle: Handle::Tension(index), at });
+            }
+        }
+        if tick < first_tick - 1.0 {
+            continue;
+        }
         if tick > last_tick + 1.0 {
             break;
         }
@@ -263,6 +279,16 @@ pub(crate) fn curve(
         handles.push(ShownHandle { clip: clip.id, handle: Handle::Point(index), at });
     }
     handles
+}
+
+/// The tension a segment's curve has: its exponent or S-curve bend, and whether it is an S-curve. Other shapes start
+/// from no bend.
+pub(crate) fn tension(curve: CurveShape) -> (f32, bool) {
+    match curve {
+        CurveShape::Exp(t) => (t, false),
+        CurveShape::SCurve(t) => (t, true),
+        _ => (0.0, false),
+    }
 }
 
 /// A curve as the automation commands take it.

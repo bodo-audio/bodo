@@ -2,9 +2,15 @@
 //!
 //! Every tool of the section's table is here, with FL's keys: Draw (P), Paint (B), Delete (D), Mute (T), Slip (S),
 //! Slice (C), Select (E), Zoom (Z) and Playback (Y); [`tools`] handles their input. Ctrl/Cmd+wheel zooms
-//! horizontally, Alt+wheel vertically, Shift+wheel scrolls sideways. The ruler moves the song position
-//! (click or drag), sets the loop region (Shift+drag) and holds markers (right-click to add one, right-click a
-//! marker to remove it). Dragging a track header's bottom edge resizes the track.
+//! horizontally, Alt+wheel vertically, Shift+wheel scrolls sideways. The ruler moves the song position (click),
+//! selects time (drag), sets the loop region (Shift+drag) and holds markers (right-click to add one, right-click a
+//! marker to remove it). Right-clicking the time selection opens its menu: copy, cut, paste, delete or insert time,
+//! loop it; Cmd/Ctrl+Delete deletes its time. Dragging a track header's bottom edge resizes the track.
+//!
+//! Tracks fold into named groups under a header with a fold arrow, solo and mute; a track's menu groups it with the
+//! track above or puts it in a group, and each track has its own solo. With auto scroll on, the view follows the
+//! playhead. A clip's menu consolidates clips to audio, and the hollow handle between two automation points bends
+//! the curve.
 //!
 //! Drawing is culled: only visible tracks are visited, and each track's clips are found by binary search on their
 //! sorted starts, widened by the track's longest clip, which is cached per track snapshot.
@@ -19,7 +25,7 @@ mod media;
 mod peaks;
 mod tools;
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use bodo_engine::PlayMode;
@@ -45,6 +51,8 @@ const RULER: f32 = 22.0;
 const EDGE: f32 = 6.0;
 /// The height of a clip's name strip.
 const HEADER_STRIP: f32 = 13.0;
+/// The height of a track group's header.
+const GROUP_BAND: f32 = 22.0;
 
 /// A playlist tool.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
@@ -170,6 +178,23 @@ pub struct PlaylistView {
     peaks: peaks::PeaksCache,
     /// The clips under the last two presses, older first, so a double-click acts only when both landed on one clip.
     presses: [Option<ClipId>; 2],
+    /// The track groups folded under their headers.
+    pub collapsed: BTreeSet<String>,
+    /// The time selection, start and end in ticks: drag on the ruler to make one.
+    pub time_selection: Option<(i64, i64)>,
+    /// Where the time selection's menu is open.
+    selection_menu: Option<Pos2>,
+    /// A track group name being typed: for these tracks, or a new name for a group.
+    naming: Option<GroupNaming>,
+}
+
+/// A track group name being typed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GroupNaming {
+    /// The group being renamed, or `None` to group `tracks`.
+    renaming: Option<String>,
+    tracks: Vec<TrackId>,
+    text: String,
 }
 
 impl Default for PlaylistView {
@@ -188,6 +213,10 @@ impl Default for PlaylistView {
             source: None,
             peaks: peaks::PeaksCache::default(),
             presses: [None; 2],
+            collapsed: BTreeSet::new(),
+            time_selection: None,
+            selection_menu: None,
+            naming: None,
         }
     }
 }
@@ -403,34 +432,88 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
 
     pattern_list(app, ui, project, patterns);
     navigate(app, ui, canvas.union(ruler).union(headers));
+    follow_playhead(app, canvas);
     let scale = Scale { left: canvas.left(), zoom: app.view.playlist.zoom, scroll: app.view.playlist.scroll };
     grid(ui, project, canvas, ruler, scale);
     loop_region(app, ui, canvas.union(ruler), scale);
-    let rows = track_rows(project, canvas.top() - app.view.playlist.scroll_y, app.view.playlist.row_scale);
+    time_selection(app, ui, canvas.union(ruler), scale);
+    let (rows, bands) = track_rows(project, canvas.top() - app.view.playlist.scroll_y, app.view.playlist.row_scale, &app.view.playlist.collapsed);
+    group_bands(app, ui, project, headers, canvas, &bands);
     track_headers(app, ui, project, headers, &rows);
     let (shown, handles) = clips(app, ui, project, canvas, scale, &rows);
     let canvas = Canvas { rect: canvas, scale, rows, shown, handles };
     tools::input(app, ui, project, &canvas);
     clip_menu(app, ui.ctx(), project);
     ruler_input(app, ui, project, ruler, scale);
+    selection_menu(app, ui.ctx(), project);
     markers(app, ui, project, ruler, scale);
     playhead(app, ui, canvas.rect.union(ruler), scale);
+    naming_dialog(app, ui.ctx());
+    if app.view.editor == WindowKind::Playlist && !ui.ctx().egui_wants_keyboard_input() {
+        let (escape, delete) = ui.input(|i| (i.key_pressed(egui::Key::Escape), i.modifiers.command && i.key_pressed(egui::Key::Delete)));
+        if delete && let Some((start, end)) = app.view.playlist.time_selection {
+            // Cmd/Ctrl+Delete removes the selected time, as in FL.
+            if app.run("playlist.delete_time", json!({ "at": start, "length": end - start })).is_ok() {
+                app.view.playlist.time_selection = None;
+            }
+        } else if escape && app.view.playlist.drag.is_none() {
+            app.view.playlist.time_selection = None;
+        }
+    }
 }
 
-/// Each track's row on screen, in order, at vertical zoom `scale`.
-fn track_rows(project: &Project, top: f32, scale: f32) -> Vec<Row> {
+/// While the transport plays the song and auto-scrolling is on, keeps the playhead in view: when it passes the
+/// canvas's right edge, the view pages forward so it starts near the left.
+fn follow_playhead(app: &mut BodoApp, canvas: Rect) {
+    let transport = app.session.transport();
+    if !app.view.auto_scroll || !transport.playing || transport.mode != PlayMode::Song {
+        return;
+    }
+    let view = &mut app.view.playlist;
+    let at = transport.position.0 as f64;
+    let width = f64::from(canvas.width() / view.zoom);
+    if at > view.scroll + width * 0.92 || at < view.scroll {
+        view.scroll = (at - width * 0.05).max(0.0);
+    }
+}
+
+/// A track group's header on screen, above its tracks.
+#[derive(Clone, Debug)]
+pub(crate) struct GroupBand {
+    name: String,
+    top: f32,
+    collapsed: bool,
+    tracks: Vec<TrackId>,
+}
+
+/// Each visible track's row on screen, in order, at vertical zoom `scale`, and the header of each track group above
+/// its tracks. The tracks of a collapsed group have no rows.
+///
+/// Complexity: O(t) in tracks.
+fn track_rows(project: &Project, top: f32, scale: f32, collapsed: &BTreeSet<String>) -> (Vec<Row>, Vec<GroupBand>) {
     let mut y = top;
-    project
-        .track_order
-        .iter()
-        .filter_map(|id| project.tracks.get(id))
-        .map(|track| {
-            let height = track.height.clamp(16.0, 400.0) * scale;
-            let row = Row { id: track.id, top: y, height };
-            y += height;
-            row
-        })
-        .collect()
+    let (mut rows, mut bands) = (Vec::new(), Vec::<GroupBand>::new());
+    let mut current: Option<&str> = None;
+    for track in project.track_order.iter().filter_map(|id| project.tracks.get(id)) {
+        let group = track.group.as_deref();
+        if group != current {
+            current = group;
+            if let Some(name) = group {
+                bands.push(GroupBand { name: name.to_owned(), top: y, collapsed: collapsed.contains(name), tracks: Vec::new() });
+                y += GROUP_BAND;
+            }
+        }
+        if let (Some(_), Some(band)) = (group, bands.last_mut()) {
+            band.tracks.push(track.id);
+            if band.collapsed {
+                continue;
+            }
+        }
+        let height = track.height.clamp(16.0, 400.0) * scale;
+        rows.push(Row { id: track.id, top: y, height });
+        y += height;
+    }
+    (rows, bands)
 }
 
 /// One row of the clip source list: a color mark, an icon for channels, and the name.
@@ -588,6 +671,170 @@ fn loop_region(app: &BodoApp, ui: &Ui, area: Rect, scale: Scale) {
     }
 }
 
+/// Shades the time selection and marks it on the ruler.
+fn time_selection(app: &BodoApp, ui: &Ui, area: Rect, scale: Scale) {
+    let Some((start, end)) = app.view.playlist.time_selection else { return };
+    let tk = Tokens::get();
+    let rect = Rect::from_x_y_ranges(scale.x(start as f64)..=scale.x(end as f64), area.y_range()).intersect(area);
+    if rect.width() > 0.0 {
+        let painter = ui.painter().with_clip_rect(area);
+        painter.rect_filled(rect, 0.0, theme::faded(tk.marquee, 0.12));
+        painter.vline(rect.left(), area.y_range(), Stroke::new(1.0, tk.marquee));
+        painter.vline(rect.right(), area.y_range(), Stroke::new(1.0, tk.marquee));
+        painter.rect_filled(Rect::from_x_y_ranges(rect.x_range(), area.top() + 4.0..=area.top() + 8.0), 0.0, tk.marquee);
+    }
+}
+
+/// A small text toggle in a track or group header, such as solo.
+fn header_toggle(ui: &mut Ui, rect: Rect, text: &str, on: bool, id: egui::Id) -> egui::Response {
+    let tk = Tokens::get();
+    let response = ui.interact(rect, id, Sense::click());
+    let fill = if on {
+        tk.accent
+    } else if response.hovered() {
+        tk.control_hover
+    } else {
+        tk.control
+    };
+    ui.painter().rect_filled(rect, 3.0, fill);
+    ui.painter().text(rect.center(), Align2::CENTER_CENTER, text, FontId::proportional(9.5), if on { tk.on_accent } else { tk.text_dim });
+    response
+}
+
+/// The header of each track group: a fold arrow, the name, solo and the mute LED, across the headers and the canvas.
+/// Right-click for rename and ungroup.
+fn group_bands(app: &mut BodoApp, ui: &mut Ui, project: &Project, headers: Rect, canvas: Rect, bands: &[GroupBand]) {
+    let tk = Tokens::get();
+    for band in bands {
+        if band.top > headers.bottom() || band.top + GROUP_BAND < headers.top() {
+            continue;
+        }
+        let head = Rect::from_min_size(pos2(headers.left(), band.top), vec2(headers.width(), GROUP_BAND));
+        let strip = Rect::from_min_size(pos2(canvas.left(), band.top), vec2(canvas.width(), GROUP_BAND));
+        let painter = ui.painter().with_clip_rect(headers.union(canvas));
+        painter.rect_filled(head, 0.0, tk.chrome_dark);
+        painter.rect_filled(strip, 0.0, theme::faded(tk.chrome_dark, 0.6));
+        painter.hline(head.x_range(), head.bottom() - 0.5, Stroke::new(1.0, tk.border));
+        let arrow = if band.collapsed { icons::CHEVRON_RIGHT } else { icons::CHEVRON_DOWN };
+        arrow.paint(&painter, Rect::from_min_size(head.left_top() + vec2(4.0, 5.0), vec2(12.0, 12.0)), tk.text_dim);
+        painter.text(head.left_center() + vec2(19.0, 0.0), Align2::LEFT_CENTER, &band.name, FontId::proportional(size::SMALL), tk.text);
+        let members: Vec<&Arc<PlaylistTrack>> = band.tracks.iter().filter_map(|t| project.tracks.get(t)).collect();
+        let all_muted = members.iter().all(|t| t.muted);
+        let all_solo = !members.is_empty() && members.iter().all(|t| t.solo);
+        let solo_rect = Rect::from_min_size(pos2(head.right() - 40.0, head.top() + 4.0), vec2(14.0, 14.0)).intersect(headers);
+        let solo = header_toggle(ui, solo_rect, "S", all_solo, ui.id().with(("group-solo", band.name.as_str())));
+        control::record(ui, &solo, &format!("Group {} solo", band.name), "button", Some(all_solo));
+        app.hint(&solo, format!("Solo the {} group", band.name));
+        if solo.clicked() {
+            let _ = app.run("playlist.set_group_props", json!({ "group": band.name, "solo": !all_solo }));
+        }
+        let led_rect = Rect::from_min_size(pos2(head.right() - 22.0, head.top() + 4.0), vec2(14.0, 14.0));
+        if led_rect.intersects(headers) {
+            let mut on = !all_muted;
+            let mut child = ui.new_child(egui::UiBuilder::new().max_rect(led_rect).id_salt(("group-led", band.name.as_str())));
+            child.set_clip_rect(headers);
+            let led = child.add(Led::new(&mut on).label(format!("Group {} on", band.name)));
+            control::record(&child, &led, &format!("Group {} on", band.name), "led", Some(!all_muted));
+            if led.changed() {
+                let _ = app.run("playlist.set_group_props", json!({ "group": band.name, "muted": !on }));
+            }
+        }
+        let fold = ui.interact(
+            Rect::from_min_max(head.min, pos2(solo_rect.left() - 2.0, head.bottom())),
+            ui.id().with(("group", band.name.as_str())),
+            Sense::click(),
+        );
+        control::record(ui, &fold, &format!("Group {}", band.name), "group", Some(!band.collapsed));
+        app.hint(&fold, format!("{}: click to fold or unfold its tracks, right-click to rename or ungroup", band.name));
+        if fold.clicked() {
+            let collapsed = &mut app.view.playlist.collapsed;
+            if !collapsed.remove(&band.name) {
+                collapsed.insert(band.name.clone());
+            }
+        }
+        fold.context_menu(|ui| {
+            if ui.button("Rename group...").clicked() {
+                app.view.playlist.naming = Some(GroupNaming { renaming: Some(band.name.clone()), tracks: Vec::new(), text: band.name.clone() });
+                ui.close();
+            }
+            if ui.button("Ungroup").clicked() {
+                let _ = app.run("playlist.ungroup_tracks", json!({ "group": band.name }));
+                app.view.playlist.collapsed.remove(&band.name);
+                ui.close();
+            }
+        });
+    }
+}
+
+/// The dialog that names a new track group or renames one.
+fn naming_dialog(app: &mut BodoApp, ctx: &egui::Context) {
+    let Some(naming) = app.view.playlist.naming.as_mut() else { return };
+    let title = if naming.renaming.is_some() { "Rename track group" } else { "New track group" };
+    let mut done = None;
+    egui::Modal::new(egui::Id::new("bodo-track-group-naming")).show(ctx, |ui| {
+        ui.label(egui::RichText::new(title).strong());
+        let edit = ui.text_edit_singleline(&mut naming.text);
+        control::record(ui, &edit, "Track group name", "text", None);
+        edit.request_focus();
+        ui.horizontal(|ui| {
+            if ui.button("OK").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                done = Some(true);
+            }
+            if ui.button("Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                done = Some(false);
+            }
+        });
+    });
+    let Some(ok) = done else { return };
+    let Some(naming) = app.view.playlist.naming.take() else { return };
+    let name = naming.text.trim().to_owned();
+    if !ok || name.is_empty() {
+        return;
+    }
+    let _ = match &naming.renaming {
+        Some(old) => app.run("playlist.rename_track_group", json!({ "group": old, "name": name })),
+        None => app.run("playlist.group_tracks", json!({ "tracks": naming.tracks, "name": name })),
+    };
+}
+
+/// A track's group items: group it with the track above, put it in a group, or take it out of its group.
+fn track_group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, track: &PlaylistTrack) {
+    let mut groups: Vec<String> = project.tracks.values().filter_map(|t| t.group.clone()).collect();
+    groups.sort();
+    groups.dedup();
+    let above = project.track_order.index_of(&track.id).and_then(|i| i.checked_sub(1)).and_then(|i| project.track_order.get(i)).copied();
+    if let Some(above) = above.and_then(|a| project.tracks.get(&a))
+        && ui.button("Group with track above").clicked()
+    {
+        match &above.group {
+            Some(name) => {
+                let _ = app.run("playlist.group_tracks", json!({ "tracks": [track.id], "name": name }));
+            }
+            None => {
+                let name = (1..).map(|n| format!("Group {n}")).find(|n| !groups.contains(n)).unwrap_or_else(|| String::from("Group"));
+                let _ = app.run("playlist.group_tracks", json!({ "tracks": [above.id, track.id], "name": name }));
+            }
+        }
+        ui.close();
+    }
+    ui.menu_button("Add to group", |ui| {
+        for name in &groups {
+            if ui.button(name).clicked() {
+                let _ = app.run("playlist.group_tracks", json!({ "tracks": [track.id], "name": name }));
+                ui.close();
+            }
+        }
+        if ui.button("New group...").clicked() {
+            app.view.playlist.naming = Some(GroupNaming { renaming: None, tracks: vec![track.id], text: String::from("Group") });
+            ui.close();
+        }
+    });
+    if track.group.is_some() && ui.button("Remove from group").clicked() {
+        let _ = app.run("playlist.ungroup_tracks", json!({ "tracks": [track.id] }));
+        ui.close();
+    }
+}
+
 fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, rows: &[Row]) {
     let tk = Tokens::get();
     let painter = ui.painter().with_clip_rect(rect);
@@ -597,6 +844,8 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
         }
         let Some(track) = project.tracks.get(&row.id) else { continue };
         let area = Rect::from_min_size(pos2(rect.left(), row.top), vec2(rect.width(), row.height));
+        // The header itself goes first, so the buttons on it are above it and get their clicks.
+        let header = ui.interact(area.intersect(rect), ui.id().with(("track-header", row.id)), Sense::click());
         painter.hline(area.x_range(), area.bottom() - 0.5, Stroke::new(1.0, tk.border));
         painter.text(
             area.left_top() + vec2(8.0, 6.0),
@@ -619,6 +868,15 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
                 let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "muted": !on }));
             }
         }
+        let solo_rect = Rect::from_min_size(pos2(area.right() - 40.0, area.top() + 6.0), vec2(14.0, 14.0));
+        if solo_rect.intersects(rect) {
+            let solo = header_toggle(ui, solo_rect.intersect(rect), "S", track.solo, ui.id().with(("track-solo", row.id)));
+            control::record(ui, &solo, &format!("{} solo", track.name), "button", Some(track.solo));
+            app.hint(&solo, format!("Solo {}: while any track is soloed, only soloed tracks play", track.name));
+            if solo.clicked() {
+                let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "solo": !track.solo }));
+            }
+        }
         // The bottom edge resizes the track.
         let edge = Rect::from_min_max(pos2(area.left(), area.bottom() - 4.0), pos2(area.right(), area.bottom() + 2.0)).intersect(rect);
         let resize = ui.interact(edge, ui.id().with(("track-height", row.id)), Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeVertical);
@@ -635,7 +893,6 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
         if resize.drag_stopped() {
             app.view.playlist.height_drag = None;
         }
-        let header = ui.interact(area.intersect(rect), ui.id().with(("track-header", row.id)), Sense::click());
         header.context_menu(|ui| {
             if ui.button(if track.locked { "Unlock" } else { "Lock" }).clicked() {
                 let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "locked": !track.locked }));
@@ -644,6 +901,12 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
                 let position = project.track_order.index_of(&row.id).map_or(1, |i| i + 1);
                 let _ = app.run("playlist.add_track", json!({ "at": position }));
             }
+            if ui.button(if track.solo { "Unsolo" } else { "Solo" }).clicked() {
+                let _ = app.run("playlist.set_track_props", json!({ "track": row.id, "solo": !track.solo }));
+            }
+            ui.separator();
+            track_group_menu(app, ui, project, track);
+            ui.separator();
             if ui.button("Delete track").clicked() {
                 let _ = app.run("playlist.remove_track", json!({ "track": row.id }));
             }
@@ -742,6 +1005,7 @@ fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale:
                     media::Handle::FadeIn => format!("Fade in {name}"),
                     media::Handle::FadeOut => format!("Fade out {name}"),
                     media::Handle::Point(index) => format!("Point {} {name}", index + 1),
+                    media::Handle::Tension(index) => format!("Bend {} {name}", index + 1),
                 };
                 let area = Rect::from_center_size(handle.at, vec2(2.0 * media::HANDLE, 2.0 * media::HANDLE));
                 control::record_rect(ui, ui.id().with(("handle", clip.id, label.as_str())), area, &label, "handle", None, true);
@@ -864,6 +1128,12 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
                     chosen = Some(("clip.set_fades", json!({ "clips": [clip], "fadeIn": 0, "fadeOut": 0 })));
                 }
             }
+            if !matches!(source, ClipSource::Automation(_)) && ui.button("Consolidate to audio").clicked() {
+                // The selected clips, when this one is among them; otherwise this clip alone.
+                let selected = &app.session.editor().clips;
+                let clips: Vec<ClipId> = if selected.contains(&clip) { selected.iter().copied().collect() } else { vec![clip] };
+                chosen = Some(("clip.consolidate", json!({ "clips": clips })));
+            }
             if ui.button("Mute or unmute").clicked() {
                 chosen = Some(("clip.mute", json!({ "clips": [clip] })));
             }
@@ -904,22 +1174,29 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
 fn ruler_input(app: &mut BodoApp, ui: &mut Ui, project: &Project, ruler: Rect, scale: Scale) {
     let response = ui.interact(ruler, ui.id().with("playlist-ruler"), Sense::click_and_drag());
     control::record(ui, &response, "Playlist ruler", "ruler", None);
-    app.hint(&response, "The ruler: click or drag to move the song position, Shift+drag to set the loop, right-click to add a marker");
+    app.hint(
+        &response,
+        "The ruler: click to move the song position, drag to select time, Shift+drag to set the loop, right-click the selection for its menu or elsewhere to add a marker",
+    );
     let Some(pointer) = response.interact_pointer_pos().or_else(|| response.hover_pos()) else { return };
     let at = app.view.snap.floor(project, scale.tick(pointer.x)).max(0);
     let shift = ui.input(|i| i.modifiers.shift);
-    if response.drag_started() && shift {
-        // The loop starts where the press began, not where the drag was recognized.
+    if response.drag_started() {
+        // The loop or selection starts where the press began, not where the drag was recognized.
         let origin = ui.input(|i| i.pointer.press_origin()).unwrap_or(pointer);
         let start = app.view.snap.round(project, scale.tick(origin.x)).max(0);
-        app.view.playlist.ruler_drag = Some((start as f64, true));
+        app.view.playlist.ruler_drag = Some((start as f64, shift));
     }
-    if let Some((start, true)) = app.view.playlist.ruler_drag {
+    if let Some((start, looping)) = app.view.playlist.ruler_drag {
         if response.dragged() || response.drag_stopped() {
             let (a, b) = (start as i64, app.view.snap.round(project, scale.tick(pointer.x)).max(0));
             let (from, to) = (a.min(b), a.max(b));
             if to > from {
-                let _ = app.run("transport.set_loop", json!({ "start": from, "end": to }));
+                if looping {
+                    let _ = app.run("transport.set_loop", json!({ "start": from, "end": to }));
+                } else {
+                    app.view.playlist.time_selection = Some((from, to));
+                }
             }
         }
         if response.drag_stopped() {
@@ -928,14 +1205,72 @@ fn ruler_input(app: &mut BodoApp, ui: &mut Ui, project: &Project, ruler: Rect, s
         return;
     }
     if response.secondary_clicked() {
-        let _ = app.run("project.add_marker", json!({ "at": at }));
+        let tick = scale.tick(pointer.x) as i64;
+        if app.view.playlist.time_selection.is_some_and(|(start, end)| tick >= start && tick < end) {
+            app.view.playlist.selection_menu = Some(pointer);
+        } else {
+            let _ = app.run("project.add_marker", json!({ "at": at }));
+        }
         return;
     }
-    if response.clicked() || response.dragged() {
+    if response.clicked() {
+        app.view.playlist.time_selection = None;
         if app.session.transport().mode != PlayMode::Song {
             let _ = app.run("transport.set_mode", json!({ "mode": "song" }));
         }
         let _ = app.run("transport.set_position", json!({ "at": at }));
+    }
+}
+
+/// The time selection's menu, opened by right-clicking it on the ruler: delete or insert its time, copy or cut what it
+/// holds, paste at its start, loop it, or add a marker at its start.
+fn selection_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
+    let (Some(at), Some((start, end))) = (app.view.playlist.selection_menu, app.view.playlist.time_selection) else {
+        app.view.playlist.selection_menu = None;
+        return;
+    };
+    let mut chosen: Option<(&str, Value, bool)> = None;
+    let length = end - start;
+    let area = egui::Area::new(egui::Id::new("bodo-selection-menu")).order(egui::Order::Foreground).fixed_pos(at).show(ctx, |ui| {
+        egui::Frame::menu(ui.style()).show(ui, |ui| {
+            ui.set_min_width(170.0);
+            let span = format!(
+                "{} to {}",
+                bodo_engine::params::format_position(project, Tick(start)),
+                bodo_engine::params::format_position(project, Tick(end))
+            );
+            ui.label(egui::RichText::new(span).size(size::SMALL).color(Tokens::get().text_faint));
+            let mut item = |ui: &mut Ui, label: &str, id: &'static str, params: Value, clears: bool| {
+                if ui.button(label).clicked() {
+                    chosen = Some((id, params, clears));
+                }
+            };
+            item(ui, "Copy", "edit.copy", json!({ "start": start, "end": end }), false);
+            item(ui, "Cut", "edit.cut", json!({ "start": start, "end": end }), false);
+            item(ui, "Paste here", "edit.paste", json!({ "at": start }), false);
+            ui.separator();
+            item(ui, "Delete time", "playlist.delete_time", json!({ "at": start, "length": length }), true);
+            item(ui, "Insert time", "playlist.insert_time", json!({ "at": start, "length": length }), true);
+            ui.separator();
+            item(ui, "Loop the selection", "transport.set_loop", json!({ "start": start, "end": end }), false);
+            item(ui, "Add a marker", "project.add_marker", json!({ "at": start }), false);
+            if ui.button("Clear the selection").clicked() {
+                chosen = Some(("", Value::Null, true));
+            }
+        });
+    });
+    let pressed_at = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });
+    let outside = pressed_at.is_some_and(|p| p != at && !area.response.rect.contains(p));
+    if let Some((id, params, clears)) = chosen {
+        if !id.is_empty() {
+            let _ = app.run(id, params);
+        }
+        if clears {
+            app.view.playlist.time_selection = None;
+        }
+        app.view.playlist.selection_menu = None;
+    } else if outside || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.view.playlist.selection_menu = None;
     }
 }
 

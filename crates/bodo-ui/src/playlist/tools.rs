@@ -37,6 +37,10 @@ pub(super) enum Drag {
     /// A point of automation channel `channel` being dragged: its index, the tick its lane counts from, and the
     /// clip's content area, which maps heights to values.
     Point { channel: ChannelId, index: usize, origin: i64, content: Rect, gesture: u64 },
+    /// The bend of the curve after point `index` of automation channel `channel` being dragged: where the press was,
+    /// the tension the curve had then, whether it is an S-curve, whether the segment rises, and the clip's content
+    /// height.
+    Tension { channel: ChannelId, index: usize, from_y: f32, start: f32, scurve: bool, rising: bool, height: f32, gesture: u64 },
     /// Copies being painted; `next` is where the next one goes on its track.
     Paint { gesture: u64, next: Option<(TrackId, i64)> },
     /// Clips being deleted along the path.
@@ -131,6 +135,7 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
         match canvas.clip_at(pointer.at) {
             Some((_, Zone::Edge | Zone::Handle(Handle::FadeIn | Handle::FadeOut))) => ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal),
             Some((_, Zone::Handle(Handle::Point(_)))) => ui.ctx().set_cursor_icon(egui::CursorIcon::Grab),
+            Some((_, Zone::Handle(Handle::Tension(_)))) => ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical),
             _ => {}
         }
     }
@@ -186,7 +191,7 @@ fn begin(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, poin
     let hit = canvas.clip_at(pointer.at);
     let drag = match tool {
         Tool::Draw => match hit {
-            Some((clip, Zone::Handle(handle))) => begin_handle(app, project, &clip, handle),
+            Some((clip, Zone::Handle(handle))) => begin_handle(app, project, &clip, handle, pointer.at.y),
             Some((clip, Zone::Edge)) => Some(Drag::Resize { clip: clip.id, start: clip.start, gesture: app.new_gesture() }),
             Some((clip, _)) => {
                 select_clip(app, &clip);
@@ -223,21 +228,27 @@ fn begin(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, poin
     }
 }
 
-/// Starts dragging a fade or automation point handle of `shown`.
-fn begin_handle(app: &mut BodoApp, project: &Project, shown: &Shown, handle: Handle) -> Option<Drag> {
+/// Starts dragging a fade, automation point or curve tension handle of `shown`, pressed at height `y`.
+fn begin_handle(app: &mut BodoApp, project: &Project, shown: &Shown, handle: Handle, y: f32) -> Option<Drag> {
     let clip = clip_of(project, shown)?;
     let gesture = app.new_gesture();
+    let header = Rect::from_min_max(shown.rect.min, pos2(shown.rect.right(), (shown.rect.top() + super::HEADER_STRIP).min(shown.rect.bottom())));
+    let content = content_rect(shown.rect, header);
     match (handle, clip.source) {
         (Handle::FadeIn | Handle::FadeOut, _) => {
             Some(Drag::Fade { clip: clip.id, start: clip.start.0, end: clip.end().0, out: handle == Handle::FadeOut, gesture })
         }
         (Handle::Point(index), ClipSource::Automation(channel)) => {
-            let header =
-                Rect::from_min_max(shown.rect.min, pos2(shown.rect.right(), (shown.rect.top() + super::HEADER_STRIP).min(shown.rect.bottom())));
-            let content = content_rect(shown.rect, header);
             Some(Drag::Point { channel, index, origin: media::lane_origin(clip), content, gesture })
         }
-        (Handle::Point(_), _) => None,
+        (Handle::Tension(index), ClipSource::Automation(channel)) => {
+            let lane = media::lane(project, channel)?;
+            let (from, to) = (lane.points.get(index)?, lane.points.get(index + 1)?);
+            let (start, scurve) = media::tension(from.curve);
+            let rising = to.value > from.value;
+            Some(Drag::Tension { channel, index, from_y: y, start, scurve, rising, height: content.height().max(8.0), gesture })
+        }
+        (Handle::Point(_) | Handle::Tension(_), _) => None,
     }
 }
 
@@ -343,6 +354,19 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
         }
         Drag::Point { channel, index, origin, content, gesture } => {
             move_point(app, project, pointer, snap.round(project, at) - origin, (channel, index, content, gesture));
+            drag
+        }
+        Drag::Tension { channel, index, from_y, start, scurve, rising, height, gesture } => {
+            // Dragging down bends the curve below its straight line: a rising segment then rises late, which is a
+            // positive tension, and a falling one falls early, a negative one.
+            let down = (pointer.at.y - from_y) / height * 2.0;
+            let tension = ((start + if rising { down } else { -down }) * 100.0).round() / 100.0;
+            let tension = tension.clamp(-1.0, 1.0);
+            let curve = if scurve { json!({ "sCurve": tension }) } else { json!({ "exp": tension }) };
+            let unchanged = media::lane(project, channel).and_then(|l| l.points.get(index)).is_some_and(|p| media::curve_json(p.curve) == curve);
+            if !unchanged {
+                let _ = run_in(app, gesture, "automation.set_curve", json!({ "channel": channel, "index": index, "curve": curve }));
+            }
             drag
         }
         Drag::Paint { gesture, next } => paint(app, project, canvas, pointer, gesture, next),
@@ -499,6 +523,7 @@ fn finish(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
         | Drag::Resize { .. }
         | Drag::Fade { .. }
         | Drag::Point { .. }
+        | Drag::Tension { .. }
         | Drag::Paint { .. }
         | Drag::Erase { .. }
         | Drag::Mute { .. }
