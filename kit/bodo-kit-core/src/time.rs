@@ -18,6 +18,10 @@ use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 /// Standard MIDI File header, so MIDI round trips are lossless.
 pub const PPQ: i64 = 960;
 
+/// The largest block, in frames, that any processing call handles at once. Buffers are allocated for this size
+/// up front, and larger device callbacks are split into blocks of at most this many frames (project.md section 6.3).
+pub const MAX_BLOCK_FRAMES: usize = 4096;
+
 /// A musical position or duration, in ticks of 1/[`PPQ`] quarter note.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize), serde(transparent))]

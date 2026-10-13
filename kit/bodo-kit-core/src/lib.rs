@@ -25,4 +25,4 @@ pub mod time;
 pub use bodo_kit_macros::rt_safe;
 pub use pool::{RtJob, RtPool};
 pub use tempo::{TempoCurve, TempoMap, TempoPoint};
-pub use time::{Frames, PPQ, SampleRate, Seconds, Tick};
+pub use time::{Frames, MAX_BLOCK_FRAMES, PPQ, SampleRate, Seconds, Tick};
