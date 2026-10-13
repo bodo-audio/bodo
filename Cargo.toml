@@ -63,6 +63,8 @@ eframe = { version = "0.36.2", default-features = false }
 craft-ui = { git = "https://github.com/storytold/craft-libs", rev = "e9546e191dd62f2bc1d61eca45dbdc2f1b3c1d8e" }
 image = { version = "0.25.10", default-features = false, features = ["png"] }
 rfd = "0.17.2"
+# The resident memory the top bar's performance readout shows.
+memory-stats = "1.2.0"
 
 # Data, errors and logging
 blake3 = "1.8.7"

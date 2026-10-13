@@ -329,9 +329,25 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     app.hint(&meter, "The master output level");
     ui.add_space(10.0);
 
-    // Performance.
+    // Performance: CPU load, dropouts, and the memory in use, measured once a second.
     let status = app.audio.stream_status();
-    let text = if app.audio.is_on() { format!("CPU {:>3.0}%  {} dropouts", status.load * 100.0, status.xruns) } else { String::from("No sound") };
+    let memory = app.services.memory.and_then(|measure| {
+        let id = egui::Id::new("bodo-memory");
+        let now = ui.input(|i| i.time);
+        let cached: Option<(f64, Option<u64>)> = ui.ctx().data(|d| d.get_temp(id));
+        match cached {
+            Some((when, bytes)) if now - when < 1.0 => bytes,
+            _ => {
+                let bytes = measure();
+                ui.ctx().data_mut(|d| d.insert_temp(id, (now, bytes)));
+                ui.ctx().request_repaint_after(std::time::Duration::from_secs(1));
+                bytes
+            }
+        }
+    });
+    let memory = memory.map(|bytes| format!("  {} MB", bytes / 1_000_000)).unwrap_or_default();
+    let text =
+        if app.audio.is_on() { format!("CPU {:>3.0}%  {} dropouts{memory}", status.load * 100.0, status.xruns) } else { format!("No sound{memory}") };
     let color = if !app.audio.is_on() || status.xruns > 0 { tk.warn } else { tk.text_dim };
     let perf = ui.add(egui::Label::new(RichText::new(text).monospace().size(size::SMALL).color(color)).sense(Sense::hover()));
     let audio_status = app.audio.status().to_owned();
@@ -365,6 +381,58 @@ fn record_button(app: &mut BodoApp, ui: &mut Ui, recording: bool) {
     if record.clicked() {
         let _ = app.run("transport.record", json!({}));
     }
+}
+
+/// One-click audio recording: arms the selected insert when nothing plays into it, or else the first such insert that
+/// isn't armed, records its input (the device's first two when it has none), and records into the playlist. Clicking
+/// again stops, and the take lands on the playlist.
+fn one_click_recording(app: &mut BodoApp, ui: &mut Ui) {
+    let recording = app.session.transport().recording;
+    let mic = icon_button(ui, icons::MICROPHONE, "One-click audio recording", recording);
+    app.hint(
+        &mic,
+        if recording {
+            "Recording: click to stop; the take lands on the playlist"
+        } else {
+            "One-click audio recording: arm an insert and record into the playlist"
+        },
+    );
+    if !mic.clicked() {
+        return;
+    }
+    if recording {
+        let _ = app.run("transport.stop", json!({}));
+        return;
+    }
+    let project = std::sync::Arc::clone(app.session.project());
+    let mixer = &project.mixer;
+    let used: std::collections::BTreeSet<_> = project.channels.values().filter_map(|c| c.target).collect();
+    // An insert nothing plays into, so the take holds only what comes in.
+    let chosen = app
+        .session
+        .editor()
+        .insert
+        .filter(|i| *i != mixer.master.id && mixer.inserts.contains_key(i) && !used.contains(i))
+        .or_else(|| mixer.order.iter().copied().find(|i| !used.contains(i) && mixer.inserts.get(i).is_some_and(|ins| !ins.armed)));
+    let Some(insert) = chosen.and_then(|i| mixer.inserts.get(&i)) else {
+        app.set_status("No free insert to record into: add one in the mixer", true);
+        return;
+    };
+    if insert.input.is_none() && app.run("mixer.set_input", json!({ "insert": insert.id, "channels": [0, 1] })).is_err() {
+        return;
+    }
+    if insert.record_tap != bodo_model::mixer::RecordTap::Input
+        && app.run("mixer.set_record_tap", json!({ "insert": insert.id, "tap": "input" })).is_err()
+    {
+        return;
+    }
+    if !insert.armed && app.run("mixer.arm", json!({ "insert": insert.id, "on": true })).is_err() {
+        return;
+    }
+    if app.session.transport().mode != PlayMode::Song {
+        let _ = app.run("transport.set_mode", json!({ "mode": "song" }));
+    }
+    let _ = app.run("transport.record", json!({}));
 }
 
 /// `tick` as bar:beat, with the ticks only when it is between beats.
@@ -405,7 +473,14 @@ fn tools(app: &mut BodoApp, ui: &mut Ui) {
             let _ = app.run("ui.toggle_window", json!({ "window": kind.id() }));
         }
     }
-    ui.add_space(8.0);
+    ui.add_space(4.0);
+    let follow = icon_button(ui, icons::ARROW_RIGHT, "Auto scroll", app.view.auto_scroll);
+    app.hint(&follow, "Auto scroll: the playlist and the piano roll follow the playhead while it plays");
+    if follow.clicked() {
+        app.view.auto_scroll = !app.view.auto_scroll;
+    }
+    one_click_recording(app, ui);
+    ui.add_space(16.0);
 
     // Snap.
     let snap = app.view.snap;

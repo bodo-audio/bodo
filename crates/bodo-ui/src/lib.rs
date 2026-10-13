@@ -71,6 +71,13 @@ pub struct Services {
     pub pick_midi: Option<PickPath>,
     /// Asks where to write a MIDI file, suggesting a file name.
     pub pick_midi_save: Option<PickSave>,
+    /// Measures the memory the app holds, in bytes, for the performance readout. [`resident_memory`] does it.
+    pub memory: Option<fn() -> Option<u64>>,
+}
+
+/// The memory the process holds in RAM, in bytes, where the platform tells.
+pub fn resident_memory() -> Option<u64> {
+    memory_stats::memory_stats().map(|m| m.physical_mem as u64)
 }
 
 /// What the user chose, kept between runs. Window layouts belong here, not in projects.
