@@ -1,0 +1,38 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": "2:1:0",
+    "channel": "Insert 1 volume",
+    "value": 0.6
+  },
+  "result": {
+    "index": 1,
+    "lane": {
+      "points": [
+        {
+          "at": "1:1:0",
+          "curve": "linear",
+          "ticks": 0,
+          "value": 0.8
+        },
+        {
+          "at": "2:1:0",
+          "curve": "linear",
+          "ticks": 3840,
+          "value": 0.6
+        },
+        {
+          "at": "5:1:0",
+          "curve": "linear",
+          "ticks": 15360,
+          "value": 0.8
+        }
+      ],
+      "target": "Insert 1 volume"
+    }
+  },
+  "undo": "Add automation point"
+}

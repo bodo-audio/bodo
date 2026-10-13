@@ -9,6 +9,215 @@ Conventions:
 - Channels, patterns, tracks and inserts are named by id, by number (`"channel:3"`, `"insert:0"` for the master, or just `3`) or by name. An ambiguous name is an error that lists the candidates.
 - Effects: `undoable` commands change the project and make one undo step; `destructive` ones can lose unsaved work; `disk` ones write files.
 
+## automation
+
+### `automation.add_point`
+
+Adds a point to an automation channel.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where the point is, from the clip's start. |
+| `channel` | ChannelRef | The automation channel. |
+| `curve` | Shape, optional | How the value moves on to the next point: `"linear"` (the default), `"hold"`, `"sine"`, `"pulse"`, `{"exp": t}` or `{"sCurve": t}` with t from -1 to 1, or `{"stairs": n}`. |
+| `value` | number | The value, 0 to 1. |
+
+Example:
+
+```json
+{
+  "at": "2:1:0",
+  "channel": "Insert 1 volume",
+  "value": 0.6
+}
+```
+
+### `automation.clear`
+
+Removes every point of an automation channel.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The automation channel. |
+
+Example:
+
+```json
+{
+  "channel": "Insert 1 volume"
+}
+```
+
+### `automation.create_for`
+
+Makes an automation channel for a parameter and a clip of it on the playlist, starting at the parameter's current value.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `length` | Length, optional | How long it lasts; 4 bars by default. |
+| `name` | string, optional | The automation channel's name; the target's by default, such as "Insert 1 volume". |
+| `start` | Position, optional | Where the clip starts; the start of the song by default. |
+| `target` | Target | What the clip controls: `"tempo"`, `{"insert": 1, "param": "volume"}` (or pan, stereoSep), `{"channel": "Kick", "param": "pan"}` (or volume, pitch, cc:74, pitchBend, pressure), or `{"route": {"from": "insert:1", "to": "insert:5"}}`. |
+| `track` | TrackRef, optional | The track it goes on; by default the first track with room for it. |
+
+Example:
+
+```json
+{
+  "length": "4 bars",
+  "target": {
+    "insert": 1,
+    "param": "volume"
+  }
+}
+```
+
+### `automation.remove_lane`
+
+Removes a pattern's lane for a parameter.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `target` | Target | What the lane controls, as in automation.create_for. |
+
+Example:
+
+```json
+{
+  "pattern": "Verse",
+  "target": {
+    "channel": "HiHat",
+    "param": "pan"
+  }
+}
+```
+
+### `automation.remove_point`
+
+Removes a point from an automation channel, by index or time.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position, optional | Or: the time of the point to remove. |
+| `channel` | ChannelRef | The automation channel. |
+| `index` | integer, optional | The point's index, from 0 in time order. |
+
+Example:
+
+```json
+{
+  "channel": "Insert 1 volume",
+  "index": 1
+}
+```
+
+### `automation.set_curve`
+
+Sets how the value moves from a point to the next one.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The automation channel. |
+| `curve` | Shape | The curve: `"linear"`, `"hold"`, `"sine"`, `"pulse"`, `{"exp": t}` or `{"sCurve": t}` with t from -1 to 1, or `{"stairs": n}`. |
+| `index` | integer | The point's index, from 0 in time order; the curve runs from it to the next point. |
+
+Example:
+
+```json
+{
+  "channel": "Insert 1 volume",
+  "curve": "sine",
+  "index": 0
+}
+```
+
+### `automation.set_lane`
+
+Sets a pattern's own lane for a parameter, which repeats with the pattern.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `points` | array of PointSpec | Every point, from the pattern's start; they are sorted by time. |
+| `target` | Target | What the lane controls, as in automation.create_for. |
+
+Example:
+
+```json
+{
+  "pattern": "Verse",
+  "points": [
+    {
+      "at": 0,
+      "value": 0.3
+    },
+    {
+      "at": "1:3:0",
+      "value": 0.7
+    }
+  ],
+  "target": {
+    "channel": "HiHat",
+    "param": "pan"
+  }
+}
+```
+
+### `automation.set_points`
+
+Replaces an automation channel's points; times are from the clip's start, values 0 to 1.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The automation channel. |
+| `points` | array of PointSpec | Every point, in any order; they are sorted by time. |
+
+Example:
+
+```json
+{
+  "channel": "Insert 1 volume",
+  "points": [
+    {
+      "at": 0,
+      "value": 0.8
+    },
+    {
+      "at": "3:1:0",
+      "curve": {
+        "exp": 0.3
+      },
+      "value": 0.4
+    },
+    {
+      "at": "5:1:0",
+      "value": 0.8
+    }
+  ]
+}
+```
+
 ## browser
 
 ### `browser.search`

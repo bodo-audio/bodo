@@ -1,0 +1,22 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "length": "4 bars",
+    "target": {
+      "insert": 1,
+      "param": "volume"
+    }
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "clip": "clip_0000000000000000000000041Q",
+    "name": "Insert 1 volume",
+    "start": "1:1:0",
+    "track": "trk_0000000000000000000000040M",
+    "value": 0.8
+  },
+  "undo": "Automate Insert 1 volume"
+}

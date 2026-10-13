@@ -37,6 +37,13 @@ fn every_example_runs_validly_and_undoes_exactly() {
         if NEED_AUDIO.contains(&id) {
             run(&mut session, "channel.add_audio", json!({ "sample": "factory:Packs/Bodo Drums/Crash.wav", "name": "Crash" }));
         }
+        // Automation edits act on the clip and the pattern lane the creating examples make.
+        for setup in ["automation.create_for", "automation.set_lane"] {
+            if id.starts_with("automation.") && id != setup {
+                let example = session.registry().get(setup).unwrap().example.clone().unwrap();
+                session.execute(setup, example).unwrap();
+            }
+        }
         let spec = session.registry().get(id).unwrap();
         let example = spec.example.clone().unwrap_or_else(|| panic!("{id} has no example"));
         let undoable = spec.effects.undoable;

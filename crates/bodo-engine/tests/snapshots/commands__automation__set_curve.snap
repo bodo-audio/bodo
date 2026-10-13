@@ -1,0 +1,29 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Insert 1 volume",
+    "curve": "sine",
+    "index": 0
+  },
+  "result": {
+    "points": [
+      {
+        "at": "1:1:0",
+        "curve": "sine",
+        "ticks": 0,
+        "value": 0.8
+      },
+      {
+        "at": "5:1:0",
+        "curve": "linear",
+        "ticks": 15360,
+        "value": 0.8
+      }
+    ],
+    "target": "Insert 1 volume"
+  },
+  "undo": "Set automation curve"
+}

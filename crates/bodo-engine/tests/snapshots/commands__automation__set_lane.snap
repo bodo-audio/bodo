@@ -1,0 +1,44 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "pattern": "Verse",
+    "points": [
+      {
+        "at": 0,
+        "value": 0.3
+      },
+      {
+        "at": "1:3:0",
+        "value": 0.7
+      }
+    ],
+    "target": {
+      "channel": "HiHat",
+      "param": "pan"
+    }
+  },
+  "result": {
+    "lane": {
+      "points": [
+        {
+          "at": "1:1:0",
+          "curve": "linear",
+          "ticks": 0,
+          "value": 0.3
+        },
+        {
+          "at": "1:3:0",
+          "curve": "linear",
+          "ticks": 1920,
+          "value": 0.7
+        }
+      ],
+      "target": "HiHat pan"
+    },
+    "pattern": "pat_0000000000000000000000041C"
+  },
+  "undo": "Automate HiHat pan in the pattern"
+}

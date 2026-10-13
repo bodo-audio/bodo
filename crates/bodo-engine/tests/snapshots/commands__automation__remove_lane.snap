@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "pattern": "Verse",
+    "target": {
+      "channel": "HiHat",
+      "param": "pan"
+    }
+  },
+  "result": {
+    "pattern": "pat_0000000000000000000000041C",
+    "removed": "HiHat pan"
+  },
+  "undo": "Remove the HiHat pan lane"
+}
