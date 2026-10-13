@@ -13,14 +13,8 @@ use bodo_kit_music::{PitchClass, Scale, ScaleKind};
 use bodo_ui::BodoApp;
 use bodo_ui::windows::WindowKind;
 use egui::Theme;
-use egui_kittest::{OsThreshold, SnapshotOptions};
-use serde_json::{Value, json};
 
-fn options(name: &str) -> SnapshotOptions {
-    let os_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(std::env::consts::OS);
-    let options = SnapshotOptions::new().threshold(OsThreshold::new(1.5).windows(2.0)).max_failed_pixels(OsThreshold::new(400).windows(2000));
-    if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
-}
+use serde_json::{Value, json};
 
 /// The beat of the M2 exit criterion, through the session's commands.
 fn with_beat(app: &mut BodoApp) {
@@ -54,7 +48,7 @@ fn snapshot(name: &str, theme: Theme, setup: fn(&mut BodoApp)) {
     setup(&mut app);
     let mut harness = common::harness(app, theme, true);
     harness.run_steps(6);
-    harness.snapshot_options(name, &options(name));
+    harness.snapshot_options(name, &common::snapshot_options(name));
 }
 
 #[test]

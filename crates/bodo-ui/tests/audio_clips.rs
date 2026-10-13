@@ -217,13 +217,6 @@ fn a_rack_knob_makes_an_automation_clip_of_itself() {
     element(&h, "Clip source Kick pan");
 }
 
-fn options(name: &str) -> egui_kittest::SnapshotOptions {
-    use egui_kittest::{OsThreshold, SnapshotOptions};
-    let os_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(std::env::consts::OS);
-    let options = SnapshotOptions::new().threshold(OsThreshold::new(1.5).windows(2.0)).max_failed_pixels(OsThreshold::new(400).windows(2000));
-    if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
-}
-
 /// The main window with a faded audio clip of the crash and an automation clip with several curve shapes, in
 /// `theme`, compared with snapshot `name`.
 fn snapshot(name: &str, theme: Theme) {
@@ -245,7 +238,7 @@ fn snapshot(name: &str, theme: Theme) {
     harness.run_steps(4);
     settle(&mut harness);
     harness.run_steps(4);
-    harness.snapshot_options(name, &options(name));
+    harness.snapshot_options(name, &common::snapshot_options(name));
 }
 
 #[test]

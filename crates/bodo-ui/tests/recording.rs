@@ -11,8 +11,8 @@ use bodo_model::mixer::{MixerInsert, RecordFormat, RecordTap};
 use bodo_ui::BodoApp;
 use common::{click, click_at, element};
 use egui::Theme;
+use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use egui_kittest::{Harness, OsThreshold, SnapshotOptions};
 use serde_json::json;
 
 fn harness(app: BodoApp) -> Harness<'static, BodoApp> {
@@ -165,12 +165,6 @@ fn midi_files_export_and_import_through_the_file_menu() {
     let _ = std::fs::remove_dir_all(dir);
 }
 
-fn options(name: &str) -> SnapshotOptions {
-    let os_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(std::env::consts::OS);
-    let options = SnapshotOptions::new().threshold(OsThreshold::new(1.5).windows(2.0)).max_failed_pixels(OsThreshold::new(400).windows(2000));
-    if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
-}
-
 /// Insert 1 armed on inputs 1-2, insert 2 armed with none, the metronome and count-in on and a loop set, in `theme`.
 fn snapshot(name: &str, theme: Theme) {
     let mut app = common::app(theme);
@@ -186,7 +180,7 @@ fn snapshot(name: &str, theme: Theme) {
     }
     let mut harness = common::harness(app, theme, true);
     harness.run_steps(6);
-    harness.snapshot_options(name, &options(name));
+    harness.snapshot_options(name, &common::snapshot_options(name));
 }
 
 #[test]
