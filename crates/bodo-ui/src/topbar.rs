@@ -238,10 +238,10 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     }
     record_button(app, ui, transport.recording);
     ui.add_space(4.0);
-    let metronome = icon_button(ui, icons::METRONOME, "Metronome", transport.metronome);
-    app.hint(&metronome, "Metronome: clicks every beat while playing and recording");
-    if metronome.clicked() {
-        let _ = app.run("transport.metronome", json!({ "on": !transport.metronome }));
+    let typing = icon_button(ui, icons::KEYBOARD, "Typing keyboard", app.view.typing.on);
+    app.hint(&typing, "Typing keyboard: the computer keyboard plays the selected channel, Z to M from C4 and Q to U from C5");
+    if typing.clicked() {
+        app.view.typing.on = !app.view.typing.on;
     }
     let count_in = painted_button(ui, "Count-in", transport.count_in, |painter, rect, color| {
         // Four beats, the first one stressed: a bar counted in.
@@ -253,6 +253,11 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     app.hint(&count_in, "Count-in: a bar of clicks before recording starts");
     if count_in.clicked() {
         let _ = app.run("transport.count_in", json!({ "on": !transport.count_in }));
+    }
+    let metronome = icon_button(ui, icons::METRONOME, "Metronome", transport.metronome);
+    app.hint(&metronome, "Metronome: clicks every beat while playing and recording");
+    if metronome.clicked() {
+        let _ = app.run("transport.metronome", json!({ "on": !transport.metronome }));
     }
     ui.add_space(10.0);
 

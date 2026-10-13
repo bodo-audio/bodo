@@ -27,6 +27,7 @@ pub mod screenshot;
 mod shortcuts;
 pub mod theme;
 mod topbar;
+mod typing;
 pub mod windows;
 
 use std::path::PathBuf;
@@ -41,6 +42,7 @@ pub use crate::autosave::{end_session, start_session};
 pub use crate::piano_roll::{Lane, PianoView};
 pub use crate::playlist::{PlaylistView, Tool};
 use crate::theme::{ThemePref, Tokens};
+pub use crate::typing::Typing;
 use crate::windows::{Layout, Preset, WindowKind};
 
 /// The storage key of the preferences.
@@ -220,6 +222,8 @@ pub struct View {
     pub step_gesture: Option<u64>,
     /// The editor the tool keys and arrow keys act on: the playlist or the piano roll, whichever was used last.
     pub editor: WindowKind,
+    /// The typing keyboard: whether the computer keyboard plays notes, and the notes it holds.
+    pub typing: typing::Typing,
 }
 
 /// The main window.
@@ -499,6 +503,7 @@ impl BodoApp {
             self.shown_theme = Some(theme);
         }
         self.remote.set_ctx(ctx);
+        typing::handle(self, ctx);
         shortcuts::handle(self, ctx);
         remote::drain(self, ctx);
         self.audio.sync(&mut self.session);
