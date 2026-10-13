@@ -32,7 +32,7 @@ pub mod session;
 pub mod state;
 pub mod template;
 
-pub use commands::{insert_number, pattern_length, pattern_step_text};
+pub use commands::{ExportJob, insert_number, pattern_length, pattern_step_text};
 pub use error::{CommandError, ErrorCode};
 pub use history::HistoryLimits;
 pub use registry::{CommandSpec, Effects, Registry};

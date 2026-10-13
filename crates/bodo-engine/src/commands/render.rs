@@ -8,7 +8,8 @@ use std::path::{Path, PathBuf};
 
 use bodo_kit_audio::{AudioData, AudioError, FlacWriter, W64Format, W64Writer, WavFormat, WavWriter};
 use bodo_kit_core::{Seconds, Tick};
-use bodo_mix::{OfflineOptions, PlayMode, render_offline, render_stems};
+use bodo_mix::{OfflineOptions, PlayMode, RenderProgress, render_offline_with, render_stems_with};
+use bodo_model::{Project, SampleRoots};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -159,40 +160,105 @@ fn make_folder(folder: &Path) -> Result<(), CommandError> {
     std::fs::create_dir_all(folder).map_err(|e| CommandError::io(folder, e))
 }
 
-fn export_mix(ctx: &mut Ctx<'_>, p: ExportMix) -> Result<Value, CommandError> {
+/// Where a render's files go.
+#[derive(Clone, Debug)]
+enum Target {
+    /// One file of the mix.
+    Mix(PathBuf),
+    /// A folder of stems, with the mix beside them when set.
+    Stems { folder: PathBuf, mix: bool },
+}
+
+/// A render, prepared from the session and ready to run: on the session's own thread, as the `render.*` commands
+/// do, or on a background thread so the interface keeps working while it renders.
+#[derive(Clone, Debug)]
+pub struct ExportJob {
+    project: Project,
+    roots: SampleRoots,
+    options: OfflineOptions,
+    target: Target,
+    format: Format,
+}
+
+impl ExportJob {
+    /// What the job writes, for a progress line: the mix file, or the stems folder.
+    pub fn place(&self) -> &Path {
+        match &self.target {
+            Target::Mix(path) => path,
+            Target::Stems { folder, .. } => folder,
+        }
+    }
+
+    /// Renders and writes the files, counting progress in `progress` and stopping when it is cancelled. Returns what
+    /// the `render.*` command returns.
+    ///
+    /// Does I/O. Complexity: proportional to the rendered length times the engine's cost per block.
+    pub fn run(&self, progress: &RenderProgress) -> Result<Value, CommandError> {
+        match &self.target {
+            Target::Mix(path) => {
+                make_folder(path.parent().unwrap_or(Path::new("")))?;
+                let audio = render_offline_with(&self.project, &self.roots, &self.options, progress).map_err(failed)?;
+                write(&audio, path, self.format).map_err(|e| CommandError::io(path, e))?;
+                Ok(json!({ "path": path.display().to_string(), "seconds": seconds(&audio), "peakDb": peak_db(&audio) }))
+            }
+            Target::Stems { folder, mix } => {
+                make_folder(folder)?;
+                let stems = render_stems_with(&self.project, &self.roots, &self.options, progress).map_err(failed)?;
+                let extension = self.format.extension();
+                let digits = stems.len().to_string().len().max(2);
+                let mut files = Vec::with_capacity(stems.len());
+                for (n, stem) in stems.iter().enumerate() {
+                    let path = folder.join(format!("{:0digits$} {}.{extension}", n + 1, file_name(&stem.name)));
+                    write(&stem.audio, &path, self.format).map_err(|e| CommandError::io(&path, e))?;
+                    files.push(
+                        json!({ "source": stem.source, "name": stem.name, "path": path.display().to_string(), "peakDb": peak_db(&stem.audio) }),
+                    );
+                }
+                let length = stems.first().map_or(0.0, |s| seconds(&s.audio));
+                let mix = if *mix {
+                    let audio = render_offline_with(&self.project, &self.roots, &self.options, progress).map_err(failed)?;
+                    let path = folder.join(format!("Mix.{extension}"));
+                    write(&audio, &path, self.format).map_err(|e| CommandError::io(&path, e))?;
+                    Some(json!({ "path": path.display().to_string(), "peakDb": peak_db(&audio) }))
+                } else {
+                    None
+                };
+                Ok(json!({ "folder": folder.display().to_string(), "stems": files, "mix": mix, "seconds": length }))
+            }
+        }
+    }
+}
+
+fn prepare_mix(ctx: &Ctx<'_>, p: ExportMix) -> Result<ExportJob, CommandError> {
     let options = options(ctx, p.pattern.as_ref(), p.start.as_ref(), p.end.as_ref())?;
     let path = locate(ctx, &p.path);
     let path = if path.extension().is_none() { path.with_extension(p.format.extension()) } else { path };
-    make_folder(path.parent().unwrap_or(Path::new("")))?;
-    let audio = render_offline(&ctx.project, &ctx.sample_roots(), &options).map_err(failed)?;
-    write(&audio, &path, p.format).map_err(|e| CommandError::io(&path, e))?;
-    Ok(json!({ "path": path.display().to_string(), "seconds": seconds(&audio), "peakDb": peak_db(&audio) }))
+    Ok(ExportJob { project: ctx.project.clone(), roots: ctx.sample_roots(), options, target: Target::Mix(path), format: p.format })
+}
+
+fn prepare_stems(ctx: &Ctx<'_>, p: ExportStems) -> Result<ExportJob, CommandError> {
+    let options = options(ctx, p.pattern.as_ref(), p.start.as_ref(), p.end.as_ref())?;
+    let target = Target::Stems { folder: locate(ctx, &p.folder), mix: p.mix };
+    Ok(ExportJob { project: ctx.project.clone(), roots: ctx.sample_roots(), options, target, format: p.format })
+}
+
+/// Prepares the render command `id` (`render.export_mix` or `render.export_stems`) with `params` against the
+/// session, without rendering: the job runs later, on any thread.
+pub(crate) fn prepare(ctx: &Ctx<'_>, id: &str, params: Value) -> Result<ExportJob, CommandError> {
+    let invalid = |e: serde_json::Error| CommandError::invalid(e.to_string());
+    match id {
+        "render.export_mix" => prepare_mix(ctx, serde_json::from_value(params).map_err(invalid)?),
+        "render.export_stems" => prepare_stems(ctx, serde_json::from_value(params).map_err(invalid)?),
+        other => Err(CommandError::invalid(format!("{other} is not a render command"))),
+    }
+}
+
+fn export_mix(ctx: &mut Ctx<'_>, p: ExportMix) -> Result<Value, CommandError> {
+    prepare_mix(ctx, p)?.run(&RenderProgress::default())
 }
 
 fn export_stems(ctx: &mut Ctx<'_>, p: ExportStems) -> Result<Value, CommandError> {
-    let options = options(ctx, p.pattern.as_ref(), p.start.as_ref(), p.end.as_ref())?;
-    let folder = locate(ctx, &p.folder);
-    make_folder(&folder)?;
-    let roots = ctx.sample_roots();
-    let stems = render_stems(&ctx.project, &roots, &options).map_err(failed)?;
-    let extension = p.format.extension();
-    let digits = stems.len().to_string().len().max(2);
-    let mut files = Vec::with_capacity(stems.len());
-    for (n, stem) in stems.iter().enumerate() {
-        let path = folder.join(format!("{:0digits$} {}.{extension}", n + 1, file_name(&stem.name)));
-        write(&stem.audio, &path, p.format).map_err(|e| CommandError::io(&path, e))?;
-        files.push(json!({ "source": stem.source, "name": stem.name, "path": path.display().to_string(), "peakDb": peak_db(&stem.audio) }));
-    }
-    let length = stems.first().map_or(0.0, |s| seconds(&s.audio));
-    let mix = if p.mix {
-        let audio = render_offline(&ctx.project, &roots, &options).map_err(failed)?;
-        let path = folder.join(format!("Mix.{extension}"));
-        write(&audio, &path, p.format).map_err(|e| CommandError::io(&path, e))?;
-        Some(json!({ "path": path.display().to_string(), "peakDb": peak_db(&audio) }))
-    } else {
-        None
-    };
-    Ok(json!({ "folder": folder.display().to_string(), "stems": files, "mix": mix, "seconds": length }))
+    prepare_stems(ctx, p)?.run(&RenderProgress::default())
 }
 
 pub(super) fn register(r: &mut Registry) {

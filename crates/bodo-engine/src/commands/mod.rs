@@ -19,6 +19,8 @@ mod preset;
 mod project;
 mod record;
 mod render;
+pub use render::ExportJob;
+pub(crate) use render::prepare as prepare_render;
 mod sampler;
 mod transport;
 

@@ -600,6 +600,16 @@ impl Session {
         self.editor.sanitize(&self.project);
     }
 
+    /// Prepares the render command `id` (`render.export_mix` or `render.export_stems`) with `params`, without
+    /// rendering, so the interface can run it on a background thread and keep working. Agents use the commands, which
+    /// prepare and run in one step.
+    ///
+    /// Complexity: O(1) besides resolving the params; the project snapshot is shared, not copied.
+    pub fn prepare_export(&mut self, id: &str, params: serde_json::Value) -> Result<crate::ExportJob, CommandError> {
+        let ctx = self.ctx();
+        crate::commands::prepare_render(&ctx, id, params)
+    }
+
     fn ctx(&mut self) -> Ctx<'_> {
         Ctx {
             project: (*self.project).clone(),
