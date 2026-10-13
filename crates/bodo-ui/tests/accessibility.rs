@@ -213,14 +213,20 @@ fn the_size_keys_step_the_interface_and_mod_0_goes_back_to_auto() {
     let mut h = harness(common::app(Theme::Dark));
     assert_eq!(h.ctx.zoom_factor(), 1.0);
     press_with(&mut h, Modifiers::COMMAND, Key::Equals);
-    assert_eq!(h.state().prefs.ui_scale, Some(1.1));
-    assert!((h.ctx.zoom_factor() - 1.1).abs() < 1e-4, "the interface grows a step");
+    assert_eq!(h.state().prefs.ui_scale, Some(1.05));
+    assert!((h.ctx.zoom_factor() - 1.05).abs() < 1e-4, "the interface grows a 5% step");
     press_with(&mut h, Modifiers::COMMAND, Key::Minus);
     press_with(&mut h, Modifiers::COMMAND, Key::Minus);
-    assert_eq!(h.state().prefs.ui_scale, Some(0.9));
+    assert_eq!(h.state().prefs.ui_scale, Some(0.95));
     press_with(&mut h, Modifiers::COMMAND, Key::Num0);
     assert_eq!(h.state().prefs.ui_scale, None, "Mod+0 is Auto");
     assert!((h.ctx.zoom_factor() - 1.0).abs() < 1e-4, "which is 100% on a 1440-point screen");
+    // Keyboards that type "+" as its own key send Plus, not Equals; Mod with it makes the interface larger too.
+    press_with(&mut h, Modifiers::COMMAND, Key::Plus);
+    assert_eq!(h.state().prefs.ui_scale, Some(1.05));
+    // With Shift, as layouts that put "=" or "+" on a shifted key need.
+    press_with(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::Equals);
+    assert_eq!(h.state().prefs.ui_scale, Some(1.1));
 }
 
 /// A harness `width` points wide with the interface size on Auto.

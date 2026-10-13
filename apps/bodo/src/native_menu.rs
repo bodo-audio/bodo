@@ -284,7 +284,20 @@ fn accelerator(keys: Option<&str>, listening: bool) -> Option<Accelerator> {
     if !keys.contains('+') && !function_key {
         return None;
     }
-    keys.replace("Mod", "CmdOrCtrl").parse::<Accelerator>().ok()
+    // egui and the menu library name a few keys differently; the rest match.
+    let (modifiers, key) = keys.rsplit_once('+').unwrap_or(("", keys));
+    let key = match key {
+        "Equals" => "Equal",
+        "OpenBracket" => "BracketLeft",
+        "CloseBracket" => "BracketRight",
+        other => other,
+    };
+    let keys = if modifiers.is_empty() { key.to_owned() } else { format!("{modifiers}+{key}") };
+    let parsed = keys.replace("Mod", "CmdOrCtrl").parse::<Accelerator>();
+    if let Err(error) = &parsed {
+        tracing::warn!(%error, keys, "a shortcut has no native menu key");
+    }
+    parsed.ok()
 }
 
 #[cfg(test)]
@@ -300,6 +313,9 @@ mod tests {
         assert!(accelerator(Some("P"), false).is_none(), "plain letters are tools and notes");
         assert!(accelerator(Some("Mod+S"), true).is_none(), "the shortcuts dialog is listening");
         assert!(accelerator(None, false).is_none());
+        assert!(accelerator(Some("Mod+Equals"), false).is_some(), "the menu library calls it Equal");
+        assert!(accelerator(Some("Mod+Minus"), false).is_some());
+        assert!(accelerator(Some("Mod+0"), false).is_some());
     }
 
     #[test]

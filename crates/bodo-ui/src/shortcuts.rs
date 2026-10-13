@@ -339,6 +339,11 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             Action::Palette => {}
         }
     }
+    // Mod with "+" also makes the interface larger, as in most apps: keyboards that type "+" without Shift send it
+    // as its own key rather than as Equals.
+    if !typing && ctx.input_mut(|i| i.consume_key(Modifiers::COMMAND, Key::Plus)) {
+        run_command(app, "ui.zoom_in");
+    }
     if focused {
         return;
     }

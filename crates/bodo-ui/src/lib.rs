@@ -91,7 +91,7 @@ pub fn resident_memory() -> Option<u64> {
 }
 
 /// The interface sizes the zoom keys step through, from 75% to 200% (project.md section 14.7).
-pub const UI_SCALES: [f32; 9] = [0.75, 0.9, 1.0, 1.1, 1.25, 1.4, 1.5, 1.75, 2.0];
+pub const UI_SCALES: [f32; 16] = [0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.4, 1.5, 1.75, 2.0];
 
 /// `scale` kept between 75% and 200%; 100% for nonsense.
 fn clamp_scale(scale: f32) -> f32 {
