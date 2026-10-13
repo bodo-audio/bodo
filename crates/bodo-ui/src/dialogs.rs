@@ -6,7 +6,7 @@ use egui::{Align2, RichText, vec2};
 use serde_json::json;
 
 use crate::BodoApp;
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{Tokens, rem, size};
 
 /// What to do once unsaved changes are dealt with.
@@ -89,7 +89,7 @@ impl ExportTask {
         let handle = std::thread::Builder::new()
             .name(String::from("bodo-export"))
             .spawn(move || job.run(&shared).map_err(|e| e.to_string()))
-            .map_err(|e| format!("the export could not start: {e}"))?;
+            .map_err(|e| tf!("The export could not start: {error}", error = e))?;
         Ok(Self { place, progress, handle: Some(handle) })
     }
 
@@ -99,7 +99,7 @@ impl ExportTask {
             return None;
         }
         let handle = self.handle.take()?;
-        Some(handle.join().unwrap_or_else(|_| Err(String::from("the export stopped unexpectedly"))))
+        Some(handle.join().unwrap_or_else(|_| Err(String::from(t("The export stopped unexpectedly")))))
     }
 }
 
@@ -115,7 +115,7 @@ pub(crate) fn poll_export(app: &mut BodoApp, ctx: &egui::Context) {
     let (message, error) = match outcome {
         Ok(result) => {
             let place = result.get("path").or_else(|| result.get("folder")).and_then(serde_json::Value::as_str).unwrap_or_default();
-            (format!("Wrote {place}"), false)
+            (tf!("Wrote {place}", place = place), false)
         }
         Err(error) => (error, true),
     };
@@ -513,14 +513,16 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
     let mut open = true;
     let mut run = false;
     let center = ctx.content_rect().center();
-    let window = egui::Window::new("Export").id(egui::Id::new("bodo-export")).pivot(Align2::CENTER_CENTER).default_pos(center);
+    let window = egui::Window::new(t("Export")).id(egui::Id::new("bodo-export")).pivot(Align2::CENTER_CENTER).default_pos(center);
     window.open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-        ui.set_min_width(340.0);
-        egui::Grid::new("bodo-export-grid").num_columns(2).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
-            ui.label("Render");
+        ui.set_min_width(rem(27.2));
+        egui::Grid::new("bodo-export-grid").num_columns(2).spacing(vec2(rem(0.96), rem(0.48))).show(ui, |ui| {
+            ui.label(t("Render"));
             ui.horizontal(|ui| {
-                for (value, label) in [(ExportWhat::Mix, "The mix"), (ExportWhat::Stems, "Stems"), (ExportWhat::Both, "Stems and the mix")] {
-                    let choice = ui.radio(dialog.what == value, label);
+                for (value, label) in
+                    [(ExportWhat::Mix, en("The mix")), (ExportWhat::Stems, en("Stems")), (ExportWhat::Both, en("Stems and the mix"))]
+                {
+                    let choice = ui.radio(dialog.what == value, t(label));
                     crate::control::record(ui, &choice, &format!("Export {label}"), "radio", Some(dialog.what == value));
                     if choice.clicked() {
                         dialog.what = value;
@@ -528,14 +530,14 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Range");
+            ui.label(t("Range"));
             ui.horizontal(|ui| {
                 for (value, label, available) in [
-                    (ExportRange::Song, "The song", true),
-                    (ExportRange::Loop, "The loop", transport.loop_region.is_some()),
-                    (ExportRange::Selection, "The selection", selection.is_some()),
+                    (ExportRange::Song, en("The song"), true),
+                    (ExportRange::Loop, en("The loop"), transport.loop_region.is_some()),
+                    (ExportRange::Selection, en("The selection"), selection.is_some()),
                 ] {
-                    let choice = ui.add_enabled(available, egui::RadioButton::new(dialog.range == value, label));
+                    let choice = ui.add_enabled(available, egui::RadioButton::new(dialog.range == value, t(label)));
                     crate::control::record(ui, &choice, &format!("Export range {label}"), "radio", Some(dialog.range == value));
                     if choice.clicked() {
                         dialog.range = value;
@@ -543,8 +545,9 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Format");
+            ui.label(t("Format"));
             ui.horizontal(|ui| {
+                // The formats' names read the same in every language.
                 for (value, label) in [("wav", "WAV"), ("flac", "FLAC"), ("w64", "Wave64")] {
                     let choice = ui.radio(dialog.format == value, label);
                     crate::control::record(ui, &choice, &format!("Export format {label}"), "radio", Some(dialog.format == value));
@@ -554,43 +557,43 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
-            ui.label("Folder");
+            ui.label(t("Folder"));
             ui.horizontal(|ui| {
-                let field = ui.add(egui::TextEdit::singleline(&mut dialog.folder).desired_width(220.0));
+                let field = ui.add(egui::TextEdit::singleline(&mut dialog.folder).desired_width(rem(17.6)));
                 crate::control::record(ui, &field, "Export folder", "text", None);
                 if app.services.pick_folder.is_some()
-                    && ui.button("Choose...").clicked()
+                    && ui.button(t("Choose...")).clicked()
                     && let Some(folder) = app.services.pick_folder.as_ref().and_then(|pick| pick())
                 {
                     dialog.folder = folder.display().to_string();
                 }
             });
             ui.end_row();
-            ui.label(if dialog.what == ExportWhat::Mix { "File name" } else { "Stems folder" });
-            let field = ui.add(egui::TextEdit::singleline(&mut dialog.name).desired_width(220.0));
+            ui.label(if dialog.what == ExportWhat::Mix { t("File name") } else { t("Stems folder") });
+            let field = ui.add(egui::TextEdit::singleline(&mut dialog.name).desired_width(rem(17.6)));
             crate::control::record(ui, &field, "Export name", "text", None);
             ui.end_row();
         });
         let running = app.view.dialogs.exporting.as_ref().map(|task| (task.place.clone(), std::sync::Arc::clone(&task.progress)));
         if let Some((place, progress)) = &running {
-            ui.add_space(4.0);
-            ui.label(RichText::new(format!("Exporting to {place}")).size(size::SMALL).color(tk.text_dim));
+            ui.add_space(rem(0.32));
+            ui.label(RichText::new(tf!("Exporting to {place}", place = place)).size(size::SMALL).color(tk.text_dim));
             let bar = ui.add(egui::ProgressBar::new(progress.fraction()).show_percentage());
             crate::control::record(ui, &bar, "Export progress", "progress", None);
         } else if let Some((message, error)) = &dialog.message {
-            ui.add_space(4.0);
+            ui.add_space(rem(0.32));
             ui.label(RichText::new(message).size(size::SMALL).color(if *error { tk.error } else { tk.text_dim }));
         }
-        ui.add_space(6.0);
+        ui.add_space(rem(0.48));
         ui.horizontal(|ui| {
             let ready = running.is_none() && !dialog.name.trim().is_empty() && !dialog.folder.trim().is_empty();
-            let button = ui.add_enabled(ready, egui::Button::new("Export"));
+            let button = ui.add_enabled(ready, egui::Button::new(t("Export")));
             crate::control::record(ui, &button, "Export run", "button", None);
             if button.clicked() {
                 run = true;
             }
             if let Some((_, progress)) = &running {
-                let cancel = ui.button("Cancel export");
+                let cancel = ui.button(t("Cancel export"));
                 crate::control::record(ui, &cancel, "Export cancel", "button", None);
                 app.hint(&cancel, "Stops the export; the files written so far stay");
                 if cancel.clicked() {
@@ -599,7 +602,7 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
             }
         });
         if running.is_some() {
-            ui.label(RichText::new("You can close this dialog and keep working while it renders.").size(size::SMALL).color(tk.text_faint));
+            ui.label(RichText::new(t("You can close this dialog and keep working while it renders.")).size(size::SMALL).color(tk.text_faint));
         }
     });
     if run {

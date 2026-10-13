@@ -413,8 +413,27 @@ pub fn show_frame<T: WindowHost>(
     header: impl FnOnce(&mut T, &mut Ui),
     body: impl FnOnce(&mut T, &mut Ui),
 ) -> (WindowState, WindowEvents) {
+    show_frame_as(ctx, id, icon, state, workspace, title, &shown_title(title), detachable, state_of, header, body)
+}
+
+/// [`show_frame`] with the title people see given apart from `title`, the English one the control channel names the
+/// window by: for titles built from values, which [`shown_title`] can't translate piece by piece.
+#[allow(clippy::too_many_arguments, reason = "a window needs its place, title, state and both parts")]
+pub fn show_frame_as<T: WindowHost>(
+    ctx: &egui::Context,
+    id: Id,
+    icon: Icon,
+    state: WindowState,
+    workspace: Rect,
+    title: &str,
+    shown: &str,
+    detachable: bool,
+    state_of: &mut T,
+    header: impl FnOnce(&mut T, &mut Ui),
+    body: impl FnOnce(&mut T, &mut Ui),
+) -> (WindowState, WindowEvents) {
     if state.detached && detachable && !ctx.embed_viewports() {
-        return show_detached(ctx, id, icon, state, workspace, title, state_of, header, body);
+        return show_detached(ctx, id, icon, state, workspace, title, shown, state_of, header, body);
     }
     let tk = Tokens::get();
     let full = if state.maximized { workspace } else { frame_rect(state.frame, workspace) };
@@ -469,8 +488,7 @@ pub fn show_frame<T: WindowHost>(
         let mut bar = title_bar(ui, title_rect, buttons_width);
         icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(rem(0.0), rem(0.24)), vec2(rem(1.12), rem(1.12))), tk.text_dim);
         bar.add_space(rem(1.44));
-        let shown = shown_title(title);
-        title_label(&mut bar, &shown);
+        title_label(&mut bar, shown);
         bar.add_space(rem(0.8));
         header(state_of, &mut bar);
         let mut buttons = ui.new_child(
@@ -542,6 +560,7 @@ fn show_detached<T: WindowHost>(
     state: WindowState,
     workspace: Rect,
     title: &str,
+    shown: &str,
     state_of: &mut T,
     header: impl FnOnce(&mut T, &mut Ui),
     body: impl FnOnce(&mut T, &mut Ui),
@@ -556,7 +575,7 @@ fn show_detached<T: WindowHost>(
     let spawn_key = id.with("spawn");
     let [x, y, w, h] = ctx.data_mut(|d| *d.get_temp_mut_or_insert_with(spawn_key, || state.screen.unwrap_or(fallback)));
     let builder = egui::ViewportBuilder::default()
-        .with_title(format!("{} - Bodo", shown_title(title)))
+        .with_title(format!("{shown} - Bodo"))
         .with_position([x, y])
         .with_inner_size([w.max(MIN_SIZE.x), h.max(MIN_SIZE.y)])
         .with_min_inner_size(MIN_SIZE);
@@ -582,8 +601,7 @@ fn show_detached<T: WindowHost>(
             let mut bar = title_bar(ui, title_rect, title_buttons_width(1));
             icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(rem(0.0), rem(0.24)), vec2(rem(1.12), rem(1.12))), tk.text_dim);
             bar.add_space(rem(1.44));
-            let shown = shown_title(title);
-            title_label(&mut bar, &shown);
+            title_label(&mut bar, shown);
             bar.add_space(rem(0.8));
             if let Some(header) = header.take() {
                 header(state_of, &mut bar);

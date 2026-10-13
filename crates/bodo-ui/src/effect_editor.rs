@@ -14,9 +14,10 @@ use bodo_model::{InsertId, PluginInstanceId, Project};
 use egui::{Rect, RichText, Ui, vec2};
 use serde_json::json;
 
+use crate::i18n::{t, tr};
 use crate::mixer::{insert_label, insert_ref, number_of};
-use crate::theme::{Tokens, size};
-use crate::windows::{WindowState, show_frame};
+use crate::theme::{Tokens, rem, size};
+use crate::windows::{WindowState, show_frame_as};
 use crate::{BodoApp, control};
 
 /// An open effect editor.
@@ -85,23 +86,31 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
         let Some(state) = project.mixer.insert(editor.insert).and_then(|i| i.slots.get(slot)).cloned() else { continue };
         let Some(plugin) = state.plugin.clone() else { continue };
         let info = (plugin.format == PluginFormat::Native).then(|| bodo_mix::fx::find(&plugin.uid)).flatten();
+        // The control channel knows the window by its English title; the title bar shows it translated.
         let name = info.map_or_else(|| plugin.uid.clone(), |i| i.name.to_owned());
         let title = format!("{name} - {} slot {}", insert_label(number), slot + 1);
-        let (window, events) = show_frame(
+        let effect = info.map_or_else(|| plugin.uid.clone(), |i| tr(i.name));
+        let shown = if number == 0 {
+            tf!("{effect} - Master slot {slot}", effect = effect, slot = slot + 1)
+        } else {
+            tf!("{effect} - Insert {number} slot {slot}", effect = effect, number = number, slot = slot + 1)
+        };
+        let (window, events) = show_frame_as(
             ctx,
             area_id(editor.instance),
             icons::ADJUSTMENTS_HORIZONTAL,
             editor.state,
             workspace,
             &title,
+            &shown,
             true,
             app,
             |app, ui| header(app, ui, number, slot, &state),
             |app, ui| match info {
                 Some(info) => body(app, ui, number, slot, &state, info),
                 None => {
-                    ui.add_space(8.0);
-                    ui.label("This plugin's own editor opens once plugin hosting arrives; until then it passes audio through.");
+                    ui.add_space(rem(0.64));
+                    ui.label(t("This plugin's own editor opens once plugin hosting arrives; until then it passes audio through."));
                 }
             },
         );
@@ -118,26 +127,26 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
 fn header(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, state: &bodo_model::mixer::FxSlot) {
     let label = format!("{} slot {}", insert_label(number), slot + 1);
     let mut on = state.enabled;
-    let led = ui.add(Led::new(&mut on).size(12.0).label(format!("{label} editor on")));
+    let led = ui.add(Led::new(&mut on).size(rem(0.96)).label(t("Effect on")));
     control::record(ui, &led, &format!("{label} editor on"), "led", Some(state.enabled));
     app.hint(&led, "Bypass: turn the effect off or on; off, it keeps its latency");
     if led.changed() {
         let _ = app.run("fx.set_enabled", json!({ "insert": insert_ref(number), "slot": slot + 1, "on": on }));
     }
     let mut mix = state.mix;
-    let knob = ui.add(Knob::new(&mut mix, 0.0..=1.0).default(1.0).diameter(18.0).label(format!("{label} editor mix")));
+    let knob = ui.add(Knob::new(&mut mix, 0.0..=1.0).default(1.0).diameter(rem(1.44)).label(t("Mix")));
     control::record(ui, &knob, &format!("{label} editor mix"), "knob", None);
-    app.hint(&knob, format!("Mix: {:.0}% wet", mix * 100.0));
+    app.hint(&knob, tf!("Mix: {percent}% wet", percent = format!("{:.0}", mix * 100.0)));
     if knob.changed() {
         app.run_gesture(&knob, "fx.set_mix", json!({ "insert": insert_ref(number), "slot": slot + 1, "mix": mix }));
     }
-    let presets = ui.menu_button(RichText::new("Presets").size(size::SMALL), |ui| {
-        if ui.button("Save as preset").clicked() {
+    let presets = ui.menu_button(RichText::new(t("Presets")).size(size::SMALL), |ui| {
+        if ui.button(t("Save as preset")).clicked() {
             let _ = app.run("preset.save_plugin", json!({ "insert": insert_ref(number), "slot": slot + 1 }));
             ui.close();
         }
         let Some(library) = app.user_library() else {
-            ui.label("Choose a library folder in the Browser to keep presets");
+            ui.label(t("Choose a library folder in the Browser to keep presets"));
             return;
         };
         let effect = state.plugin.as_ref().and_then(|p| bodo_mix::fx::find(&p.uid)).map_or("", |i| i.name);
@@ -148,7 +157,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, state: &bo
         files.sort();
         ui.separator();
         if files.is_empty() {
-            ui.label("No presets saved yet");
+            ui.label(t("No presets saved yet"));
         }
         for path in files {
             let name = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
@@ -164,48 +173,60 @@ fn header(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, state: &bo
 /// Every parameter of a native effect.
 fn body(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, state: &bodo_model::mixer::FxSlot, info: &EffectInfo) {
     let tk = Tokens::get();
-    ui.add_space(4.0);
-    ui.label(RichText::new(info.description).size(size::SMALL).color(tk.text_dim));
-    ui.add_space(6.0);
+    ui.add_space(rem(0.32));
+    ui.label(RichText::new(tr(info.description)).size(size::SMALL).color(tk.text_dim));
+    ui.add_space(rem(0.48));
     ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = vec2(10.0, 8.0);
+        ui.spacing_mut().item_spacing = vec2(rem(0.8), rem(0.64));
         for spec in info.params {
             let value = state.param(spec.id).map_or(spec.default, |v| spec.clamp(v));
             ui.vertical(|ui| {
-                ui.set_width(72.0);
+                ui.set_width(rem(5.76));
                 param(app, ui, number, slot, info, spec, value);
             });
         }
     });
     if info.sidechain {
-        ui.add_space(8.0);
-        let source = state.sidechain.map_or_else(|| String::from("none: choose one from the slot's menu"), |_| String::from("set"));
-        ui.label(RichText::new(format!("Sidechain: {source}")).size(size::SMALL).color(tk.text_dim));
+        ui.add_space(rem(0.64));
+        let text = if state.sidechain.is_some() { t("Sidechain: set") } else { t("Sidechain: none, choose one from the slot's menu") };
+        ui.label(RichText::new(text).size(size::SMALL).color(tk.text_dim));
+    }
+}
+
+/// A parameter's value as its editor shows it: a choice's name in the interface's language, else the number with its
+/// unit.
+fn value_text(spec: &ParamSpec, value: f32) -> String {
+    match spec.kind {
+        ParamKind::Choice { choices } => choices.get(value as usize).map_or_else(|| spec.display(value), |c| tr(c)),
+        _ => spec.display(value),
     }
 }
 
 /// One parameter's control, its name and its value.
 fn param(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, info: &EffectInfo, spec: &ParamSpec, value: f32) {
     let tk = Tokens::get();
+    // The control channel's English name for the parameter, and the name people see.
     let label = format!("{} {}", info.name, spec.name);
+    let name = tr(spec.name);
     let set = |app: &mut BodoApp, response: &egui::Response, value: f32| {
         app.run_gesture(response, "plugin.set_param", json!({ "insert": insert_ref(number), "slot": slot + 1, "param": spec.id, "value": value }));
     };
     let response = match spec.kind {
         ParamKind::Toggle => {
             let mut on = value >= 0.5;
-            let response = ui.add(Led::new(&mut on).size(14.0).label(&label));
+            let response = ui.add(Led::new(&mut on).size(rem(1.12)).label(&name));
             if response.changed() {
                 set(app, &response, if on { 1.0 } else { 0.0 });
             }
             response
         }
         ParamKind::Choice { choices } => {
-            let current = choices.get(value as usize).copied().unwrap_or("");
-            let combo =
-                egui::ComboBox::from_id_salt(("bodo-effect-choice", number, slot, spec.id)).width(70.0).selected_text(current).show_ui(ui, |ui| {
+            let combo = egui::ComboBox::from_id_salt(("bodo-effect-choice", number, slot, spec.id))
+                .width(rem(5.6))
+                .selected_text(value_text(spec, value))
+                .show_ui(ui, |ui| {
                     for (index, choice) in choices.iter().enumerate() {
-                        if ui.selectable_label(index as f32 == value, *choice).clicked() {
+                        if ui.selectable_label(index as f32 == value, tr(choice)).clicked() {
                             let _ = app
                                 .run("plugin.set_param", json!({ "insert": insert_ref(number), "slot": slot + 1, "param": spec.id, "value": index }));
                         }
@@ -216,7 +237,7 @@ fn param(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, info: &Effe
         ParamKind::Linear | ParamKind::Logarithmic | ParamKind::Integer => {
             let mut n = spec.to_normalized(value);
             let default = spec.to_normalized(spec.default);
-            let response = ui.add(Knob::new(&mut n, 0.0..=1.0).default(default).diameter(30.0).label(&label));
+            let response = ui.add(Knob::new(&mut n, 0.0..=1.0).default(default).diameter(rem(2.4)).label(&name));
             if response.changed() {
                 set(app, &response, spec.from_normalized(n));
             }
@@ -224,13 +245,13 @@ fn param(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, info: &Effe
         }
     };
     control::record(ui, &response, &label, "param", None);
-    app.hint(&response, format!("{}: {}; right-click to automate it", spec.name, spec.display(value)));
+    app.hint(&response, tf!("{name}: {value}; right-click to automate it", name = name, value = value_text(spec, value)));
     response.context_menu(|ui| {
-        if ui.button("Create automation clip").clicked() {
+        if ui.button(t("Create automation clip")).clicked() {
             let _ = app.run("automation.create_for", json!({ "target": { "insert": insert_ref(number), "slot": slot + 1, "param": spec.name } }));
             ui.close();
         }
     });
-    ui.label(RichText::new(spec.name).size(size::SMALL).color(tk.text));
-    ui.label(RichText::new(spec.display(value)).size(size::SMALL).monospace().color(tk.text_dim));
+    ui.label(RichText::new(name).size(size::SMALL).color(tk.text));
+    ui.label(RichText::new(value_text(spec, value)).size(size::SMALL).monospace().color(tk.text_dim));
 }

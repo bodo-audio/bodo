@@ -26,8 +26,9 @@ use egui::{RichText, Sense, Ui, vec2};
 use serde_json::json;
 
 pub(crate) use self::drop::handle_drops;
-use self::rows::{empty, entries, folder_row, row, sound, sound_path};
-use crate::theme::{Tokens, size};
+use self::rows::{empty, entries, folder_row, row, shown_name, sound, sound_path};
+use crate::i18n::{en, t, tr};
+use crate::theme::{Tokens, rem, size};
 use crate::windows::icon_button;
 use crate::{BodoApp, control, dialogs};
 
@@ -67,11 +68,12 @@ enum Section {
 }
 
 impl Section {
+    /// Its English name; the Browser shows it in the interface's language.
     fn name(self) -> &'static str {
         match self {
-            Self::CurrentProject => "Current project",
-            Self::RecentFiles => "Recent files",
-            Self::PluginDatabase => "Plugin database",
+            Self::CurrentProject => en("Current project"),
+            Self::RecentFiles => en("Recent files"),
+            Self::PluginDatabase => en("Plugin database"),
         }
     }
 
@@ -191,23 +193,24 @@ fn up_from(app: &BodoApp, location: &Path) -> Option<PathBuf> {
     location.parent().filter(|parent| roots.iter().any(|(root, _)| parent.starts_with(root))).map(Path::to_path_buf)
 }
 
+/// A section heading: `text`, English, in the interface's language.
 fn heading(ui: &mut Ui, text: &str) {
     let tk = Tokens::get();
-    ui.add_space(6.0);
-    ui.label(RichText::new(text).color(tk.text_faint).size(size::SMALL).strong());
+    ui.add_space(rem(0.48));
+    ui.label(RichText::new(tr(text)).color(tk.text_faint).size(size::SMALL).strong());
 }
 
 /// Draws the browser.
 pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
-    ui.add_space(4.0);
+    ui.add_space(rem(0.32));
     header(app, ui);
     navigation(app, ui);
     ui.separator();
-    let bottom = 30.0 + tag_bar_height(app);
-    let list_height = (ui.available_height() - bottom).max(40.0);
+    let bottom = rem(2.4) + tag_bar_height(app);
+    let list_height = (ui.available_height() - bottom).max(rem(3.2));
     egui::ScrollArea::vertical().max_height(list_height).auto_shrink([false, false]).show(ui, |ui| {
-        ui.spacing_mut().item_spacing.y = 2.0;
+        ui.spacing_mut().item_spacing.y = rem(0.16);
         let query = app.view.browser.search.trim().to_owned();
         if !query.is_empty() || !app.view.browser.tags.is_empty() {
             results(app, ui, &query);
@@ -217,13 +220,13 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
             overview(app, ui);
         }
     });
-    ui.add_space(2.0);
+    ui.add_space(rem(0.16));
     tag_bar(app, ui);
     ui.horizontal(|ui| {
-        ui.add_space(6.0);
-        let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+        ui.add_space(rem(0.48));
+        let (rect, _) = ui.allocate_exact_size(vec2(rem(1.12), rem(1.12)), Sense::hover());
         icons::SEARCH.paint(ui.painter(), rect, tk.text_faint);
-        let search = ui.add(egui::TextEdit::singleline(&mut app.view.browser.search).hint_text("Search the library").desired_width(f32::INFINITY));
+        let search = ui.add(egui::TextEdit::singleline(&mut app.view.browser.search).hint_text(t("Search the library")).desired_width(f32::INFINITY));
         control::record(ui, &search, "Search sounds", "text", None);
     });
     tag_dialog(app, ui.ctx());
@@ -232,11 +235,11 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
 fn header(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
     ui.horizontal(|ui| {
-        ui.add_space(4.0);
+        ui.add_space(rem(0.32));
         back_and_up(app, ui);
-        ui.label(RichText::new("Browser").color(tk.text).size(size::HEADING));
+        ui.label(RichText::new(t("Browser")).color(tk.text).size(size::HEADING));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            ui.add_space(4.0);
+            ui.add_space(rem(0.32));
             let refresh = icon_button(ui, icons::HISTORY, "Refresh the browser", false);
             app.hint(&refresh, "Read the folders and the library again");
             if refresh.clicked() {
@@ -249,8 +252,8 @@ fn header(app: &mut BodoApp, ui: &mut Ui) {
                 app.view.browser.refresh();
             }
             let library = icon_button(ui, icons::SETTINGS, "Library folder", false);
-            let place = app.prefs.user_library.as_ref().map_or_else(|| String::from("none"), |p| p.display().to_string());
-            app.hint(&library, format!("The library folder ({place}): click to choose another"));
+            let place = app.prefs.user_library.as_ref().map_or_else(|| String::from(t("none")), |p| p.display().to_string());
+            app.hint(&library, tf!("The library folder ({place}): click to choose another", place = place));
             if library.clicked()
                 && let Some(folder) = app.services.pick_folder.as_ref().and_then(|pick| pick())
             {
@@ -292,10 +295,10 @@ fn back_and_up(app: &mut BodoApp, ui: &mut Ui) {
 
 fn navigation(app: &mut BodoApp, ui: &mut Ui) {
     ui.horizontal(|ui| {
-        ui.add_space(6.0);
-        for (tab, label) in [(Tab::All, "All"), (Tab::Project, "Project"), (Tab::Plugins, "Plugins"), (Tab::Sounds, "Sounds")] {
+        ui.add_space(rem(0.48));
+        for (tab, label) in [(Tab::All, en("All")), (Tab::Project, en("Project")), (Tab::Plugins, en("Plugins")), (Tab::Sounds, en("Sounds"))] {
             let selected = app.view.browser.tab == tab && app.view.browser.location.is_none();
-            let response = ui.selectable_label(selected, RichText::new(label).size(size::SMALL));
+            let response = ui.selectable_label(selected, RichText::new(t(label)).size(size::SMALL));
             control::record(ui, &response, &format!("Browser tab {label}"), "tab", Some(selected));
             if response.clicked() {
                 app.view.browser.tab = tab;
@@ -308,10 +311,13 @@ fn navigation(app: &mut BodoApp, ui: &mut Ui) {
     });
     if let Some(location) = app.view.browser.location.clone() {
         let tk = Tokens::get();
-        let crumb = rows::relative_name(&location, &roots(app));
+        // The control channel reads the path in English; people see the Browser's own folders translated.
+        let parts = rows::relative_parts(&location, &roots(app));
+        let crumb = parts.join(" > ");
+        let shown: Vec<String> = parts.iter().map(|part| shown_name(part)).collect();
         ui.horizontal(|ui| {
-            ui.add_space(8.0);
-            let label = ui.label(RichText::new(&crumb).color(tk.text_dim).size(size::SMALL));
+            ui.add_space(rem(0.64));
+            let label = ui.label(RichText::new(shown.join(" > ")).color(tk.text_dim).size(size::SMALL));
             control::record(ui, &label, &format!("Browser in {crumb}"), "label", None);
         });
     }
@@ -442,11 +448,11 @@ fn marketplace(app: &mut BodoApp, ui: &mut Ui, library: &UserLibrary) {
     let owned = app.view.browser.market.as_ref().map(|(_, o)| o.clone()).unwrap_or_default();
     let any_new = owned.iter().any(|(_, items)| items.iter().any(|o| o.new));
     let tk = Tokens::get();
-    ui.add_space(6.0);
+    ui.add_space(rem(0.48));
     ui.horizontal(|ui| {
-        ui.label(RichText::new("Marketplace").color(tk.text_faint).size(size::SMALL).strong());
+        ui.label(RichText::new(t("Marketplace")).color(tk.text_faint).size(size::SMALL).strong());
         if any_new {
-            let badge = ui.label(RichText::new("new").color(tk.accent).size(size::SMALL).strong());
+            let badge = ui.label(RichText::new(t("new")).color(tk.accent).size(size::SMALL).strong());
             control::record(ui, &badge, "Marketplace new", "badge", None);
         }
     });
@@ -520,7 +526,7 @@ fn section(app: &mut BodoApp, ui: &mut Ui, section: Section) {
             }
         }
         Section::PluginDatabase => {
-            let response = row(ui, 1, icons::WAVE_SINE, "Sampler (built in)", false);
+            let response = row(ui, 1, icons::WAVE_SINE, t("Sampler (built in)"), false);
             control::record(ui, &response, "Plugin Sampler", "plugin", None);
             app.hint(&response, "Bodo's sampler: double-click to add an empty sampler channel, then give it a sound");
             if response.double_clicked() {
@@ -530,15 +536,17 @@ fn section(app: &mut BodoApp, ui: &mut Ui, section: Section) {
             for (category, effects) in crate::mixer::effects_by_category() {
                 empty(ui, 1, crate::mixer::category_name(category));
                 for info in effects {
-                    let response = row(ui, 2, icons::ADJUSTMENTS_HORIZONTAL, info.name, false);
+                    let name = tr(info.name);
+                    let response = row(ui, 2, icons::ADJUSTMENTS_HORIZONTAL, &name, false);
                     response.dnd_set_drag_payload(crate::mixer::EffectDrag { uid: info.uid });
-                    rows::drag_label(ui, &response, info.name);
+                    rows::drag_label(ui, &response, &name);
                     control::record(ui, &response, &format!("Plugin {}", info.name), "plugin", None);
                     app.hint(
                         &response,
-                        format!(
-                            "{}: {} Drag it onto a mixer strip or slot, or double-click to load it on the selected insert",
-                            info.name, info.description
+                        tf!(
+                            "{name}: {description} Drag it onto a mixer strip or slot, or double-click to load it on the selected insert",
+                            name = name,
+                            description = tr(info.description)
                         ),
                     );
                     if response.double_clicked() {
@@ -566,15 +574,15 @@ fn section(app: &mut BodoApp, ui: &mut Ui, section: Section) {
 fn folder_menu(app: &mut BodoApp, response: &egui::Response, dir: &Path) {
     let Some(library) = app.user_library() else { return };
     let action: Option<(&str, &str, serde_json::Value)> = if dir == library.presets(PresetFolder::ChannelPresets) {
-        Some(("Save the selected channel here", "preset.save_channel", json!({})))
+        Some((t("Save the selected channel here"), "preset.save_channel", json!({})))
     } else if dir == library.presets(PresetFolder::MixerPresets) {
-        Some(("Save the selected insert here", "preset.save_mixer", json!({})))
+        Some((t("Save the selected insert here"), "preset.save_mixer", json!({})))
     } else if dir == library.presets(PresetFolder::Scores) {
-        Some(("Save the piano roll's notes here", "preset.save_score", json!({})))
+        Some((t("Save the piano roll's notes here"), "preset.save_score", json!({})))
     } else if dir == library.templates() {
-        Some(("Save this project as a template", "project.save_template", json!({})))
+        Some((t("Save this project as a template"), "project.save_template", json!({})))
     } else if dir == library.rendered() {
-        Some(("Export the song as MIDI here", "project.export_midi", json!({ "path": unused(dir, &app.title(), "mid") })))
+        Some((t("Export the song as MIDI here"), "project.export_midi", json!({ "path": unused(dir, &app.title(), "mid") })))
     } else {
         None
     };
@@ -588,7 +596,7 @@ fn folder_menu(app: &mut BodoApp, response: &egui::Response, dir: &Path) {
             }
             ui.close();
         }
-        if ui.button("Refresh").clicked() {
+        if ui.button(t("Refresh")).clicked() {
             app.view.browser.listings.remove(dir);
             ui.close();
         }
@@ -603,7 +611,7 @@ fn unused(dir: &Path, name: &str, extension: &str) -> String {
 
 /// The height the tag bar takes.
 fn tag_bar_height(app: &BodoApp) -> f32 {
-    if app.user_library().is_some() || app.session.env().factory.is_some() { 30.0 } else { 0.0 }
+    if app.user_library().is_some() || app.session.env().factory.is_some() { rem(2.4) } else { 0.0 }
 }
 
 /// The tags to filter by: the active ones, then the most common, at most a dozen.
@@ -632,8 +640,9 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
     }
     // One row of as many tags as fit, so they never push the search box down or widen the panel.
     let font = egui::FontId::proportional(size::SMALL);
-    let padding = ui.spacing().button_padding.x * 2.0 + 4.0;
-    let mut room = ui.available_width() - 6.0 - if active.is_empty() { 0.0 } else { 44.0 };
+    let padding = ui.spacing().button_padding.x * 2.0 + rem(0.32);
+    let clear_width = ui.fonts_mut(|f| f.layout_no_wrap(String::from(t("Clear")), font.clone(), tk.text).size().x) + padding + rem(0.48);
+    let mut room = ui.available_width() - rem(0.48) - if active.is_empty() { 0.0 } else { clear_width };
     let shown: Vec<String> = shown
         .into_iter()
         .take_while(|tag| {
@@ -644,16 +653,18 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
         .collect();
     {
         ui.horizontal(|ui| {
-            ui.add_space(6.0);
-            ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
+            ui.add_space(rem(0.48));
+            ui.spacing_mut().item_spacing = vec2(rem(0.32), rem(0.16));
             if index.is_none() {
-                ui.label(RichText::new("Reading the library...").color(tk.text_faint).size(size::SMALL));
+                ui.label(RichText::new(t("Reading the library...")).color(tk.text_faint).size(size::SMALL));
             }
             for tag in shown {
                 let on = active.contains(&tag);
                 let chip = ui.selectable_label(on, RichText::new(format!("#{tag}")).size(size::SMALL));
                 control::record(ui, &chip, &format!("Tag {tag}"), "tag", Some(on));
-                app.hint(&chip, if on { format!("Showing what is tagged {tag}: click to stop") } else { format!("Show only what is tagged {tag}") });
+                let hint =
+                    if on { tf!("Showing what is tagged {tag}: click to stop", tag = tag) } else { tf!("Show only what is tagged {tag}", tag = tag) };
+                app.hint(&chip, hint);
                 if chip.clicked() {
                     if on {
                         app.view.browser.tags.remove(&tag);
@@ -663,7 +674,7 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
                 }
             }
             if !active.is_empty() {
-                let clear = ui.small_button("Clear");
+                let clear = ui.small_button(t("Clear"));
                 control::record(ui, &clear, "Clear tags", "button", None);
                 if clear.clicked() {
                     app.view.browser.tags.clear();
@@ -688,13 +699,13 @@ fn results(app: &mut BodoApp, ui: &mut Ui, query: &str) {
             sound(app, ui, &bodo_engine::samples::display_name(&sample.path), &roots.resolve(&sample.path), sample.path.clone(), 0);
         }
         if !any {
-            ui.label(RichText::new("Nothing found").color(tk.text_faint));
+            ui.label(RichText::new(t("Nothing found")).color(tk.text_faint));
         }
         return;
     }
     let env = app.session.env().clone();
     let Some(index) = app.view.browser.index.get(&env) else {
-        ui.label(RichText::new("Reading the library...").color(tk.text_faint));
+        ui.label(RichText::new(t("Reading the library...")).color(tk.text_faint));
         ui.ctx().request_repaint_after(Duration::from_millis(50));
         return;
     };
@@ -706,7 +717,7 @@ fn results(app: &mut BodoApp, ui: &mut Ui, query: &str) {
     };
     let found: Vec<_> = index.find(query, &tags, 500).into_iter().filter(|f| wanted(f.kind)).take(200).cloned().collect();
     if found.is_empty() {
-        ui.label(RichText::new("Nothing found").color(tk.text_faint));
+        ui.label(RichText::new(t("Nothing found")).color(tk.text_faint));
     }
     for file in found {
         match file.kind {
@@ -725,11 +736,11 @@ fn tag_dialog(app: &mut BodoApp, ctx: &egui::Context) {
     let mut open = true;
     let mut done = false;
     egui::Window::new(rows::tagging_title(&key)).collapsible(false).resizable(false).open(&mut open).show(ctx, |ui| {
-        let field = ui.add(egui::TextEdit::singleline(&mut text).hint_text("A tag, such as warm or kick"));
+        let field = ui.add(egui::TextEdit::singleline(&mut text).hint_text(t("A tag, such as warm or kick")));
         control::record(ui, &field, "Tag name", "text", None);
         field.request_focus();
         let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
-        let add = ui.button("Add tag");
+        let add = ui.button(t("Add tag"));
         control::record(ui, &add, "Add tag", "button", None);
         if (add.clicked() || enter) && !text.trim().is_empty() {
             done = true;

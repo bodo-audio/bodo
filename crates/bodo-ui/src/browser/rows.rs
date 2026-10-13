@@ -9,7 +9,8 @@
 //! - A **MIDI file** imports as a new pattern.
 //! - A **folder** opens and closes on a click, and a double-click enters it, so back and up can move around.
 //!
-//! Every file's context menu adds and removes the user's tags.
+//! Every file's context menu adds and removes the user's tags. The Browser's own folders and sections show in the
+//! interface's language; the folders on disk and the files in them keep their names.
 
 use std::path::{Path, PathBuf};
 
@@ -20,11 +21,53 @@ use egui::{RichText, Sense, Ui, vec2};
 use serde_json::json;
 
 use super::{FilePayload, SoundPayload};
-use crate::theme::{Tokens, size};
+use crate::i18n::{en, t, tr};
+use crate::theme::{Tokens, rem, size};
 use crate::{BodoApp, control, dialogs};
 
 /// How far each level of a tree is indented.
-pub(super) const INDENT: f32 = 12.0;
+pub(super) const INDENT: f32 = rem(0.96);
+
+/// The names of the Browser's own folders and sections, in English: they show in the interface's language. Any other
+/// folder shows as it is called on disk.
+const OWN_NAMES: [&str; 30] = [
+    en("Current project"),
+    en("Recent files"),
+    en("Plugin database"),
+    en("Plugin presets"),
+    en("Channel presets"),
+    en("Mixer presets"),
+    en("Scores"),
+    en("Library"),
+    en("Packs"),
+    en("Audio"),
+    en("Backup"),
+    en("Channel envelopes"),
+    en("Clipboard files"),
+    en("Demo projects"),
+    en("Envelopes"),
+    en("Impulses"),
+    en("Misc"),
+    en("My projects"),
+    en("Project parts"),
+    en("Recorded"),
+    en("Rendered"),
+    en("Sliced audio"),
+    en("Soundfonts"),
+    en("Speech"),
+    en("Templates"),
+    en("User data"),
+    en("Plugins (owned)"),
+    en("Stems (owned)"),
+    en("Sounds"),
+    en("Sample folders"),
+];
+
+/// How the Browser shows the folder or section called `name`: in the interface's language when it is one of its own,
+/// as it is called otherwise.
+pub(super) fn shown_name(name: &str) -> String {
+    if OWN_NAMES.contains(&name) { tr(name) } else { name.to_owned() }
+}
 
 /// The icon of an entry of kind `kind`.
 pub(super) fn icon_of(kind: EntryKind) -> Icon {
@@ -50,14 +93,14 @@ pub(super) fn label_of(kind: EntryKind, name: &str) -> String {
 /// A row: an icon and a name, indented by `depth`, highlighted when hovered or `lit`. Returns its response.
 pub(super) fn row(ui: &mut Ui, depth: usize, icon: Icon, name: &str, lit: bool) -> egui::Response {
     let tk = Tokens::get();
-    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), size::ROW - 4.0), Sense::click_and_drag());
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), size::ROW - rem(0.32)), Sense::click_and_drag());
     if response.hovered() || lit {
-        ui.painter().rect_filled(rect, 4.0, if lit { tk.accent_soft } else { tk.control_hover });
+        ui.painter().rect_filled(rect, rem(0.32), if lit { tk.accent_soft } else { tk.control_hover });
     }
-    let icon_rect = egui::Rect::from_min_size(rect.left_center() + vec2(depth as f32 * INDENT + 14.0, -6.0), vec2(12.0, 12.0));
+    let icon_rect = egui::Rect::from_min_size(rect.left_center() + vec2(depth as f32 * INDENT + rem(1.12), -rem(0.48)), vec2(rem(0.96), rem(0.96)));
     icon.paint(ui.painter(), icon_rect, if lit { tk.accent } else { tk.text_faint });
     ui.painter().with_clip_rect(rect).text(
-        icon_rect.right_center() + vec2(6.0, 0.0),
+        icon_rect.right_center() + vec2(rem(0.48), 0.0),
         egui::Align2::LEFT_CENTER,
         name,
         egui::FontId::proportional(size::BODY),
@@ -72,9 +115,12 @@ pub(super) fn drag_label(ui: &Ui, response: &egui::Response, name: &str) {
         && let Some(pointer) = ui.ctx().pointer_interact_pos()
     {
         let tk = Tokens::get();
-        egui::Area::new(ui.id().with("browser-drag")).order(egui::Order::Tooltip).fixed_pos(pointer + vec2(12.0, 4.0)).show(ui.ctx(), |ui| {
-            egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(RichText::new(name).color(tk.text)));
-        });
+        egui::Area::new(ui.id().with("browser-drag")).order(egui::Order::Tooltip).fixed_pos(pointer + vec2(rem(0.96), rem(0.32))).show(
+            ui.ctx(),
+            |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(RichText::new(name).color(tk.text)));
+            },
+        );
     }
 }
 
@@ -92,7 +138,10 @@ pub(super) fn sound(app: &mut BodoApp, ui: &mut Ui, name: &str, file: &Path, sto
     drag_label(ui, &response, name);
     let response = response.on_hover_text(&stored);
     control::record(ui, &response, &format!("Sound {name}"), "sound", Some(previewing));
-    app.hint(&response, format!("{name}: click to hear it, double-click to add a channel, or drag it onto the channel rack or a playlist track"));
+    app.hint(
+        &response,
+        tf!("{name}: click to hear it, double-click to add a channel, or drag it onto the channel rack or a playlist track", name = name),
+    );
     if response.double_clicked() {
         app.audio.stop_preview();
         let _ = app.run("channel.add", json!({ "sample": stored }));
@@ -139,15 +188,19 @@ pub(super) fn file(app: &mut BodoApp, ui: &mut Ui, kind: EntryKind, name: &str, 
     let library = app.user_library();
     let place = project_place(library.as_ref(), path);
     let hint = match (kind, place) {
-        (EntryKind::Project, ProjectPlace::Template) => format!("{name}: double-click to start a new project from it"),
-        (EntryKind::Project, ProjectPlace::Backup) => format!("{name}: an autosave; double-click to open it as an unsaved project"),
-        (EntryKind::Project, ProjectPlace::Elsewhere) => format!("{name}: double-click to open it"),
-        (EntryKind::ChannelPreset, _) => format!("{name}: double-click to add it as a channel, or drop it on a channel to replace that channel"),
-        (EntryKind::MixerPreset, _) => format!("{name}: double-click to load it on the selected insert, or drop it on a mixer strip"),
-        (EntryKind::Score, _) => format!("{name}: double-click to add its notes to the piano roll's channel, or drop it on a channel"),
-        (EntryKind::Midi, _) => format!("{name}: double-click to import it as a new pattern"),
-        (EntryKind::PluginPreset, _) => format!("{name}: double-click to load it into the slot chosen in the mixer, or drop it on a slot or strip"),
-        (EntryKind::Plugin, _) => format!("{name}: a plugin; Bodo loads it once plugin hosting arrives"),
+        (EntryKind::Project, ProjectPlace::Template) => tf!("{name}: double-click to start a new project from it", name = name),
+        (EntryKind::Project, ProjectPlace::Backup) => tf!("{name}: an autosave; double-click to open it as an unsaved project", name = name),
+        (EntryKind::Project, ProjectPlace::Elsewhere) => tf!("{name}: double-click to open it", name = name),
+        (EntryKind::ChannelPreset, _) => {
+            tf!("{name}: double-click to add it as a channel, or drop it on a channel to replace that channel", name = name)
+        }
+        (EntryKind::MixerPreset, _) => tf!("{name}: double-click to load it on the selected insert, or drop it on a mixer strip", name = name),
+        (EntryKind::Score, _) => tf!("{name}: double-click to add its notes to the piano roll's channel, or drop it on a channel", name = name),
+        (EntryKind::Midi, _) => tf!("{name}: double-click to import it as a new pattern", name = name),
+        (EntryKind::PluginPreset, _) => {
+            tf!("{name}: double-click to load it into the slot chosen in the mixer, or drop it on a slot or strip", name = name)
+        }
+        (EntryKind::Plugin, _) => tf!("{name}: a plugin; Bodo loads it once plugin hosting arrives", name = name),
         (EntryKind::Folder | EntryKind::Sound, _) => name.to_owned(),
     };
     app.hint(&response, hint);
@@ -200,7 +253,7 @@ fn tag_menu(app: &mut BodoApp, response: &egui::Response, path: &Path) {
         let store = app.user_library().map(|l| bodo_engine::library::tags::TagStore::load(&l)).unwrap_or_default();
         let tags: Vec<String> = store.of(&key).map(str::to_owned).collect();
         for tag in tags {
-            if ui.button(format!("Remove tag {tag}")).clicked() {
+            if ui.button(tf!("Remove tag {tag}", tag = tag)).clicked() {
                 if app.run("library.tag", json!({ "path": key, "remove": [tag] })).is_ok() {
                     let library = app.user_library();
                     app.view.browser.retag(library.as_ref());
@@ -208,33 +261,35 @@ fn tag_menu(app: &mut BodoApp, response: &egui::Response, path: &Path) {
                 ui.close();
             }
         }
-        if ui.button("Add tag...").clicked() {
+        if ui.button(t("Add tag...")).clicked() {
             app.view.browser.tagging = Some((key.clone(), String::new()));
             ui.close();
         }
     });
 }
 
-/// A folder row: a click opens or closes it, a double-click enters it. `badge` marks it, such as "new".
+/// A folder row: a click opens or closes it, a double-click enters it. `name` is its English name, which the
+/// control channel knows it by; `badge` marks it, such as "new".
 pub(super) fn folder_row(app: &mut BodoApp, ui: &mut Ui, name: &str, key: &Path, depth: usize, icon: Icon, badge: Option<&str>) -> egui::Response {
     let tk = Tokens::get();
     let open = app.view.browser.is_open(key);
+    let shown = shown_name(name);
     let response = ui
         .horizontal(|ui| {
             ui.add_space(depth as f32 * INDENT);
-            let (rect, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(vec2(rem(0.96), rem(0.96)), Sense::hover());
             (if open { icons::CHEVRON_DOWN } else { icons::CHEVRON_RIGHT }).paint(ui.painter(), rect, tk.text_faint);
-            let (rect, _) = ui.allocate_exact_size(vec2(14.0, 14.0), Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(vec2(rem(1.12), rem(1.12)), Sense::hover());
             let icon = if icon == icons::FOLDER && open { icons::FOLDER_OPEN } else { icon };
             icon.paint(ui.painter(), rect, tk.text_dim);
             // Truncated, so a long folder name never widens the panel; the badge keeps room after it.
-            let room = (ui.available_width() - if badge.is_some() { 32.0 } else { 0.0 }).max(20.0);
+            let room = (ui.available_width() - if badge.is_some() { rem(2.56) } else { 0.0 }).max(rem(1.6));
             ui.scope(|ui| {
                 ui.set_max_width(room);
-                ui.add(egui::Label::new(RichText::new(name).color(tk.text).size(size::BODY)).truncate());
+                ui.add(egui::Label::new(RichText::new(&shown).color(tk.text).size(size::BODY)).truncate());
             });
             if let Some(badge) = badge {
-                ui.label(RichText::new(badge).color(tk.accent).size(size::SMALL).strong());
+                ui.label(RichText::new(tr(badge)).color(tk.accent).size(size::SMALL).strong());
             }
             ui.allocate_space(vec2(ui.available_width(), 0.0));
         })
@@ -277,30 +332,29 @@ pub(super) fn entries(app: &mut BodoApp, ui: &mut Ui, dir: &Path, depth: usize) 
     }
 }
 
-/// A faint line saying a list is empty.
+/// A faint line saying a list is empty: `text`, English, in the interface's language.
 pub(super) fn empty(ui: &mut Ui, depth: usize, text: &str) {
     let tk = Tokens::get();
     // Wrapping, so a long message never widens the panel.
     ui.horizontal_top(|ui| {
-        ui.add_space(depth as f32 * INDENT + 26.0);
-        ui.add(egui::Label::new(RichText::new(text).color(tk.text_faint).size(size::SMALL)).wrap());
+        ui.add_space(depth as f32 * INDENT + rem(2.08));
+        ui.add(egui::Label::new(RichText::new(tr(text)).color(tk.text_faint).size(size::SMALL)).wrap());
     });
 }
 
-/// The path of `entry` in a folder the user picked, for the "Add tag" dialog's title.
+/// The "Add tag" dialog's title for the file `key`: "Tag" and the file's name.
 pub(super) fn tagging_title(key: &str) -> String {
     let name = key.rsplit(['/', '\\', ':']).next().unwrap_or(key);
     let name = name.rsplit_once('.').map_or(name, |(stem, _)| stem);
-    format!("Tag {name}")
+    tf!("Tag {name}", name = name)
 }
 
-/// The library folder that holds `path`, as a path, for the Browser's breadcrumb.
-pub(super) fn relative_name(path: &Path, roots: &[(PathBuf, String)]) -> String {
+/// The library folder that holds `path`, as a path, for the Browser's breadcrumb: its parts, from the root's name.
+pub(super) fn relative_parts(path: &Path, roots: &[(PathBuf, String)]) -> Vec<String> {
     for (root, name) in roots {
         if let Ok(rest) = path.strip_prefix(root) {
-            let parts: Vec<String> = rest.components().map(|c| c.as_os_str().to_string_lossy().into_owned()).collect();
-            return std::iter::once(name.clone()).chain(parts).collect::<Vec<_>>().join(" > ");
+            return std::iter::once(name.clone()).chain(rest.components().map(|c| c.as_os_str().to_string_lossy().into_owned())).collect();
         }
     }
-    path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())
+    vec![path.file_name().map_or_else(|| path.display().to_string(), |n| n.to_string_lossy().into_owned())]
 }
