@@ -6,7 +6,7 @@
 //! arrow keys step it. Like the knob, it reports `changed()`, `drag_started()` and `drag_stopped()` through its
 //! [`egui::Response`].
 
-use egui::{EventFilter, Id, Key, Modifiers, Rect, Response, Sense, Stroke, Ui, Vec2, Widget, WidgetInfo, pos2, vec2};
+use egui::{EventFilter, Id, Modifiers, Rect, Response, Sense, Stroke, Ui, Vec2, Widget, WidgetInfo, pos2, vec2};
 
 use crate::knob::{self, FINE, STEP};
 use crate::palette::Palette;
@@ -154,14 +154,11 @@ impl Widget for Fader<'_> {
                 m.set_focus_lock_filter(response.id, EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
             });
             let modifiers = if fine { Modifiers::SHIFT } else { Modifiers::NONE };
-            ui.input_mut(|i| {
-                if i.consume_key(modifiers, Key::ArrowUp) | i.consume_key(modifiers, Key::ArrowRight) {
-                    nudge += step;
-                }
-                if i.consume_key(modifiers, Key::ArrowDown) | i.consume_key(modifiers, Key::ArrowLeft) {
-                    nudge -= step;
-                }
-            });
+            let keys = ui.input_mut(|i| knob::KeySteps::take(i, modifiers));
+            if keys != knob::KeySteps::default() {
+                let position = keys.apply(db_to_position(new), step, Some(db_to_position(self.default)));
+                nudge += position - db_to_position(new);
+            }
         }
         if nudge != 0.0 {
             new = position_to_db((db_to_position(new) + nudge).clamp(0.0, 1.0));
@@ -174,7 +171,9 @@ impl Widget for Fader<'_> {
         let db = *self.db;
         let enabled = ui.is_enabled();
         let label = self.label.clone();
-        response.widget_info(|| WidgetInfo::slider(enabled, f64::from(db), &label));
+        // Screen readers hear the level in dB, "-inf dB" at the bottom.
+        let text = format_db(db);
+        response.widget_info(|| WidgetInfo { current_text_value: Some(text.clone()), ..WidgetInfo::slider(enabled, f64::from(db), &label) });
 
         if ui.is_rect_visible(rect) {
             let palette = self.palette.unwrap_or_else(|| Palette::get(ui.ctx()));

@@ -127,6 +127,24 @@ impl<'a> StepRow<'a> {
                     edits.push((index, paint.value));
                 }
             }
+            if step.has_focus() {
+                // The arrow keys move between the steps of the row; Space or Enter toggles one.
+                ui.memory_mut(|m| m.set_focus_lock_filter(id, egui::EventFilter { horizontal_arrows: true, ..Default::default() }));
+                let (left, right) = ui.input_mut(|i| {
+                    (i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft), i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight))
+                });
+                let count = self.steps.len();
+                let target = if right && index + 1 < count {
+                    Some(index + 1)
+                } else if left && index > 0 {
+                    Some(index - 1)
+                } else {
+                    None
+                };
+                if let Some(target) = target {
+                    ui.memory_mut(|m| m.request_focus(row_id.with(target)));
+                }
+            }
             if ui.is_rect_visible(rect) {
                 let shown = edits.iter().rev().find(|(i, _)| *i == index).map_or(on, |&(_, value)| value);
                 let hot = step.hovered() || (paint.active && step.contains_pointer());

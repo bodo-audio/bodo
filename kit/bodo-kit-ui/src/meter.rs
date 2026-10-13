@@ -82,7 +82,10 @@ impl Widget for Meter {
         let label = self.label.clone();
         response.widget_info(|| {
             let mut info = WidgetInfo::labeled(WidgetType::ProgressIndicator, enabled, &label);
-            info.value = Some(f64::from(gain_to_db(loudest)).max(f64::from(MIN_DB)));
+            let db = f64::from(gain_to_db(loudest)).max(f64::from(MIN_DB));
+            info.value = Some(db);
+            // Screen readers hear the peak level in dB.
+            info.current_text_value = Some(if db <= f64::from(MIN_DB) { String::from("-inf dB") } else { format!("{db:.1} dB") });
             info
         });
         if !ui.is_rect_visible(rect) {

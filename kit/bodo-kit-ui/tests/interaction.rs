@@ -253,3 +253,62 @@ fn an_led_toggles_on_click() {
     h.run();
     assert_eq!(*h.state(), (false, 1));
 }
+
+#[test]
+fn page_keys_home_end_and_delete_drive_a_focused_knob() {
+    let mut h = knob(0.5);
+    h.run();
+    h.get_by_label("Cutoff").focus();
+    h.run();
+    h.key_press(Key::PageUp);
+    h.run();
+    assert!((h.state().value - 0.6).abs() < 1e-5, "ten steps: {}", h.state().value);
+    h.key_press(Key::End);
+    h.run();
+    assert_eq!(h.state().value, 1.0);
+    h.key_press(Key::Home);
+    h.run();
+    assert_eq!(h.state().value, 0.0);
+    h.key_press(Key::Delete);
+    h.run();
+    assert_eq!(h.state().value, 0.5, "Delete puts the default back");
+}
+
+#[test]
+fn screen_readers_hear_values_with_their_units() {
+    let mut h = knob(0.25);
+    h.run();
+    assert_eq!(h.get_by_label("Cutoff").accesskit_node().value(), Some("0.25".into()), "the knob's text as it shows it");
+    let mut f = fader_harness(-6.0);
+    f.run();
+    assert_eq!(f.get_by_label("Volume").accesskit_node().value(), Some("-6.0 dB".into()));
+}
+
+#[test]
+fn a_focused_fader_steps_with_the_keys_and_resets_with_delete() {
+    let mut h = fader_harness(-12.0);
+    h.run();
+    h.get_by_label("Volume").focus();
+    h.run();
+    h.key_press(Key::PageUp);
+    h.run();
+    assert!(*h.state() > -12.0, "{}", h.state());
+    h.key_press(Key::Delete);
+    h.run();
+    assert_eq!(*h.state(), 0.0);
+}
+
+#[test]
+fn arrow_keys_move_between_steps_and_space_toggles() {
+    let mut h = rack(Rack::new());
+    h.run();
+    h.get_by_label("Kick step 1").focus();
+    h.run();
+    h.key_press(Key::ArrowRight);
+    h.run();
+    h.key_press(Key::ArrowRight);
+    h.run();
+    h.key_press(Key::Space);
+    h.run();
+    assert_eq!(h.state().on(0), [2], "the third step");
+}

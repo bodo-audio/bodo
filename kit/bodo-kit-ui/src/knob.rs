@@ -207,17 +207,8 @@ impl Widget for Knob<'_> {
                 m.set_focus_lock_filter(response.id, EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
             });
             let modifiers = if fine { Modifiers::SHIFT } else { Modifiers::NONE };
-            let (up, down) = ui.input_mut(|i| {
-                let up = i.consume_key(modifiers, Key::ArrowUp) | i.consume_key(modifiers, Key::ArrowRight);
-                let down = i.consume_key(modifiers, Key::ArrowDown) | i.consume_key(modifiers, Key::ArrowLeft);
-                (up, down)
-            });
-            if up {
-                t += step;
-            }
-            if down {
-                t -= step;
-            }
+            let keys = ui.input_mut(|i| KeySteps::take(i, modifiers));
+            t = keys.apply(t, step, self.default.map(|d| normalize(d, &self.range)));
         }
 
         let new = if t == normalize(old, &self.range) { old } else { denormalize(t, &self.range) };
@@ -228,7 +219,9 @@ impl Widget for Knob<'_> {
         let value = *self.value;
         let enabled = ui.is_enabled();
         let label = self.label.clone();
-        response.widget_info(|| WidgetInfo::slider(enabled, f64::from(value), &label));
+        // Screen readers hear the value as the knob shows it, with its unit: "Volume, -6.0 dB".
+        let text = self.text(value);
+        response.widget_info(|| WidgetInfo { current_text_value: Some(text.clone()), ..WidgetInfo::slider(enabled, f64::from(value), &label) });
 
         if ui.is_rect_visible(rect) {
             let palette = self.palette.unwrap_or_else(|| Palette::get(ui.ctx()));
@@ -245,6 +238,57 @@ impl Widget for Knob<'_> {
             });
         }
         response
+    }
+}
+
+/// The keys a focused knob or fader took this frame: arrows step it, Page Up and Page Down step it ten times, Home and
+/// End go to the ends of its range, and Delete puts it back to its default.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct KeySteps {
+    /// Steps up (positive) or down.
+    pub steps: i32,
+    /// Home: to the start of the range.
+    pub home: bool,
+    /// End: to the end of the range.
+    pub end: bool,
+    /// Delete: back to the default.
+    pub reset: bool,
+}
+
+impl KeySteps {
+    /// Takes the keys from `input` with `modifiers` held, so nothing else acts on them.
+    pub fn take(input: &mut egui::InputState, modifiers: Modifiers) -> Self {
+        let mut keys = Self::default();
+        for key in [Key::ArrowUp, Key::ArrowRight] {
+            keys.steps += i32::from(input.consume_key(modifiers, key));
+        }
+        for key in [Key::ArrowDown, Key::ArrowLeft] {
+            keys.steps -= i32::from(input.consume_key(modifiers, key));
+        }
+        keys.steps += 10 * i32::from(input.consume_key(modifiers, Key::PageUp));
+        keys.steps -= 10 * i32::from(input.consume_key(modifiers, Key::PageDown));
+        keys.home = input.consume_key(modifiers, Key::Home);
+        keys.end = input.consume_key(modifiers, Key::End);
+        keys.reset = input.consume_key(modifiers, Key::Delete) | input.consume_key(modifiers, Key::Backspace);
+        keys
+    }
+
+    /// Fraction `t` of a range after these keys, with `step` as a fraction of the range and `default` the
+    /// default's fraction, if there is one.
+    pub fn apply(self, t: f32, step: f32, default: Option<f32>) -> f32 {
+        let mut t = t + self.steps as f32 * step;
+        if self.home {
+            t = 0.0;
+        }
+        if self.end {
+            t = 1.0;
+        }
+        if self.reset
+            && let Some(default) = default
+        {
+            t = default;
+        }
+        t
     }
 }
 
