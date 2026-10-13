@@ -32,9 +32,9 @@ Progress per milestone ([project.md section 20](../project.md#20-roadmap)). Upda
 - **Denormal flushing on RT threads**: M1, with the first DSP.
 - **rtsan job, fuzzing, benchmarks, agent evals**: nightly CI jobs, added as the code they cover lands.
 
-## M1: Audio core (in progress)
+## M1: Audio core (done, 2026-10-13)
 
-Started 2026-10-13.
+Started and finished 2026-10-13. Open hardware checks: short exclusive-mode buffers on a real Windows sound card, and cpal on a real PulseAudio machine (see below).
 
 | Item | State | Where |
 |---|---|---|
