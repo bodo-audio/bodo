@@ -43,7 +43,7 @@ pub use engine::{AudioEngine, Engine, EngineConfig, EngineStatus, InsertLatency,
 pub use input::{LiveInput, MidiRouter};
 pub use meter::{MeterReading, SCOPE_FRAMES};
 pub use midi_record::{CapturedTake, RecordedNote, TakeTarget};
-pub use offline::{OfflineOptions, Stem, render_offline, render_stems};
+pub use offline::{OfflineOptions, RenderProgress, Stem, render_offline, render_offline_with, render_stems, render_stems_with};
 pub use preview::{Preview, PreviewPlayer, preview};
 pub use record::{Compensation, RecordError, Take};
 pub use sequence::PlayMode;
@@ -63,4 +63,7 @@ pub enum MixError {
     /// Recording could not start or finish.
     #[error(transparent)]
     Record(#[from] record::RecordError),
+    /// The render was cancelled before it finished.
+    #[error("the render was cancelled")]
+    Cancelled,
 }

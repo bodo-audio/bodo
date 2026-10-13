@@ -66,13 +66,65 @@ fn start(project: &Project, roots: &SampleRoots, options: &OfflineOptions, stems
     Ok((control, audio, usize::try_from(end - start).unwrap_or(0)))
 }
 
+/// How far a render has come, shared with the thread that waits for it, and a way to stop it.
+#[derive(Debug, Default)]
+pub struct RenderProgress {
+    done: std::sync::atomic::AtomicU64,
+    total: std::sync::atomic::AtomicU64,
+    cancel: std::sync::atomic::AtomicBool,
+}
+
+impl RenderProgress {
+    /// The share rendered so far, from 0 to 1; 0 until the render knows its length.
+    pub fn fraction(&self) -> f32 {
+        use std::sync::atomic::Ordering;
+        let total = self.total.load(Ordering::Relaxed);
+        if total == 0 { 0.0 } else { (self.done.load(Ordering::Relaxed) as f64 / total as f64).clamp(0.0, 1.0) as f32 }
+    }
+
+    /// Asks the render to stop at its next block; it then fails with [`MixError::Cancelled`].
+    pub fn cancel(&self) {
+        self.cancel.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether the render was asked to stop.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
+    /// Starts counting a render of `total` frames, or a further pass of that many.
+    fn begin(&self, total: usize) {
+        use std::sync::atomic::Ordering;
+        self.total.fetch_add(total as u64, Ordering::Relaxed);
+    }
+
+    /// Counts `frames` more rendered; fails when the render was cancelled.
+    fn advance(&self, frames: usize) -> Result<(), MixError> {
+        self.done.fetch_add(frames as u64, std::sync::atomic::Ordering::Relaxed);
+        if self.is_cancelled() { Err(MixError::Cancelled) } else { Ok(()) }
+    }
+}
+
 /// Renders `project` to stereo audio at its sample rate. Sample paths resolve through `roots`.
 ///
 /// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block.
 pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<AudioData, MixError> {
+    render_offline_with(project, roots, options, &RenderProgress::default())
+}
+
+/// [`render_offline`], counting its progress in `progress` and stopping when it is cancelled.
+///
+/// Allocates the output. Complexity: as [`render_offline`].
+pub fn render_offline_with(
+    project: &Project,
+    roots: &SampleRoots,
+    options: &OfflineOptions,
+    progress: &RenderProgress,
+) -> Result<AudioData, MixError> {
     let rate = project.settings.sample_rate;
     let block = options.block.max(1);
     let (_control, mut audio, total) = start(project, roots, options, false)?;
+    progress.begin(total);
     let mut channels = vec![Vec::with_capacity(total), Vec::with_capacity(total)];
     let mut buffer = AudioBuffer::new(2, block);
     let mut rendered = 0;
@@ -83,6 +135,7 @@ pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineO
             channel.extend_from_slice(&buffer.channel(out)[..frames]);
         }
         rendered += frames;
+        progress.advance(frames)?;
     }
     if audio.faults() > 0 {
         return Err(MixError::Faults(audio.faults()));
@@ -97,9 +150,17 @@ pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineO
 /// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block, plus the
 /// stems.
 pub fn render_stems(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<Vec<Stem>, MixError> {
+    render_stems_with(project, roots, options, &RenderProgress::default())
+}
+
+/// [`render_stems`], counting its progress in `progress` and stopping when it is cancelled.
+///
+/// Allocates the output. Complexity: as [`render_stems`].
+pub fn render_stems_with(project: &Project, roots: &SampleRoots, options: &OfflineOptions, progress: &RenderProgress) -> Result<Vec<Stem>, MixError> {
     let rate = project.settings.sample_rate;
     let block = options.block.max(1);
     let (control, mut audio, total) = start(project, roots, options, true)?;
+    progress.begin(total);
     let sources = control.stems();
     let mut channels: Vec<[Vec<f32>; 2]> = sources.iter().map(|_| [Vec::with_capacity(total), Vec::with_capacity(total)]).collect();
     let mut buffer = AudioBuffer::new(2, block);
@@ -117,6 +178,7 @@ pub fn render_stems(project: &Project, roots: &SampleRoots, options: &OfflineOpt
             }
         });
         rendered += frames;
+        progress.advance(frames)?;
     }
     if audio.faults() > 0 {
         return Err(MixError::Faults(audio.faults()));
