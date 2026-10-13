@@ -115,8 +115,9 @@ fn prints_the_devices() {
     }
 }
 
-/// Plays a short tone on the default output device, with its default buffer size. Run it by hand, or in the CI job
-/// that installs a virtual sound card: `cargo test -p bodo-kit-device -- --ignored`.
+/// Plays a two-second tone on the default output device, with its default buffer size, and checks that audio keeps
+/// flowing in real time. Run it by hand, or in the CI job that installs a virtual sound card:
+/// `cargo test -p bodo-kit-device -- --ignored`.
 #[test]
 #[ignore = "needs an audio device"]
 fn plays_a_tone_on_the_default_device() {
@@ -132,9 +133,14 @@ fn plays_a_tone_on_the_default_device() {
         }
     })
     .unwrap();
-    std::thread::sleep(Duration::from_millis(1000));
-    let status = stream.status();
-    println!("{status:?}");
-    assert!(status.callbacks > 0);
-    assert!(!status.disconnected);
+    let rate = u64::from(stream.rate().hz());
+    std::thread::sleep(Duration::from_secs(1));
+    let first = stream.status();
+    std::thread::sleep(Duration::from_secs(1));
+    let second = stream.status();
+    println!("after 1 s: {first:?}");
+    println!("after 2 s: {second:?}");
+    assert!(!second.disconnected);
+    // In the second second the device must have asked for at least half a second of audio.
+    assert!(second.frames - first.frames >= rate / 2, "audio stalled: {first:?} then {second:?}");
 }
