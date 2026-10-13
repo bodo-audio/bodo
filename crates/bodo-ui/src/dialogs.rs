@@ -38,6 +38,8 @@ pub struct Dialogs {
     /// The audio settings dialog.
     pub audio: bool,
     pub(crate) audio_draft: Option<crate::audio::AudioPrefs>,
+    /// The MIDI inputs the system listed when the audio settings opened.
+    pub(crate) midi_ports: Option<Vec<String>>,
     /// The keyboard shortcuts list.
     pub shortcuts: bool,
     /// The about box.
@@ -305,11 +307,13 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 if ui.selectable_label(draft.host.is_none(), "Default").clicked() {
                     draft.host = None;
                     draft.output = None;
+                    draft.input = None;
                 }
                 for host in &hosts {
                     if ui.selectable_label(draft.host.as_deref() == Some(host.name.as_str()), &host.name).clicked() {
                         draft.host = Some(host.name.clone());
                         draft.output = None;
+                        draft.input = None;
                     }
                 }
             });
@@ -328,6 +332,20 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
                 }
             });
             ui.end_row();
+            ui.label("Input");
+            let input_label = draft.input.clone().unwrap_or_else(|| String::from("Default"));
+            egui::ComboBox::from_id_salt("bodo-audio-input").selected_text(input_label).width(220.0).show_ui(ui, |ui| {
+                if ui.selectable_label(draft.input.is_none(), "Default").clicked() {
+                    draft.input = None;
+                }
+                for device in devices.iter().filter(|d| d.input_channels >= 1) {
+                    let label = format!("{} ({} in)", device.name, device.input_channels);
+                    if ui.selectable_label(draft.input.as_deref() == Some(device.name.as_str()), label).clicked() {
+                        draft.input = Some(device.name.clone());
+                    }
+                }
+            });
+            ui.end_row();
             ui.label("Buffer");
             let frames = draft.buffer_frames.unwrap_or(256);
             egui::ComboBox::from_id_salt("bodo-audio-buffer").selected_text(format!("{frames} frames")).width(220.0).show_ui(ui, |ui| {
@@ -341,6 +359,9 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
             ui.end_row();
         });
         ui.label(RichText::new(app.audio.status()).color(Tokens::get().text_dim).size(size::SMALL));
+        ui.add_space(6.0);
+        midi_settings(app, ui, &mut draft);
+        ui.add_space(6.0);
         ui.horizontal(|ui| {
             if ui.button("Apply").clicked() {
                 apply = true;
@@ -356,7 +377,92 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
     }
     if close {
         app.view.dialogs.audio = false;
+        app.view.dialogs.midi_ports = None;
     } else {
         app.view.dialogs.audio_draft = Some(draft);
     }
+}
+
+/// The MIDI part of the audio settings: which inputs open (applied with the device), and which channel each one plays
+/// (a project edit, applied right away).
+///
+/// Complexity: O(p * c) in ports and channels, for the few ports a studio has.
+fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio::AudioPrefs) {
+    let tk = Tokens::get();
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("MIDI inputs").strong());
+        if ui.small_button("Refresh").clicked() {
+            app.view.dialogs.midi_ports = None;
+        }
+    });
+    let ports = app.view.dialogs.midi_ports.get_or_insert_with(bodo_kit_device::midi::input_ports).clone();
+    if ports.is_empty() {
+        ui.label(RichText::new("No MIDI inputs found. Connect a keyboard and press Refresh.").color(tk.text_dim).size(size::SMALL));
+        return;
+    }
+    let project = std::sync::Arc::clone(app.session.project());
+    let open: Vec<String> = app.audio.midi_inputs().into_iter().map(str::to_owned).collect();
+    egui::Grid::new("bodo-midi-inputs").num_columns(3).spacing(vec2(12.0, 6.0)).show(ui, |ui| {
+        for port in &ports {
+            let mut on = draft.midi_inputs.as_ref().is_none_or(|names| names.contains(port));
+            let suffix = if open.contains(port) { "" } else { " (closed)" };
+            if ui.checkbox(&mut on, format!("{port}{suffix}")).changed() {
+                let mut names = draft.midi_inputs.clone().unwrap_or_else(|| ports.clone());
+                names.retain(|name| name != port);
+                if on {
+                    names.push(port.clone());
+                }
+                draft.midi_inputs = if ports.iter().all(|p| names.contains(p)) { None } else { Some(names) };
+            }
+            // The channels bound to this port; an unbound port plays the selected channel.
+            let bound: Vec<&bodo_model::Channel> = project
+                .rack_order
+                .iter()
+                .filter_map(|id| project.channels.get(id))
+                .filter(|c| c.midi_in.as_ref().is_some_and(|b| &b.port == port))
+                .map(|c| c.as_ref())
+                .collect();
+            let shown = if bound.is_empty() {
+                String::from("Selected channel")
+            } else {
+                bound.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
+            };
+            egui::ComboBox::from_id_salt(("bodo-midi-plays", port)).selected_text(shown).width(160.0).show_ui(ui, |ui| {
+                if ui.selectable_label(bound.is_empty(), "Selected channel").clicked() {
+                    for channel in &bound {
+                        let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": null }));
+                    }
+                }
+                for id in project.rack_order.iter() {
+                    let Some(channel) = project.channels.get(id) else { continue };
+                    let is_bound = bound.iter().any(|c| c.id == *id);
+                    if ui.selectable_label(is_bound, &channel.name).clicked() {
+                        let port = if is_bound { serde_json::Value::Null } else { json!(port) };
+                        let _ = app.run("channel.set_midi_in", json!({ "channel": id, "port": port }));
+                    }
+                }
+            });
+            let listening = bound.first().and_then(|c| c.midi_in.as_ref()).and_then(|b| b.channel);
+            ui.add_enabled_ui(!bound.is_empty(), |ui| {
+                let text = listening.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {}", n + 1));
+                egui::ComboBox::from_id_salt(("bodo-midi-channel", port)).selected_text(text).width(130.0).show_ui(ui, |ui| {
+                    let choices = std::iter::once(None).chain((1..=16u8).map(Some));
+                    for choice in choices {
+                        let label = choice.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {n}"));
+                        if ui.selectable_label(listening.map(|n| n + 1) == choice, label).clicked() {
+                            for channel in &bound {
+                                let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": port, "midiChannel": choice }));
+                            }
+                        }
+                    }
+                });
+            });
+            ui.end_row();
+        }
+    });
+    ui.label(
+        RichText::new("Unticked inputs stay closed after Apply. A port bound to channels plays them; any other port plays the selected channel.")
+            .color(tk.text_dim)
+            .size(size::SMALL),
+    );
 }
