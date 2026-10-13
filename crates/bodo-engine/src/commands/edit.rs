@@ -57,6 +57,73 @@ enum CopyKind {
 struct CopyParams {
     /// What to copy; the selected clips, or else the selected notes, by default.
     what: Option<CopyKind>,
+    /// With `end`: a time selection of the playlist. Every track's clips are copied (or cut) between the two,
+    /// trimmed at the edges, instead of the selection.
+    start: Option<Position>,
+    /// Where the time selection ends.
+    end: Option<Position>,
+}
+
+/// The time selection `p` gives, if any.
+fn time_range(ctx: &Ctx<'_>, p: &CopyParams) -> Result<Option<(Tick, Tick)>, CommandError> {
+    match (&p.start, &p.end) {
+        (None, None) => Ok(None),
+        (Some(start), Some(end)) => {
+            let (start, end) = (start.resolve(&ctx.project)?.max(Tick::ZERO), end.resolve(&ctx.project)?);
+            if end <= start {
+                return Err(CommandError::invalid("the time selection has to end after it starts"));
+            }
+            Ok(Some((start, end)))
+        }
+        _ => Err(CommandError::invalid("give both start and end for a time selection")),
+    }
+}
+
+/// Copies the parts of every track's clips between `start` and `end` into the clipboard, keeping their tracks.
+///
+/// Complexity: O(c) in clips.
+fn copy_range(ctx: &mut Ctx<'_>, start: Tick, end: Tick) -> Result<usize, CommandError> {
+    let mut found: Vec<(usize, Clip)> = Vec::new();
+    for (row, track) in ctx.project.track_order.iter().enumerate() {
+        let Some(t) = ctx.project.tracks.get(track) else { continue };
+        for clip in t.clips.iter().filter(|c| c.start < end && c.end() > start) {
+            let from = clip.start.max(start);
+            let to = clip.end().min(end);
+            let offset = if from > clip.start { super::clip_offset_after(&ctx.project, clip, from) } else { clip.offset };
+            found.push((row, Clip { start: Tick(from.0 - start.0), len: Tick(to.0 - from.0), offset, ..clip.clone() }));
+        }
+    }
+    if found.is_empty() {
+        return Err(CommandError::rejected("there are no clips in the time selection"));
+    }
+    let count = found.len();
+    ctx.editor.clipboard = Some(Arc::new(Clipboard::Clips { clips: found, origin: start, span: Tick(end.0 - start.0), first_track: 0 }));
+    Ok(count)
+}
+
+/// Removes the parts of every unlocked track's clips between `start` and `end`, cutting clips at the edges. Nothing
+/// moves: the time stays, empty.
+fn clear_range(ctx: &mut Ctx<'_>, start: Tick, end: Tick) -> Result<usize, CommandError> {
+    let tracks: Vec<Value> =
+        ctx.project.track_order.iter().filter(|t| ctx.project.tracks.get(*t).is_some_and(|t| !t.locked)).map(|t| json!(t)).collect();
+    for edge in [start, end] {
+        if ctx.project.tracks.values().any(|t| !t.locked && t.clips.iter().any(|c| c.start < edge && c.end() > edge)) {
+            super::clip_slice(ctx, edge, &tracks)?;
+        }
+    }
+    let mut removed = 0;
+    let ids: Vec<_> = ctx.project.track_order.iter().copied().collect();
+    for track in ids {
+        if ctx.project.tracks.get(&track).is_some_and(|t| t.locked) {
+            continue;
+        }
+        removed += ctx.edit_track(track, |t| {
+            let before = t.clips.len();
+            t.clips.retain(|c| !(c.start >= start && c.end() <= end));
+            Ok(before - t.clips.len())
+        })?;
+    }
+    Ok(removed)
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -215,6 +282,13 @@ fn copy(ctx: &mut Ctx<'_>, what: Option<CopyKind>) -> Result<usize, CommandError
 }
 
 fn cut(ctx: &mut Ctx<'_>, p: CopyParams) -> Result<Value, CommandError> {
+    if let Some((start, end)) = time_range(ctx, &p)? {
+        let count = copy_range(ctx, start, end)?;
+        clear_range(ctx, start, end)?;
+        ctx.editor.clips.clear();
+        ctx.set_label(format!("Cut {count} from the time selection"));
+        return Ok(json!({ "cut": count }));
+    }
     let count = copy(ctx, p.what)?;
     match ctx.editor.clipboard.as_deref() {
         Some(Clipboard::Clips { .. }) => {
@@ -336,10 +410,19 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({}))
         .menu("Edit/Redo")
         .shortcut("Mod+Shift+Z");
-    r.edit("edit.copy", "Copy", "Copies the selected clips, or the selected notes, for edit.paste.", Effects::NONE, |ctx, p: CopyParams| {
-        let count = copy(ctx, p.what)?;
-        Ok(json!({ "copied": count }))
-    })
+    r.edit(
+        "edit.copy",
+        "Copy",
+        "Copies the selected clips, the selected notes, or a time selection of the playlist, for edit.paste.",
+        Effects::NONE,
+        |ctx, p: CopyParams| {
+            let count = match time_range(ctx, &p)? {
+                Some((start, end)) => copy_range(ctx, start, end)?,
+                None => copy(ctx, p.what)?,
+            };
+            Ok(json!({ "copied": count }))
+        },
+    )
     .example(json!({ "what": "clips" }))
     .menu("Edit/Copy")
     .shortcut("Mod+C");

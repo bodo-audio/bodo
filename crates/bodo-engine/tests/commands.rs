@@ -23,8 +23,16 @@ fn fixture() -> Session {
 }
 
 /// Commands that read or write files outside the test's control; the beat, MIDI and recording tests cover them.
-const FILE_COMMANDS: [&str; 7] =
-    ["project.open", "project.save", "project.save_as", "project.import_midi", "pattern.export_midi", "project.export_midi", "recording.add_takes"];
+const FILE_COMMANDS: [&str; 8] = [
+    "project.open",
+    "project.save",
+    "project.save_as",
+    "project.import_midi",
+    "pattern.export_midi",
+    "project.export_midi",
+    "recording.add_takes",
+    "clip.consolidate",
+];
 
 /// Commands whose examples act on an audio clip channel named Crash, which the fixture gets first for them.
 const NEED_AUDIO: [&str; 2] = ["clip.place_audio", "clip.set_stretch"];
@@ -40,6 +48,16 @@ fn every_example_runs_validly_and_undoes_exactly() {
         // Automation edits act on the clip and the pattern lane the creating examples make.
         for setup in ["automation.create_for", "automation.set_lane"] {
             if id.starts_with("automation.") && id != setup {
+                let example = session.registry().get(setup).unwrap().example.clone().unwrap();
+                session.execute(setup, example).unwrap();
+            }
+        }
+        // Group edits act on the groups the grouping examples make.
+        for (setup, users) in [
+            ("channel.set_group", &["channel.rename_group"][..]),
+            ("playlist.group_tracks", &["playlist.rename_track_group", "playlist.set_group_props", "playlist.ungroup_tracks"][..]),
+        ] {
+            if users.contains(&id) {
                 let example = session.registry().get(setup).unwrap().example.clone().unwrap();
                 session.execute(setup, example).unwrap();
             }

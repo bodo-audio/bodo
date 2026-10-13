@@ -241,7 +241,7 @@ fn mute(ctx: &mut Ctx<'_>, p: Mute) -> Result<Value, CommandError> {
 }
 
 /// The offset of the part of `clip` from `at` on: its offset moved forward by `at - start`.
-fn offset_after(project: &bodo_model::Project, clip: &Clip, at: Tick) -> ClipOffset {
+pub(crate) fn offset_after(project: &bodo_model::Project, clip: &Clip, at: Tick) -> ClipOffset {
     let ticks = at.0 - clip.start.0;
     match clip.offset {
         ClipOffset::Ticks(t) => ClipOffset::Ticks(Tick(t.0 + ticks)),

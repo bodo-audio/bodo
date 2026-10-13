@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "group": "Drums",
+    "name": "Beat"
+  },
+  "result": {
+    "group": "Beat"
+  },
+  "undo": "Rename track group to Beat"
+}

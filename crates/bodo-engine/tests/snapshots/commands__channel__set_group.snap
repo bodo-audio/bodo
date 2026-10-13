@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channels": [
+      "Kick",
+      "Snare"
+    ],
+    "group": "Drums"
+  },
+  "result": {
+    "channels": [
+      "ch_00000000000000000000000415",
+      "ch_0000000000000000000000041B"
+    ],
+    "group": "Drums"
+  },
+  "undo": "Move 2 channels to group Drums"
+}

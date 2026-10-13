@@ -388,6 +388,26 @@ Example:
 }
 ```
 
+### `channel.rename_group`
+
+Renames a channel rack group.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `group` | string | The group's current name. |
+| `name` | string | Its new name. |
+
+Example:
+
+```json
+{
+  "group": "Drums",
+  "name": "Beat"
+}
+```
+
 ### `channel.reorder`
 
 Moves a channel to another position in the channel rack.
@@ -425,6 +445,29 @@ Example:
 {
   "channel": "Kick",
   "color": "#f87171"
+}
+```
+
+### `channel.set_group`
+
+Puts channels in a channel rack group, or leaves them unsorted.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channels` | array of ChannelRef, optional | The channels; the selected channels by default. |
+| `group` | string, optional | The group they join, by name; null or an empty name leaves them unsorted. |
+
+Example:
+
+```json
+{
+  "channels": [
+    "Kick",
+    "Snare"
+  ],
+  "group": "Drums"
 }
 ```
 
@@ -542,6 +585,7 @@ Sets how late every second step plays, from 0 to 1.
 | Param | Type | Description |
 |---|---|---|
 | `channel` | ChannelRef, optional | The channel; the selected channel by default. |
+| `channels` | array of ChannelRef, optional | Or: several channels at once, such as every channel of a group. |
 | `swing` | number | How late every second step plays, from 0 to 1. |
 
 Example:
@@ -595,6 +639,27 @@ Example:
 ```
 
 ## clip
+
+### `clip.consolidate`
+
+Renders clips to a WAV in the project's Rendered folder and replaces them with one audio clip.
+
+- Effects: undoable, disk
+
+| Param | Type | Description |
+|---|---|---|
+| `clips` | array of ClipRef, optional | The clips; the selected clips by default. Automation clips are left as they are. |
+| `name` | string, optional | The new channel's name; "Consolidated" by default. |
+
+Example:
+
+```json
+{
+  "clips": [
+    "Verse"
+  ]
+}
+```
 
 ### `clip.make_unique`
 
@@ -875,7 +940,7 @@ Example:
 
 ### `edit.copy`
 
-Copies the selected clips, or the selected notes, for edit.paste.
+Copies the selected clips, the selected notes, or a time selection of the playlist, for edit.paste.
 
 - Effects: none
 - Menu: Edit > Copy
@@ -883,6 +948,8 @@ Copies the selected clips, or the selected notes, for edit.paste.
 
 | Param | Type | Description |
 |---|---|---|
+| `end` | Position, optional | Where the time selection ends. |
+| `start` | Position, optional | With `end`: a time selection of the playlist. Every track's clips are copied (or cut) between the two, trimmed at the edges, instead of the selection. |
 | `what` | CopyKind, optional | What to copy; the selected clips, or else the selected notes, by default. |
 
 Example:
@@ -903,6 +970,8 @@ Copies the selected clips or notes and removes them.
 
 | Param | Type | Description |
 |---|---|---|
+| `end` | Position, optional | Where the time selection ends. |
+| `start` | Position, optional | With `end`: a time selection of the playlist. Every track's clips are copied (or cut) between the two, trimmed at the edges, instead of the selection. |
 | `what` | CopyKind, optional | What to copy; the selected clips, or else the selected notes, by default. |
 
 Example:
@@ -1787,6 +1856,7 @@ Sets start, key, length, velocity, release velocity, pan, fine pitch, Mod X and 
 
 | Param | Type | Description |
 |---|---|---|
+| `color` | integer, optional | A new note color group, 0 to 15, which instruments may read and the piano roll filters by. |
 | `finePitchCents` | number, optional | A new fine pitch in cents, from -1200 to 1200. |
 | `key` | Key, optional | A new key for every note. |
 | `length` | Length, optional | A new length for every note. |
@@ -2181,6 +2251,29 @@ Example:
 }
 ```
 
+### `playlist.group_tracks`
+
+Puts tracks in a named group that folds under one header; they move next to each other.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `name` | string | The group's name. Tracks join an existing group of that name. |
+| `tracks` | array of TrackRef | The tracks to put in the group. |
+
+Example:
+
+```json
+{
+  "name": "Drums",
+  "tracks": [
+    1,
+    3
+  ]
+}
+```
+
 ### `playlist.insert_time`
 
 Pushes everything from a position later by a length, cutting clips that cross it.
@@ -2219,9 +2312,50 @@ Example:
 }
 ```
 
+### `playlist.rename_track_group`
+
+Renames a track group.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `group` | string | The group's current name. |
+| `name` | string | Its new name. |
+
+Example:
+
+```json
+{
+  "group": "Drums",
+  "name": "Beat"
+}
+```
+
+### `playlist.set_group_props`
+
+Mutes, unmutes, solos or unsolos every track of a group.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `group` | string | The group, by name. |
+| `muted` | boolean, optional | Mutes or unmutes every track of the group. |
+| `solo` | boolean, optional | Solos or unsolos every track of the group. |
+
+Example:
+
+```json
+{
+  "group": "Drums",
+  "solo": true
+}
+```
+
 ### `playlist.set_track_props`
 
-Sets a track's name, color, mute, lock or height.
+Sets a track's name, color, mute, solo, lock or height.
 
 - Effects: undoable
 
@@ -2232,6 +2366,7 @@ Sets a track's name, color, mute, lock or height.
 | `locked` | boolean, optional | Locked against edits or not. |
 | `muted` | boolean, optional | Muted or not. |
 | `name` | string, optional | A new name. |
+| `solo` | boolean, optional | Soloed or not: while any track is soloed, only soloed tracks play. |
 | `track` | TrackRef, optional | The track; the selected track by default. |
 
 Example:
@@ -2240,7 +2375,27 @@ Example:
 {
   "muted": false,
   "name": "Drums",
+  "solo": true,
   "track": 1
+}
+```
+
+### `playlist.ungroup_tracks`
+
+Dissolves a track group, or takes tracks out of theirs.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `group` | string, optional | The group to dissolve, by name. |
+| `tracks` | array of TrackRef, optional | Or: tracks to take out of their groups. |
+
+Example:
+
+```json
+{
+  "group": "Drums"
 }
 ```
 

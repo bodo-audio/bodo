@@ -115,6 +115,8 @@ struct SetProps {
     slide: Option<bool>,
     /// Portamento or not.
     porta: Option<bool>,
+    /// A new note color group, 0 to 15, which instruments may read and the piano roll filters by.
+    color: Option<u8>,
 }
 
 /// The ids `ids` names, or else the selected notes.
@@ -287,6 +289,9 @@ fn set_props(ctx: &mut Ctx<'_>, p: SetProps) -> Result<Value, CommandError> {
             super::in_range(name, f64::from(value), 0.0..=1.0)?;
         }
     }
+    if let Some(color) = p.color {
+        super::in_range("color", f64::from(color), 0.0..=15.0)?;
+    }
     ctx.edit_pattern(id, |pattern| {
         let changed = edit_notes(pattern, &ids, |note| {
             if let Some(start) = start {
@@ -324,6 +329,9 @@ fn set_props(ctx: &mut Ctx<'_>, p: SetProps) -> Result<Value, CommandError> {
             }
             if let Some(porta) = p.porta {
                 note.porta = porta;
+            }
+            if let Some(color) = p.color {
+                note.color = color;
             }
             Ok(())
         })?;

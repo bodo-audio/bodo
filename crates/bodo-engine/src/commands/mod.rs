@@ -24,7 +24,7 @@ use serde_json::Value;
 
 use crate::registry::Registry;
 
-pub(crate) use clip::slice_tracks as clip_slice;
+pub(crate) use clip::{offset_after as clip_offset_after, slice_tracks as clip_slice};
 pub use pattern::step_text as pattern_step_text;
 
 /// Registers every built-in command.

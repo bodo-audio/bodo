@@ -105,6 +105,105 @@ struct SetFades {
     fade_out: Option<Length>,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Consolidate {
+    /// The clips; the selected clips by default. Automation clips are left as they are.
+    #[serde(default)]
+    clips: Vec<ClipRef>,
+    /// The new channel's name; "Consolidated" by default.
+    name: Option<String>,
+}
+
+/// The project as heard with only `keep` of the pattern and audio clips playing: their tracks unmuted, every other
+/// pattern and audio clip gone, automation as it is, and the master strip neutral, since the result plays through it
+/// again.
+///
+/// Complexity: O(c) in clips.
+fn only_clips(project: &bodo_model::Project, keep: &std::collections::BTreeSet<bodo_model::ClipId>) -> bodo_model::Project {
+    let mut copy = project.clone();
+    for track in project.tracks.values() {
+        let mut t = (**track).clone();
+        t.clips = t.clips.iter().filter(|c| matches!(c.source, ClipSource::Automation(_)) || keep.contains(&c.id)).cloned().collect();
+        for clip in t.clips.iter_mut() {
+            if keep.contains(&clip.id) {
+                clip.muted = false;
+            }
+        }
+        if t.clips.iter().any(|c| keep.contains(&c.id)) {
+            t.muted = false;
+        }
+        // Other tracks hold only automation now, so no solo is needed to hear the clips alone.
+        t.solo = false;
+        copy.tracks.insert(t.id, Arc::new(t));
+    }
+    let mixer = Arc::make_mut(&mut copy.mixer);
+    let master = Arc::make_mut(&mut mixer.master);
+    *master =
+        bodo_model::MixerInsert { id: master.id, name: master.name.clone(), color: master.color, ..bodo_model::MixerInsert::new(master.id, "") };
+    copy
+}
+
+/// A file in `folder` named `base.wav`, or `base 2.wav` and so on, that doesn't exist yet.
+fn fresh_file(folder: &Path, base: &str) -> std::path::PathBuf {
+    let mut n = 1;
+    loop {
+        let name = if n == 1 { format!("{base}.wav") } else { format!("{base} {n}.wav") };
+        let path = folder.join(name);
+        if !path.exists() {
+            return path;
+        }
+        n += 1;
+    }
+}
+
+fn consolidate(ctx: &mut Ctx<'_>, p: Consolidate) -> Result<Value, CommandError> {
+    let mut chosen: Vec<(TrackId, Clip)> = Vec::new();
+    for (track, id) in ctx.clips(&p.clips)? {
+        let Some(t) = ctx.project.tracks.get(&track) else { continue };
+        if t.locked {
+            return Err(CommandError::rejected(format!("{} is locked", t.name)).with_hint("unlock it with playlist.set_track_props"));
+        }
+        if let Some(clip) = t.clips.iter().find(|c| c.id == id && !matches!(c.source, ClipSource::Automation(_))) {
+            chosen.push((track, clip.clone()));
+        }
+    }
+    let (Some(start), Some(end)) = (chosen.iter().map(|(_, c)| c.start).min(), chosen.iter().map(|(_, c)| c.end()).max()) else {
+        return Err(CommandError::rejected("choose pattern or audio clips to consolidate"));
+    };
+    let keep: std::collections::BTreeSet<_> = chosen.iter().map(|(_, c)| c.id).collect();
+    let options = bodo_mix::OfflineOptions { start, end, tail: Seconds(0.0), mode: bodo_mix::PlayMode::Song, block: 512, workers: 0 };
+    let audio = bodo_mix::render_offline(&only_clips(&ctx.project, &keep), &ctx.sample_roots(), &options)
+        .map_err(|e| CommandError::rejected(format!("the clips could not be rendered: {e}")))?;
+    let folder = ctx.project_dir().map_or_else(|| std::env::temp_dir().join("Bodo Rendered"), |dir| dir.join("Rendered"));
+    std::fs::create_dir_all(&folder).map_err(|e| CommandError::io(&folder, e.to_string()))?;
+    let base = p.name.as_deref().map(str::trim).filter(|n| !n.is_empty()).unwrap_or("Consolidated").to_owned();
+    let file = fresh_file(&folder, &base);
+    let channels: Vec<&[f32]> = audio.channels.iter().map(Vec::as_slice).collect();
+    let frames = channels.first().map_or(0, |c| c.len());
+    let mut writer = bodo_kit_audio::WavWriter::create(&file, ctx.project.settings.sample_rate, channels.len(), bodo_kit_audio::WavFormat::Float32)
+        .map_err(|e| CommandError::io(&file, e.to_string()))?;
+    writer.write(&channels, frames).map_err(|e| CommandError::io(&file, e.to_string()))?;
+    writer.finish().map_err(|e| CommandError::io(&file, e.to_string()))?;
+    // The new clip goes on the topmost track the clips were on, where they started.
+    let track = ctx.project.track_order.iter().copied().find(|t| chosen.iter().any(|(c, _)| c == t)).unwrap_or(chosen[0].0);
+    for (t, clip) in &chosen {
+        ctx.edit_track(*t, |t| {
+            t.clips.retain(|c| c.id != clip.id);
+            Ok(())
+        })?;
+    }
+    let tempo = ctx.project.tempo.bpm_at(start);
+    let channel = make_channel(ctx, &file.display().to_string(), Some(base), Some(tempo), None)?;
+    let length = Length::Ticks(end.0 - start.0);
+    let clip = place(ctx, track, channel, start, Some(&length))?;
+    ctx.set_label(format!("Consolidate {} clips", chosen.len()));
+    let mut result = clip_json(ctx, &clip, track, channel);
+    result["file"] = json!(file.display().to_string());
+    result["replaced"] = json!(chosen.len());
+    Ok(result)
+}
+
 /// The name of channel `id`, for labels.
 fn name(ctx: &Ctx<'_>, id: ChannelId) -> String {
     ctx.project.channels.get(&id).map(|c| c.name.clone()).unwrap_or_default()
@@ -346,6 +445,14 @@ fn set_fades(ctx: &mut Ctx<'_>, p: SetFades) -> Result<Value, CommandError> {
 }
 
 pub(super) fn register(r: &mut Registry) {
+    r.edit(
+        "clip.consolidate",
+        "Consolidate to audio",
+        "Renders clips to a WAV in the project's Rendered folder and replaces them with one audio clip.",
+        Effects { undoable: true, destructive: false, disk: true, network: false },
+        consolidate,
+    )
+    .example(json!({ "clips": ["Verse"] }));
     r.edit(
         "channel.add_audio",
         "Add audio clip channel",

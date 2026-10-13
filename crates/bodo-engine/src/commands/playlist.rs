@@ -3,7 +3,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bodo_model::{Color, PlaylistTrack};
+use bodo_model::{Color, PlaylistTrack, TrackId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -49,6 +49,47 @@ struct SetTrackProps {
     locked: Option<bool>,
     /// Its height in the playlist, from 16 to 400 points.
     height: Option<f32>,
+    /// Soloed or not: while any track is soloed, only soloed tracks play.
+    solo: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GroupTracks {
+    /// The tracks to put in the group.
+    tracks: Vec<TrackRef>,
+    /// The group's name. Tracks join an existing group of that name.
+    name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Ungroup {
+    /// The group to dissolve, by name.
+    group: Option<String>,
+    /// Or: tracks to take out of their groups.
+    #[serde(default)]
+    tracks: Vec<TrackRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RenameGroup {
+    /// The group's current name.
+    group: String,
+    /// Its new name.
+    name: String,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct GroupProps {
+    /// The group, by name.
+    group: String,
+    /// Mutes or unmutes every track of the group.
+    muted: Option<bool>,
+    /// Solos or unsolos every track of the group.
+    solo: Option<bool>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -198,11 +239,115 @@ fn set_track_props(ctx: &mut Ctx<'_>, p: SetTrackProps) -> Result<Value, Command
         if let Some(height) = p.height {
             track.height = height;
         }
+        if let Some(solo) = p.solo {
+            track.solo = solo;
+        }
         Ok(())
     })?;
     let track = ctx.project.tracks.get(&id).cloned().ok_or_else(|| CommandError::not_found("track", &id.to_string()))?;
     ctx.set_label(format!("Edit track {}", track.name));
-    Ok(json!({ "track": id, "name": track.name, "muted": track.muted, "locked": track.locked }))
+    Ok(json!({ "track": id, "name": track.name, "muted": track.muted, "locked": track.locked, "solo": track.solo }))
+}
+
+/// The tracks of group `name`, in playlist order, or an error when there are none.
+///
+/// Complexity: O(t) in tracks.
+fn members(ctx: &Ctx<'_>, name: &str) -> Result<Vec<TrackId>, CommandError> {
+    let found: Vec<TrackId> =
+        ctx.project.track_order.iter().copied().filter(|id| ctx.project.tracks.get(id).is_some_and(|t| t.group.as_deref() == Some(name))).collect();
+    if found.is_empty() {
+        return Err(CommandError::not_found("track group", name));
+    }
+    Ok(found)
+}
+
+fn group_tracks(ctx: &mut Ctx<'_>, p: GroupTracks) -> Result<Value, CommandError> {
+    let name = p.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(CommandError::invalid("a track group needs a name"));
+    }
+    if p.tracks.is_empty() {
+        return Err(CommandError::invalid("give the tracks to group"));
+    }
+    let mut chosen = Vec::new();
+    for r in &p.tracks {
+        let id = ctx.track(Some(r))?;
+        if !chosen.contains(&id) {
+            chosen.push(id);
+        }
+    }
+    // The group sits where its first track is (an existing group's first track, or else the first joining track),
+    // with the joining tracks after its current ones, in playlist order.
+    let mut group: Vec<TrackId> = members(ctx, &name).unwrap_or_default();
+    let mut joining: Vec<TrackId> = ctx.project.track_order.iter().copied().filter(|t| chosen.contains(t) && !group.contains(t)).collect();
+    let anchor = group.first().or(joining.first()).copied();
+    let at = anchor.and_then(|a| ctx.project.track_order.index_of(&a)).unwrap_or(0);
+    group.append(&mut joining);
+    let before = ctx.project.track_order.iter().take(at).filter(|t| !group.contains(t)).count();
+    let mut order: Vec<TrackId> = ctx.project.track_order.iter().copied().filter(|t| !group.contains(t)).collect();
+    for (offset, id) in group.iter().enumerate() {
+        order.insert(before + offset, *id);
+    }
+    ctx.project.track_order = order.into_iter().collect();
+    for id in &group {
+        ctx.edit_track(*id, |t| {
+            t.group = Some(name.clone());
+            Ok(())
+        })?;
+    }
+    ctx.set_label(format!("Group tracks into {name}"));
+    Ok(json!({ "group": name, "tracks": group }))
+}
+
+fn ungroup(ctx: &mut Ctx<'_>, p: Ungroup) -> Result<Value, CommandError> {
+    let tracks = match (&p.group, p.tracks.is_empty()) {
+        (Some(name), true) => members(ctx, name)?,
+        (None, false) => p.tracks.iter().map(|r| ctx.track(Some(r))).collect::<Result<Vec<_>, _>>()?,
+        _ => return Err(CommandError::invalid("give a group or tracks, not both")),
+    };
+    for id in &tracks {
+        ctx.edit_track(*id, |t| {
+            t.group = None;
+            Ok(())
+        })?;
+    }
+    ctx.set_label(String::from("Ungroup tracks"));
+    Ok(json!({ "tracks": tracks }))
+}
+
+fn rename_group(ctx: &mut Ctx<'_>, p: RenameGroup) -> Result<Value, CommandError> {
+    let name = p.name.trim().to_owned();
+    if name.is_empty() {
+        return Err(CommandError::invalid("a track group needs a name"));
+    }
+    if name != p.group && members(ctx, &name).is_ok() {
+        return Err(CommandError::rejected(format!("there is already a track group named {name}")));
+    }
+    for id in members(ctx, &p.group)? {
+        ctx.edit_track(id, |t| {
+            t.group = Some(name.clone());
+            Ok(())
+        })?;
+    }
+    ctx.set_label(format!("Rename track group to {name}"));
+    Ok(json!({ "group": name }))
+}
+
+fn set_group_props(ctx: &mut Ctx<'_>, p: GroupProps) -> Result<Value, CommandError> {
+    let tracks = members(ctx, &p.group)?;
+    for id in &tracks {
+        ctx.edit_track(*id, |t| {
+            if let Some(muted) = p.muted {
+                t.muted = muted;
+            }
+            if let Some(solo) = p.solo {
+                t.solo = solo;
+            }
+            Ok(())
+        })?;
+    }
+    ctx.set_label(format!("Edit track group {}", p.group));
+    Ok(json!({ "group": p.group, "tracks": tracks.len() }))
 }
 
 pub(super) fn register(r: &mut Registry) {
@@ -227,6 +372,26 @@ pub(super) fn register(r: &mut Registry) {
         .menu("Add/Playlist track");
     r.edit("playlist.remove_track", "Remove track", "Removes a playlist track and its clips.", Effects::UNDOABLE, remove_track)
         .example(json!({ "track": "track:16" }));
-    r.edit("playlist.set_track_props", "Edit track", "Sets a track's name, color, mute, lock or height.", Effects::UNDOABLE, set_track_props)
-        .example(json!({ "track": 1, "name": "Drums", "muted": false }));
+    r.edit("playlist.set_track_props", "Edit track", "Sets a track's name, color, mute, solo, lock or height.", Effects::UNDOABLE, set_track_props)
+        .example(json!({ "track": 1, "name": "Drums", "muted": false, "solo": true }));
+    r.edit(
+        "playlist.group_tracks",
+        "Group tracks",
+        "Puts tracks in a named group that folds under one header; they move next to each other.",
+        Effects::UNDOABLE,
+        group_tracks,
+    )
+    .example(json!({ "tracks": [1, 3], "name": "Drums" }));
+    r.edit("playlist.ungroup_tracks", "Ungroup tracks", "Dissolves a track group, or takes tracks out of theirs.", Effects::UNDOABLE, ungroup)
+        .example(json!({ "group": "Drums" }));
+    r.edit("playlist.rename_track_group", "Rename track group", "Renames a track group.", Effects::UNDOABLE, rename_group)
+        .example(json!({ "group": "Drums", "name": "Beat" }));
+    r.edit(
+        "playlist.set_group_props",
+        "Edit track group",
+        "Mutes, unmutes, solos or unsolos every track of a group.",
+        Effects::UNDOABLE,
+        set_group_props,
+    )
+    .example(json!({ "group": "Drums", "solo": true }));
 }

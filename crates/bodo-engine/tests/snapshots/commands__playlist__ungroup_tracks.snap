@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "group": "Drums"
+  },
+  "result": {
+    "tracks": [
+      "trk_0000000000000000000000040K",
+      "trk_0000000000000000000000040N"
+    ]
+  },
+  "undo": "Ungroup tracks"
+}

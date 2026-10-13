@@ -115,8 +115,31 @@ struct SetPitch {
 struct SetSwing {
     /// The channel; the selected channel by default.
     channel: Option<ChannelRef>,
+    /// Or: several channels at once, such as every channel of a group.
+    #[serde(default)]
+    channels: Vec<ChannelRef>,
     /// How late every second step plays, from 0 to 1.
     swing: f32,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetGroup {
+    /// The channels; the selected channels by default.
+    #[serde(default)]
+    channels: Vec<ChannelRef>,
+    /// The group they join, by name; null or an empty name leaves them unsorted.
+    #[serde(default)]
+    group: Option<String>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RenameGroup {
+    /// The group's current name.
+    group: String,
+    /// Its new name.
+    name: String,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -144,6 +167,11 @@ struct SetRootKey {
     channel: Option<ChannelRef>,
     /// The key that plays the sample at its own pitch. Steps play this key.
     key: Key,
+}
+
+/// Merge key: the `channel` param, or the `channels` list, so a swing knob dragged for a whole group is one step.
+fn by_channels(params: &Value) -> String {
+    format!("{}{}", by_channel(params), params.get("channels").map(Value::to_string).unwrap_or_default())
 }
 
 /// The name of channel `id`, for undo labels.
@@ -364,11 +392,51 @@ fn set_pitch(ctx: &mut Ctx<'_>, p: SetPitch) -> Result<Value, CommandError> {
 }
 
 fn set_swing(ctx: &mut Ctx<'_>, p: SetSwing) -> Result<Value, CommandError> {
-    let id = ctx.channel(p.channel.as_ref())?;
     in_range("swing", f64::from(p.swing), 0.0..=1.0)?;
+    if !p.channels.is_empty() {
+        let ids = ctx.channels(&p.channels)?;
+        for id in &ids {
+            ctx.edit_channel(*id, |c| c.swing = p.swing)?;
+        }
+        ctx.set_label(format!("Set swing of {} channels", ids.len()));
+        return Ok(json!({ "channels": ids, "swing": p.swing }));
+    }
+    let id = ctx.channel(p.channel.as_ref())?;
     ctx.edit_channel(id, |c| c.swing = p.swing)?;
     ctx.set_label(format!("Set {} swing", name(ctx, id)));
     Ok(json!({ "channel": id, "swing": p.swing }))
+}
+
+fn set_group(ctx: &mut Ctx<'_>, p: SetGroup) -> Result<Value, CommandError> {
+    let ids = ctx.channels(&p.channels)?;
+    let group = p.group.as_deref().map(str::trim).filter(|g| !g.is_empty()).map(str::to_owned);
+    for id in &ids {
+        ctx.edit_channel(*id, |c| c.group.clone_from(&group))?;
+    }
+    ctx.set_label(match &group {
+        Some(g) => format!("Move {} to group {g}", if ids.len() == 1 { name(ctx, ids[0]) } else { format!("{} channels", ids.len()) }),
+        None => String::from("Ungroup channels"),
+    });
+    Ok(json!({ "channels": ids, "group": group }))
+}
+
+fn rename_group(ctx: &mut Ctx<'_>, p: RenameGroup) -> Result<Value, CommandError> {
+    let new = p.name.trim().to_owned();
+    if new.is_empty() {
+        return Err(CommandError::invalid("a group name can't be empty"));
+    }
+    let members: Vec<ChannelId> = ctx.project.channels.values().filter(|c| c.group.as_deref() == Some(p.group.as_str())).map(|c| c.id).collect();
+    if members.is_empty() {
+        return Err(CommandError::not_found("channel group", &p.group));
+    }
+    if new != p.group && ctx.project.channels.values().any(|c| c.group.as_deref() == Some(new.as_str())) {
+        return Err(CommandError::rejected(format!("there is already a channel group named {new}")));
+    }
+    for id in &members {
+        ctx.edit_channel(*id, |c| c.group = Some(new.clone()))?;
+    }
+    ctx.set_label(format!("Rename channel group to {new}"));
+    Ok(json!({ "group": new, "channels": members.len() }))
 }
 
 fn mute(ctx: &mut Ctx<'_>, p: Mute) -> Result<Value, CommandError> {
@@ -429,7 +497,11 @@ pub(super) fn register(r: &mut Registry) {
         .merge(by_channel);
     r.edit("channel.set_swing", "Set channel swing", "Sets how late every second step plays, from 0 to 1.", Effects::UNDOABLE, set_swing)
         .example(json!({ "channel": "HiHat", "swing": 0.55 }))
-        .merge(by_channel);
+        .merge(by_channels);
+    r.edit("channel.set_group", "Set channel group", "Puts channels in a channel rack group, or leaves them unsorted.", Effects::UNDOABLE, set_group)
+        .example(json!({ "channels": ["Kick", "Snare"], "group": "Drums" }));
+    r.edit("channel.rename_group", "Rename channel group", "Renames a channel rack group.", Effects::UNDOABLE, rename_group)
+        .example(json!({ "group": "Drums", "name": "Beat" }));
     r.edit("channel.mute", "Mute channel", "Mutes or unmutes a channel; toggles without `muted`.", Effects::UNDOABLE, mute)
         .example(json!({ "channel": "Clap" }));
     r.edit("channel.set_sample", "Load sample", "Loads an audio file into a sampler channel.", Effects::UNDOABLE, set_sample)

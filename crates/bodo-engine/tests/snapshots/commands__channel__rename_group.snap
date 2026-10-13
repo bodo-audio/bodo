@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "group": "Drums",
+    "name": "Beat"
+  },
+  "result": {
+    "channels": 2,
+    "group": "Beat"
+  },
+  "undo": "Rename channel group to Beat"
+}

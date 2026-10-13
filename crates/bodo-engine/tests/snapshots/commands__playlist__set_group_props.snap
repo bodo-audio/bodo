@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "group": "Drums",
+    "solo": true
+  },
+  "result": {
+    "group": "Drums",
+    "tracks": 2
+  },
+  "undo": "Edit track group Drums"
+}

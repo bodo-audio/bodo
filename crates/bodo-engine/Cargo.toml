@@ -14,6 +14,7 @@ bodo-kit-core = { workspace = true, features = ["serde"] }
 bodo-kit-graph.workspace = true
 bodo-kit-midi.workspace = true
 bodo-kit-music.workspace = true
+bodo-mix.workspace = true
 bodo-model.workspace = true
 imbl.workspace = true
 schemars.workspace = true

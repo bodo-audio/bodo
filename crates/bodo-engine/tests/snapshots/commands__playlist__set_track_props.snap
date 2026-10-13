@@ -6,13 +6,15 @@ expression: snapshot
   "params": {
     "muted": false,
     "name": "Drums",
+    "solo": true,
     "track": 1
   },
   "result": {
     "locked": false,
     "muted": false,
     "name": "Drums",
+    "solo": true,
     "track": "trk_0000000000000000000000040K"
   },
-  "undo": null
+  "undo": "Edit track Drums"
 }
