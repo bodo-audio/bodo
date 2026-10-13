@@ -64,6 +64,10 @@ pub struct Services {
     pub pick_samples: Option<PickFiles>,
     /// Asks for a folder of sounds to add to the browser.
     pub pick_folder: Option<PickPath>,
+    /// Asks for a MIDI file to import.
+    pub pick_midi: Option<PickPath>,
+    /// Asks where to write a MIDI file, suggesting a file name.
+    pub pick_midi_save: Option<PickSave>,
 }
 
 /// What the user chose, kept between runs. Window layouts belong here, not in projects.

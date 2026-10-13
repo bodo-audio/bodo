@@ -133,6 +133,8 @@ fn services() -> Services {
             rfd::FileDialog::new().add_filter("Audio", &bodo_engine::samples::AUDIO_EXTENSIONS).pick_files().unwrap_or_default()
         })),
         pick_folder: Some(Box::new(|| rfd::FileDialog::new().pick_folder())),
+        pick_midi: Some(Box::new(|| rfd::FileDialog::new().add_filter("MIDI file", &["mid", "midi"]).pick_file())),
+        pick_midi_save: Some(Box::new(|name: &str| rfd::FileDialog::new().add_filter("MIDI file", &["mid"]).set_file_name(name).save_file())),
     }
 }
 

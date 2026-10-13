@@ -59,6 +59,16 @@ fn menus(app: &mut BodoApp, ui: &mut Ui) {
             dialogs::save(app, true);
         }
         ui.separator();
+        if ui.button("Import MIDI file...").clicked() {
+            dialogs::import_midi(app);
+        }
+        if ui.button("Export song as MIDI...").clicked() {
+            dialogs::export_midi(app, false);
+        }
+        if ui.button("Export pattern as MIDI...").clicked() {
+            dialogs::export_midi(app, true);
+        }
+        ui.separator();
         if ui.button("Quit").clicked() {
             dialogs::guard_unsaved(app, dialogs::Pending::Quit);
         }

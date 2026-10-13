@@ -107,6 +107,26 @@ pub(crate) fn add_sample_folder(app: &mut BodoApp) {
     }
 }
 
+/// Asks for a MIDI file and imports it as a new pattern placed on the playlist.
+pub(crate) fn import_midi(app: &mut BodoApp) {
+    if let Some(path) = app.services.pick_midi.as_ref().and_then(|pick| pick()) {
+        let _ = app.run("project.import_midi", json!({ "path": path.display().to_string() }));
+    }
+}
+
+/// Asks where to write a MIDI file and writes the current pattern (`pattern`) or the whole song to it.
+pub(crate) fn export_midi(app: &mut BodoApp, pattern: bool) {
+    let name = if pattern {
+        app.session.editor().pattern.and_then(|p| app.session.project().patterns.get(&p)).map(|p| p.name.clone())
+    } else {
+        Some(app.title().trim_end_matches(" *").to_owned())
+    };
+    let Some(name) = name else { return };
+    let Some(path) = app.services.pick_midi_save.as_ref().and_then(|pick| pick(&format!("{name}.mid"))) else { return };
+    let command = if pattern { "pattern.export_midi" } else { "project.export_midi" };
+    let _ = app.run(command, json!({ "path": path.display().to_string() }));
+}
+
 /// Asks for audio files and adds a sampler channel for each.
 pub(crate) fn add_channels_from_files(app: &mut BodoApp) {
     let files = app.services.pick_samples.as_ref().map(|pick| pick()).unwrap_or_default();
