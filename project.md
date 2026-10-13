@@ -389,7 +389,7 @@ Soundcraft's main alpha blocker was the device layer, so Bodo builds it first.
 - **Latency:** the device layer reports input latency, output latency and buffer size. Recordings are offset to compensate, and the wizard includes a loopback "ping" calibration.
 - **Hot-plug:** if the device disappears, the engine stops cleanly and the UI offers to reconnect. The project is never lost.
 - **MIDI:** `midir` input and output, enabled per device. MIDI clock and MTC can be sent out (receiving comes later), and any control supports MIDI learn.
-- **Xruns:** each callback is timed against its deadline (the buffer duration). The top bar shows an xrun counter and a CPU meter.
+- **Xruns:** each callback is timed against its deadline (the buffer duration). The main window shows an xrun counter and a CPU meter ([14.1](#141-main-window-layout)).
 
 ### 6.3 Real-time contract
 
@@ -846,11 +846,11 @@ The mixer is a directed graph. Its nodes are channel sources, inserts and the Ma
 
 The mixer UI follows FL's layout but uses Bodo's own visual design.
 
-- **Strips** have, from top to bottom: the name (vertical), a peak meter with a clip LED, the pan and stereo separation knobs, polarity and swap toggles, a fader with a dB scale, mute and solo, and the arm button. At the bottom is the **route control**, which shows whether the *selected* insert routes to this strip:
+- **Strips** have, from top to bottom: the name, a peak meter with a clip LED, the pan knob, and a fader with a dB scale ([14.1](#141-main-window-layout)). Stereo separation, polarity, swap, mute, solo and arm are compact controls on the strip. At the bottom is the **route control**, which shows whether the *selected* insert routes to this strip:
   - click it to toggle the route;
   - drag its knob to set the send level;
   - Cmd/Ctrl-click to create a sidechain-only route.
-- **The insert panel** sits on the right side and shows the selected insert:
+- **The insert panel** sits on the right side, titled with the insert's name ("Mixer - Insert 3"), and shows the selected insert:
   - the input selector;
   - slots 1 to 10, each with an enable LED and a mix knob. Slots can be dragged to reorder, and their context menu offers replace, presets, move up/down and sandbox mode;
   - the strip EQ;
@@ -877,12 +877,14 @@ The mixer UI follows FL's layout but uses Bodo's own visual design.
 - **Step sequencer:** 16 steps by default, following the pattern length. Each step is a note at the channel's root key. A graph editor sets velocity, pitch, pan and release for each step.
 - **Organizing:** channel groups and filters, drag-reorder, and color.
 - **Channel kinds:** Sampler, Instrument (a plugin), Audio clip, Automation clip, Layer and MIDI Out.
-- **The sampler channel window** (see your FL reference screenshot) has:
-  - the sample file, keep-on-disk, resample and declicking mode;
+- **The Sampler window** ([14.1](#141-main-window-layout)) has:
+  - a header with pan, volume, pitch, pitch range and the target mixer track;
+  - the sample file, and its content options: keep on disk, resample, load regions and load slice markers;
+  - the declicking mode;
+  - playback: start offset, start, end and loop, with ping-pong looping;
   - time stretching: pitch, multiplier, time and mode;
   - precomputed effects: remove DC offset, normalize, reverse, reverse polarity, fade stereo, swap stereo, in/out fades, trim and crossfade;
-  - loop points and ping-pong loop, start offset;
-  - volume, filter and pitch envelopes, filter, arpeggiator, key range and root note.
+  - on its other tab: volume, filter and pitch envelopes, filter, arpeggiator, key range and root note.
 - Precomputed effects render into a cached derived sample. The source file is never modified.
 
 ### 10.3 Playlist
@@ -903,7 +905,7 @@ Any track can hold any kind of clip: pattern, audio or automation, as in FL. The
 
 There is also:
 
-- **Snap:** none, line, cell, bar, beat, step, and 1/2, 1/3, 1/4 or 1/6 of a step.
+- **Snap:** line, cell, none, 1/6, 1/4, 1/3 or 1/2 of a step, a step, fractions of a beat from 1/6 beat up, a beat and a bar. The snap dropdown in the top bar sets it.
 - **Time selection and loop region,** plus markers.
 - **Track view:** track groups and resizable heights.
 - **Zoom:** Ctrl/Cmd+wheel zooms horizontally, Alt+wheel vertically.
@@ -1003,7 +1005,7 @@ pub struct CommandSpec {
 
 | Namespace | Commands |
 |---|---|
-| `transport` | play, stop, toggle_play, record, set_position, scrub, set_loop, set_mode (pattern/song), metronome, count_in |
+| `transport` | play, stop, toggle_play, record, loop_record, set_position, scrub, set_loop, set_mode (pattern/song), metronome, count_in, typing_keyboard |
 | `edit` | undo, redo, cut, copy, paste, select, select_all, deselect |
 | `project` | new, open, save, save_as, set_tempo, add_tempo_point, set_meter, set_settings, add_marker |
 | `channel` | add, remove, duplicate, rename, reorder, set_target_insert, add_send, set_volume, set_pan, set_pitch, mute, replace_instrument |
@@ -1018,7 +1020,7 @@ pub struct CommandSpec {
 | `browser` | search, preview, import, favorite, rescan |
 | `render` | export_mix, export_stems, bounce_insert, preview, freeze_channel |
 | `analysis` | loudness, spectrum, stereo, masking, transients, key, chords, tempo, check, compare, report |
-| `ui` | focus, open_piano_roll, set_tool, set_snap, zoom, scroll_to, palette, inspect, click, drag, key, screenshot |
+| `ui` | focus, toggle_panel, open_piano_roll, select_pattern, set_tool, set_snap, auto_scroll, set_layout, zoom, scroll_to, palette, inspect, click, drag, key, screenshot |
 | `skill` | perform_progression, perform_melody, pedal, humanize, drum_groove, gain_stage, eq_masking, bus_compress, master_to_target, design_sound |
 | `agent` | accept, reject, accept_step, ab_switch |
 
@@ -1213,40 +1215,92 @@ The UI uses egui 0.36 on wgpu with `craft-ui`, the same stack and design languag
 
 ### 14.1 Main window layout
 
-> **Pending change:** the owner will provide a sketch of a new main window layout. It replaces the layout below, so wait for it before building the UI shell in M2.
+The owner's sketch (2026-10-13) sets the default layout: the Browser down the left side, the Channel Rack with the Sampler window under it, the Playlist on the right, and the Mixer along the bottom. In the app the top bar is a single row; it wraps here only to fit the page.
 
 ```
-+------------------------------------------------------------------------------------------+
-| (o)(o)(o) Bodo  File Edit Add Patterns View Options Tools Help                           |
-| [PAT|SONG] > [] (o)  130.000 BPM  1:01:000  CPU ||||  RAM  [Pattern 1 v] [Snap v] [AI]  |
-+---------------+-----------------------------------------------------------+--------------+
-| BROWSER       | PLAYLIST - Arrangement            tools: P B D T S C E Z Y | ASSISTANT    |
-| All Project   | ruler 1   2   3   4   5   6   7   8   9  10               | chat         |
-| Plugins       | Track 1 [Pattern 1====]   [Pattern 1====]                  | agent        |
-| Presets       | Track 2      [Pattern 2===]                                | changes      |
-| Sounds        | Track 3 [~~~~ audio clip ~~~~~~~~]                         | cost meter   |
-| Starred       | Track 4 [/\/\ automation /\/\]                             |              |
-| Marketplace   +-----------------------------+-----------------------------+              |
-|               | CHANNEL RACK                | PIANO ROLL (tab)            |              |
-|               | 1 808 Kick  [x . . . x . .] |                             |              |
-|               | 2 808 Clap  [. . x . . . x] |                             |              |
-+---------------+-----------------------------+-----------------------------+--------------+
-| MIXER  M | 1 | 2 | 3 | 4 | ... | 16 | +              | INSERT 3: in | slots 1-10 | EQ | out |
-+------------------------------------------------------------------------------------------+
-| hint: Drag to move, right-click to delete      | CoreAudio 48 kHz 128 smp | xruns 0    |
-+------------------------------------------------------------------------------------------+
++--------------------------------------------------------------------------------------------------------------------+
+| (o)(o)(o)  File Edit Add Patterns View Options Tools Help    [1][2][3][4]  [5][6]  [130.000 BPM]  ...              |
+|   ...  [a][b][c][d]  [< Pattern 1 >]  [Line v]                 [W][E][S]   [Undo][Redo]   [AI]                     |
++-----------------+----------------------------------------------+---------------------------------------------------+
+| 1. BROWSER      | 2. CHANNEL RACK                              | 4. PLAYLIST                                       |
+| ALL  PROJECT    | [+] [All v]     Channel rack        [graph]  |            | 1     5     9     13    17    21     |
+| PLUGINS  SOUNDS | o (o)(o) [1] 808 Kick  [#...|..#.|#...|....] | Pattern 1  | Track 1 [> Pattern 1 ]               |
+|                 | o (o)(o) [2] 808 Clap  [....|#...|....|#...] | Pattern 2  | Track 2      [> Pattern 1 ]          |
+| Current project | o (o)(o) [3] 808 Hihat [..#.|..#.|..#.|..#.] | Pattern 3  | Track 3                              |
+| Recent files    | o (o)(o) [4] 808 Snare [....|#...|....|#...] | Pattern 4  | Track 4                              |
+| Plugin database +----------------------------------------------+            | Track 5                              |
+| Plugin presets  | 3. SAMPLER (floating window)                 |            | Track 6            [> Pattern 1 ]    |
+| Channel presets | pan   vol   pitch   range   track            |            |                                      |
+| Mixer presets   | File: 808 Kick.wav                           |            |                                      |
+| Scores          | Content            Time stretching           |            |                                      |
+| Audio           | Declicking mode    Precomputed effects       |            |                                      |
+| Backup          | Playback                                     |            |                                      |
+| ...             +--------------------------------------------------------------------------------------------------+
+| Templates       | 5. MIXER  Master | Insert 1 | Insert 2 | ... | Insert 10 | ...       | Mixer - Insert 3          |
+| User data       |           meter, pan, fader, route control on each strip             | in, slots 1-10, EQ, out   |
++-----------------+--------------------------------------------------------------------------------------------------+
 ```
+
+**The top bar,** from left to right:
+
+| Mark | Control | What it does |
+|---|---|---|
+| | Menu | File, Edit, Add, Patterns, View, Options, Tools, Help |
+| 1 | Browser | Shows or hides the Browser sidebar |
+| 2 | Channel Rack | Shows or hides the Channel Rack, where channels (stems, samples, instruments and plugins) are created, added and changed |
+| 3 | Piano Roll | Shows or hides the Piano Roll, where notes are drawn and their velocity and volume edited |
+| 4 | Mixer | Shows or hides the Mixer |
+| 5 | Auto scrolling | Scrolls the Playlist and Piano Roll to keep the playhead in view |
+| 6 | One-click record | Starts recording straight away |
+| | Tempo | The tempo in BPM; drag it, type it or use its arrows |
+| a | Typing keyboard to piano | Plays notes from the computer keyboard |
+| b | Recording precount | Counts in before recording starts |
+| c | Loop record | Keeps recording each time the loop repeats |
+| d | Metronome | Clicks on every beat |
+| | Pattern selector | Shows the current pattern. The arrows step through the patterns, and a click opens the full list |
+| | Snap | Line, Cell, None, 1/6 step, 1/4 step, 1/3 step, 1/2 step, 1 step, then beat values from 1/6 beat up ([10.3](#103-playlist)) |
+| W | Layouts | Switches between saved window layouts |
+| E | Export | Renders the project to audio ([6.8](#68-offline-render)) |
+| S | Save | Saves the project |
+| | Undo, Redo | Steps back and forward through the undo history |
+| AI | Assistant | Opens the Assistant panel: chat, Agent Changes and the cost meter ([13](#13-bodo-assistant)) |
+
+**The panels:**
+
+1. **Browser** (left, full height): project files, plugins, presets and sounds.
+   - Tabs: All, Project, Plugins, Sounds.
+   - Top entries: Current project, Recent files, Plugin database, Plugin presets, Channel presets, Mixer presets, Scores.
+   - Folders: Audio, Backup, Channel envelopes, Clipboard files, Demo projects, Envelopes, Impulses, Marketplace ([15](#15-marketplace)), Misc, My projects, Packs, Project parts, Recorded, Rendered, Sliced audio, Soundfonts, Speech, Templates, User data.
+2. **Channel Rack** (top middle): the step sequencer for kick, clap, hi-hat and the other channels ([10.2](#102-channel-rack)).
+   - The header has an add-channel button, a channel filter and the graph editor.
+   - Each row has a mute LED, pan and volume knobs, the target mixer insert, the channel's name button, and 16 steps in groups of four.
+3. **Sampler** (a floating window, placed under the Channel Rack by default): the settings of a sample channel ([10.2](#102-channel-rack)). A channel's name button opens it.
+4. **Playlist** (right): arranges patterns on the timeline into the song ([10.3](#103-playlist)).
+   - A pattern list on its left shows every pattern in its color, with the current pattern highlighted.
+   - Each track header shows the track name and a mute LED.
+   - Each clip shows its pattern's name and color.
+5. **Mixer** (bottom, from the Browser to the right edge): the Master and the inserts. Each strip has its name, a level meter, a pan knob, a fader and the route control. The insert panel on the right shows the selected insert: input, slots 1 to 10, EQ and output ([9.7](#97-mixer-ui)).
+
+**What a pattern is:** a reusable musical idea, a page of notes. Drums are drawn in the Channel Rack and melodies in the Piano Roll. A pattern has a name and a color, and the Playlist shows every placed pattern with both.
+
+**Not placed in the sketch yet.** These functions stay; where they go is still to be decided with the owner:
+
+- play and stop buttons, and the Pattern/Song switch ([6.6](#66-sequencer)); Space plays and stops either way;
+- the song position display, the CPU meter and the xrun counter ([6.2](#62-device-layer-bodo-kit-device));
+- the Playlist tool buttons ([10.3](#103-playlist)), whose shortcut keys work either way;
+- the hint bar, which describes the control under the cursor, shows its shortcut and gives the result of the last command.
+
+**Behavior:**
 
 - **Docking:** `craft-ui` docking (Split, Tabs, Stack). Every panel can be docked, tabbed, or floated into its own OS window, for example on a second monitor.
-- **Workspaces:** tabs in the top bar switch between saved layouts:
-  - **Compose:** channel rack and piano roll large;
-  - **Arrange:** playlist large;
-  - **Mix:** mixer large;
+- **Layouts:** the Layouts button switches between saved layouts. The sketch above is the default, and there are also:
+  - **Compose:** Channel Rack and Piano Roll large;
+  - **Arrange:** Playlist large;
+  - **Mix:** Mixer large;
   - **Master:** the master insert, analyzer and reference track.
   - Custom layouts can be saved too.
 - **Plugin windows** float above the main window ([7.4](#74-plugin-editors)).
 - **The command palette** (Cmd/Ctrl+K) fuzzy-searches every command, recent actions and the content of the open project.
-- **The hint bar** describes the control under the cursor, shows its shortcut, and gives the result of the last command.
 
 ### 14.2 Design tokens
 
@@ -1288,7 +1342,7 @@ The brand accent is still an open question ([21](#21-risks-and-open-questions)).
 
 - **Fonts:** a light UI sans and a monospace font for numbers, both following pixel3d's font choices. Digits are tabular in time displays, meters and value fields.
 - **Sizes:** small 11.5, body 12.5, mono 12, heading 15, transport time display 20 (mono).
-- **Heights:** rows 22 px, section headers 30, top bar 36, transport row 36, status/hint bar 24.
+- **Heights:** rows 22 px, section headers 30, top bar 40 (the menu and the toolbar share one row), hint bar 24 if it stays ([14.1](#141-main-window-layout)).
 - **Spacing:** item spacing (6, 4), button padding (6, 3).
 - **Radii:** widgets 6, windows and menus 8, cards 8, popups 10, chips 7, key caps 4.
 - **Shadows:** offset (0, 6), blur 18, black at alpha 120 (dark) or 40 (light). Flat surfaces, no glassmorphism.
