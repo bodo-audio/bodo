@@ -1,0 +1,1503 @@
+{
+  "format": "bodo",
+  "format_version": 1,
+  "id": "proj_0000000000000000000000000X",
+  "meta": {
+    "title": "Every entity",
+    "author": "Bodo tests",
+    "credits": [
+      "Clap by someone, CC-BY 4.0"
+    ],
+    "created": "2026-10-13T12:00:00Z"
+  },
+  "settings": {
+    "sampleRate": 44100,
+    "ppq": 960,
+    "panLaw": "linear6dB"
+  },
+  "tempo": [
+    {
+      "at": 0,
+      "bpm": 120.0,
+      "curve": "linear"
+    },
+    {
+      "at": 30720,
+      "bpm": 140.5,
+      "curve": "jump"
+    }
+  ],
+  "meter": [
+    {
+      "bar": 0,
+      "numerator": 4,
+      "denominator": 4
+    },
+    {
+      "bar": 8,
+      "numerator": 7,
+      "denominator": 8
+    }
+  ],
+  "channels": {
+    "ch_0000000000000000000000000C": {
+      "id": "ch_0000000000000000000000000C",
+      "name": "808 Kick",
+      "color": "#f87171",
+      "kind": {
+        "type": "sampler",
+        "sample": "smp_00000000000000000000000009",
+        "rootKey": 48,
+        "keyRange": [
+          24,
+          96
+        ],
+        "envelope": {
+          "attack": 0.001,
+          "decay": 0.2,
+          "sustain": 0.5,
+          "release": 0.3
+        },
+        "start": 0.125,
+        "loopMode": "pingPong",
+        "loopStart": 0.25,
+        "loopEnd": 0.75,
+        "reverse": true,
+        "oneShot": true,
+        "keepOnDisk": true,
+        "polyphony": 4
+      },
+      "target": "ins_00000000000000000000000002",
+      "volume": 0.8,
+      "pan": -0.25,
+      "pitchCents": -12.5,
+      "swing": 0.55,
+      "muted": false,
+      "midiIn": null
+    },
+    "ch_0000000000000000000000000D": {
+      "id": "ch_0000000000000000000000000D",
+      "name": "808 Clap",
+      "color": "#fb923c",
+      "kind": {
+        "type": "sampler",
+        "sample": "smp_0000000000000000000000000A",
+        "rootKey": 60,
+        "keyRange": [
+          0,
+          127
+        ],
+        "envelope": {
+          "attack": 0.0,
+          "decay": 0.0,
+          "sustain": 1.0,
+          "release": 0.01
+        },
+        "start": 0.0,
+        "loopMode": "off",
+        "loopStart": 0.0,
+        "loopEnd": 1.0,
+        "reverse": false,
+        "oneShot": true,
+        "keepOnDisk": false,
+        "polyphony": 32
+      },
+      "target": "ins_00000000000000000000000003",
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": true,
+      "midiIn": null
+    },
+    "ch_0000000000000000000000000E": {
+      "id": "ch_0000000000000000000000000E",
+      "name": "Lead",
+      "color": "#a78bfa",
+      "kind": {
+        "type": "instrument",
+        "plugin": {
+          "instance": "plug_00000000000000000000000006",
+          "format": "clap",
+          "uid": "org.example.synth",
+          "sandbox": "perPlugin"
+        }
+      },
+      "target": "ins_00000000000000000000000004",
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": false,
+      "midiIn": {
+        "port": "Keystation 49",
+        "channel": 3
+      }
+    },
+    "ch_0000000000000000000000000F": {
+      "id": "ch_0000000000000000000000000F",
+      "name": "Break",
+      "color": "#4ade80",
+      "kind": {
+        "type": "audioClip",
+        "sample": "smp_0000000000000000000000000B",
+        "stretch": "stretch"
+      },
+      "target": null,
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": false,
+      "midiIn": null
+    },
+    "ch_0000000000000000000000000G": {
+      "id": "ch_0000000000000000000000000G",
+      "name": "Fader ride",
+      "color": "#22d3ee",
+      "kind": {
+        "type": "automation",
+        "target": {
+          "channel": [
+            "ch_0000000000000000000000000C",
+            "volume"
+          ]
+        },
+        "points": [
+          {
+            "at": 0,
+            "value": 0.0,
+            "curve": {
+              "type": "hold"
+            }
+          },
+          {
+            "at": 960,
+            "value": 0.25,
+            "curve": {
+              "type": "linear"
+            }
+          },
+          {
+            "at": 1920,
+            "value": 0.5,
+            "curve": {
+              "type": "exp",
+              "tension": 0.3
+            }
+          },
+          {
+            "at": 2880,
+            "value": 0.75,
+            "curve": {
+              "type": "sCurve",
+              "tension": -0.4
+            }
+          },
+          {
+            "at": 3840,
+            "value": 1.0,
+            "curve": {
+              "type": "stairs",
+              "tension": 4
+            }
+          },
+          {
+            "at": 4800,
+            "value": 0.6,
+            "curve": {
+              "type": "sine"
+            }
+          },
+          {
+            "at": 5760,
+            "value": 0.1,
+            "curve": {
+              "type": "pulse"
+            }
+          }
+        ],
+        "default": 0.8
+      },
+      "target": null,
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": false,
+      "midiIn": null
+    },
+    "ch_0000000000000000000000000H": {
+      "id": "ch_0000000000000000000000000H",
+      "name": "Drum layer",
+      "color": "#737373",
+      "kind": {
+        "type": "layer",
+        "children": [
+          "ch_0000000000000000000000000C",
+          "ch_0000000000000000000000000D"
+        ]
+      },
+      "target": null,
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": false,
+      "midiIn": null
+    },
+    "ch_0000000000000000000000000J": {
+      "id": "ch_0000000000000000000000000J",
+      "name": "Hardware synth",
+      "color": "#737373",
+      "kind": {
+        "type": "midiOut",
+        "port": "IAC Bus 1",
+        "channel": 9
+      },
+      "target": null,
+      "volume": 1.0,
+      "pan": 0.0,
+      "pitchCents": 0.0,
+      "swing": 0.0,
+      "muted": false,
+      "midiIn": null
+    }
+  },
+  "rackOrder": [
+    "ch_0000000000000000000000000C",
+    "ch_0000000000000000000000000D",
+    "ch_0000000000000000000000000E",
+    "ch_0000000000000000000000000F",
+    "ch_0000000000000000000000000G",
+    "ch_0000000000000000000000000H",
+    "ch_0000000000000000000000000J"
+  ],
+  "patterns": {
+    "pat_0000000000000000000000000K": {
+      "id": "pat_0000000000000000000000000K",
+      "name": "Beat",
+      "color": "#facc15",
+      "length": {
+        "type": "fixed",
+        "ticks": 3840
+      },
+      "binding": null,
+      "notes": {
+        "ch_0000000000000000000000000C": [
+          {
+            "id": 0,
+            "key": 48,
+            "start": 0,
+            "len": 240,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          },
+          {
+            "id": 1,
+            "key": 48,
+            "start": 960,
+            "len": 240,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          },
+          {
+            "id": 2,
+            "key": 48,
+            "start": 1920,
+            "len": 240,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          },
+          {
+            "id": 3,
+            "key": 48,
+            "start": 2880,
+            "len": 240,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          }
+        ],
+        "ch_0000000000000000000000000D": [
+          {
+            "id": 5,
+            "key": 60,
+            "start": 960,
+            "len": 240,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          },
+          {
+            "id": 4,
+            "key": 60,
+            "start": 1680,
+            "len": 120,
+            "velocity": 8192,
+            "releaseVelocity": 4096,
+            "finePitchCents": 7.5,
+            "pan": 0.5,
+            "modX": 0.25,
+            "modY": 0.75,
+            "color": 2,
+            "muted": true,
+            "slide": true,
+            "porta": true,
+            "quantizedStart": 1668,
+            "expr": {
+              "pitch": [
+                {
+                  "at": 0,
+                  "value": 0.0
+                },
+                {
+                  "at": 60,
+                  "value": 1.5
+                }
+              ],
+              "pressure": [
+                {
+                  "at": 10,
+                  "value": 0.5
+                }
+              ],
+              "timbre": []
+            }
+          }
+        ]
+      },
+      "automation": [
+        {
+          "target": {
+            "insert": [
+              "ins_00000000000000000000000002",
+              "pan"
+            ]
+          },
+          "points": [
+            {
+              "at": 0,
+              "value": 0.0,
+              "curve": {
+                "type": "hold"
+              }
+            },
+            {
+              "at": 960,
+              "value": 0.25,
+              "curve": {
+                "type": "linear"
+              }
+            },
+            {
+              "at": 1920,
+              "value": 0.5,
+              "curve": {
+                "type": "exp",
+                "tension": 0.3
+              }
+            },
+            {
+              "at": 2880,
+              "value": 0.75,
+              "curve": {
+                "type": "sCurve",
+                "tension": -0.4
+              }
+            },
+            {
+              "at": 3840,
+              "value": 1.0,
+              "curve": {
+                "type": "stairs",
+                "tension": 4
+              }
+            },
+            {
+              "at": 4800,
+              "value": 0.6,
+              "curve": {
+                "type": "sine"
+              }
+            },
+            {
+              "at": 5760,
+              "value": 0.1,
+              "curve": {
+                "type": "pulse"
+              }
+            }
+          ],
+          "default": 0.5
+        },
+        {
+          "target": {
+            "slot": [
+              "ins_00000000000000000000000004",
+              0,
+              "mix"
+            ]
+          },
+          "points": [
+            {
+              "at": 0,
+              "value": 0.0,
+              "curve": {
+                "type": "hold"
+              }
+            },
+            {
+              "at": 960,
+              "value": 0.25,
+              "curve": {
+                "type": "linear"
+              }
+            },
+            {
+              "at": 1920,
+              "value": 0.5,
+              "curve": {
+                "type": "exp",
+                "tension": 0.3
+              }
+            },
+            {
+              "at": 2880,
+              "value": 0.75,
+              "curve": {
+                "type": "sCurve",
+                "tension": -0.4
+              }
+            },
+            {
+              "at": 3840,
+              "value": 1.0,
+              "curve": {
+                "type": "stairs",
+                "tension": 4
+              }
+            },
+            {
+              "at": 4800,
+              "value": 0.6,
+              "curve": {
+                "type": "sine"
+              }
+            },
+            {
+              "at": 5760,
+              "value": 0.1,
+              "curve": {
+                "type": "pulse"
+              }
+            }
+          ],
+          "default": 1.0
+        },
+        {
+          "target": {
+            "plugin": [
+              "plug_00000000000000000000000006",
+              3
+            ]
+          },
+          "points": [
+            {
+              "at": 0,
+              "value": 0.0,
+              "curve": {
+                "type": "hold"
+              }
+            },
+            {
+              "at": 960,
+              "value": 0.25,
+              "curve": {
+                "type": "linear"
+              }
+            },
+            {
+              "at": 1920,
+              "value": 0.5,
+              "curve": {
+                "type": "exp",
+                "tension": 0.3
+              }
+            },
+            {
+              "at": 2880,
+              "value": 0.75,
+              "curve": {
+                "type": "sCurve",
+                "tension": -0.4
+              }
+            },
+            {
+              "at": 3840,
+              "value": 1.0,
+              "curve": {
+                "type": "stairs",
+                "tension": 4
+              }
+            },
+            {
+              "at": 4800,
+              "value": 0.6,
+              "curve": {
+                "type": "sine"
+              }
+            },
+            {
+              "at": 5760,
+              "value": 0.1,
+              "curve": {
+                "type": "pulse"
+              }
+            }
+          ],
+          "default": 0.2
+        },
+        {
+          "target": {
+            "route": {
+              "from": {
+                "type": "insert",
+                "id": "ins_00000000000000000000000002"
+              },
+              "to": "ins_00000000000000000000000004"
+            }
+          },
+          "points": [
+            {
+              "at": 0,
+              "value": 0.0,
+              "curve": {
+                "type": "hold"
+              }
+            },
+            {
+              "at": 960,
+              "value": 0.25,
+              "curve": {
+                "type": "linear"
+              }
+            },
+            {
+              "at": 1920,
+              "value": 0.5,
+              "curve": {
+                "type": "exp",
+                "tension": 0.3
+              }
+            },
+            {
+              "at": 2880,
+              "value": 0.75,
+              "curve": {
+                "type": "sCurve",
+                "tension": -0.4
+              }
+            },
+            {
+              "at": 3840,
+              "value": 1.0,
+              "curve": {
+                "type": "stairs",
+                "tension": 4
+              }
+            },
+            {
+              "at": 4800,
+              "value": 0.6,
+              "curve": {
+                "type": "sine"
+              }
+            },
+            {
+              "at": 5760,
+              "value": 0.1,
+              "curve": {
+                "type": "pulse"
+              }
+            }
+          ],
+          "default": 0.5
+        },
+        {
+          "target": "tempo",
+          "points": [
+            {
+              "at": 0,
+              "value": 0.0,
+              "curve": {
+                "type": "hold"
+              }
+            },
+            {
+              "at": 960,
+              "value": 0.25,
+              "curve": {
+                "type": "linear"
+              }
+            },
+            {
+              "at": 1920,
+              "value": 0.5,
+              "curve": {
+                "type": "exp",
+                "tension": 0.3
+              }
+            },
+            {
+              "at": 2880,
+              "value": 0.75,
+              "curve": {
+                "type": "sCurve",
+                "tension": -0.4
+              }
+            },
+            {
+              "at": 3840,
+              "value": 1.0,
+              "curve": {
+                "type": "stairs",
+                "tension": 4
+              }
+            },
+            {
+              "at": 4800,
+              "value": 0.6,
+              "curve": {
+                "type": "sine"
+              }
+            },
+            {
+              "at": 5760,
+              "value": 0.1,
+              "curve": {
+                "type": "pulse"
+              }
+            }
+          ],
+          "default": 0.3
+        }
+      ],
+      "nextNoteId": 6
+    },
+    "pat_0000000000000000000000000M": {
+      "id": "pat_0000000000000000000000000M",
+      "name": "Lead line",
+      "color": "#a78bfa",
+      "length": {
+        "type": "auto"
+      },
+      "binding": "ch_0000000000000000000000000E",
+      "notes": {
+        "ch_0000000000000000000000000E": [
+          {
+            "id": 0,
+            "key": 72,
+            "start": 0,
+            "len": 1920,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          },
+          {
+            "id": 1,
+            "key": 74,
+            "start": 1920,
+            "len": 1920,
+            "velocity": 32768,
+            "releaseVelocity": 32768,
+            "finePitchCents": 0.0,
+            "pan": 0.0,
+            "modX": 0.0,
+            "modY": 0.0,
+            "color": 0,
+            "muted": false,
+            "slide": false,
+            "porta": false,
+            "quantizedStart": null,
+            "expr": null
+          }
+        ]
+      },
+      "automation": [],
+      "nextNoteId": 2
+    }
+  },
+  "tracks": {
+    "trk_0000000000000000000000000N": {
+      "id": "trk_0000000000000000000000000N",
+      "name": "Drums",
+      "color": "#f87171",
+      "height": 48.0,
+      "muted": false,
+      "locked": false,
+      "clips": [
+        {
+          "id": "clip_0000000000000000000000000P",
+          "start": 0,
+          "len": 3840,
+          "offset": {
+            "type": "ticks",
+            "value": 0
+          },
+          "muted": false,
+          "color": null,
+          "source": {
+            "type": "pattern",
+            "id": "pat_0000000000000000000000000K"
+          },
+          "fades": null
+        },
+        {
+          "id": "clip_0000000000000000000000000Q",
+          "start": 3840,
+          "len": 7680,
+          "offset": {
+            "type": "ticks",
+            "value": 960
+          },
+          "muted": true,
+          "color": "#34d399",
+          "source": {
+            "type": "pattern",
+            "id": "pat_0000000000000000000000000K"
+          },
+          "fades": null
+        }
+      ]
+    },
+    "trk_0000000000000000000000000R": {
+      "id": "trk_0000000000000000000000000R",
+      "name": "Break",
+      "color": "#4ade80",
+      "height": 96.0,
+      "muted": false,
+      "locked": false,
+      "clips": [
+        {
+          "id": "clip_0000000000000000000000000S",
+          "start": 1920,
+          "len": 7680,
+          "offset": {
+            "type": "frames",
+            "value": 1200
+          },
+          "muted": false,
+          "color": null,
+          "source": {
+            "type": "audio",
+            "id": "ch_0000000000000000000000000F"
+          },
+          "fades": {
+            "fadeIn": 30,
+            "fadeOut": 240
+          }
+        }
+      ]
+    },
+    "trk_0000000000000000000000000T": {
+      "id": "trk_0000000000000000000000000T",
+      "name": "Automation",
+      "color": "#22d3ee",
+      "height": 48.0,
+      "muted": true,
+      "locked": true,
+      "clips": [
+        {
+          "id": "clip_0000000000000000000000000V",
+          "start": 0,
+          "len": 15360,
+          "offset": {
+            "type": "ticks",
+            "value": 0
+          },
+          "muted": false,
+          "color": null,
+          "source": {
+            "type": "automation",
+            "id": "ch_0000000000000000000000000G"
+          },
+          "fades": null
+        },
+        {
+          "id": "clip_0000000000000000000000000W",
+          "start": 0,
+          "len": 3840,
+          "offset": {
+            "type": "ticks",
+            "value": 0
+          },
+          "muted": false,
+          "color": null,
+          "source": {
+            "type": "pattern",
+            "id": "pat_0000000000000000000000000M"
+          },
+          "fades": null
+        }
+      ]
+    }
+  },
+  "trackOrder": [
+    "trk_0000000000000000000000000N",
+    "trk_0000000000000000000000000R",
+    "trk_0000000000000000000000000T"
+  ],
+  "mixer": {
+    "master": {
+      "id": "ins_00000000000000000000000001",
+      "name": "Master",
+      "color": "#737373",
+      "slots": [
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": null,
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        },
+        {
+          "plugin": {
+            "instance": "plug_00000000000000000000000008",
+            "format": "vst3",
+            "uid": "ABCDEF0123456789ABCDEF0123456789",
+            "sandbox": "sharedBridge"
+          },
+          "enabled": true,
+          "mix": 1.0,
+          "sidechain": null
+        }
+      ],
+      "eq": {
+        "low": {
+          "frequency": 120.0,
+          "gainDb": 0.0,
+          "q": 0.70710677
+        },
+        "mid": {
+          "frequency": 1200.0,
+          "gainDb": 0.0,
+          "q": 0.70710677
+        },
+        "high": {
+          "frequency": 8000.0,
+          "gainDb": 0.0,
+          "q": 0.70710677
+        }
+      },
+      "volumeDb": -0.5,
+      "pan": 0.0,
+      "stereoSep": 0.0,
+      "polarityInvert": false,
+      "swapLr": false,
+      "latencyOffset": 0,
+      "pdcBypass": "never",
+      "muted": false,
+      "solo": false,
+      "toMaster": true,
+      "input": null,
+      "output": null,
+      "armed": false,
+      "recordTap": "postFader",
+      "recordFormat": "float32"
+    },
+    "inserts": {
+      "ins_00000000000000000000000002": {
+        "id": "ins_00000000000000000000000002",
+        "name": "Insert 1",
+        "color": "#737373",
+        "slots": [
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          }
+        ],
+        "eq": {
+          "low": {
+            "frequency": 120.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "mid": {
+            "frequency": 1200.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "high": {
+            "frequency": 8000.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          }
+        },
+        "volumeDb": 0.0,
+        "pan": 0.0,
+        "stereoSep": 0.0,
+        "polarityInvert": false,
+        "swapLr": false,
+        "latencyOffset": 0,
+        "pdcBypass": "never",
+        "muted": false,
+        "solo": false,
+        "toMaster": true,
+        "input": null,
+        "output": null,
+        "armed": false,
+        "recordTap": "postFader",
+        "recordFormat": "float32"
+      },
+      "ins_00000000000000000000000003": {
+        "id": "ins_00000000000000000000000003",
+        "name": "Insert 2",
+        "color": "#737373",
+        "slots": [
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          }
+        ],
+        "eq": {
+          "low": {
+            "frequency": 120.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "mid": {
+            "frequency": 1200.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "high": {
+            "frequency": 8000.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          }
+        },
+        "volumeDb": 0.0,
+        "pan": 0.0,
+        "stereoSep": 0.0,
+        "polarityInvert": false,
+        "swapLr": false,
+        "latencyOffset": 0,
+        "pdcBypass": "never",
+        "muted": false,
+        "solo": false,
+        "toMaster": true,
+        "input": null,
+        "output": null,
+        "armed": false,
+        "recordTap": "postFader",
+        "recordFormat": "float32"
+      },
+      "ins_00000000000000000000000004": {
+        "id": "ins_00000000000000000000000004",
+        "name": "Insert 3",
+        "color": "#737373",
+        "slots": [
+          {
+            "plugin": {
+              "instance": "plug_00000000000000000000000007",
+              "format": "native",
+              "uid": "dev.bodo.comp",
+              "sandbox": "inProcess"
+            },
+            "enabled": true,
+            "mix": 0.75,
+            "sidechain": {
+              "type": "insert",
+              "id": "ins_00000000000000000000000003"
+            }
+          },
+          {
+            "plugin": null,
+            "enabled": false,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          }
+        ],
+        "eq": {
+          "low": {
+            "frequency": 120.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "mid": {
+            "frequency": 1200.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "high": {
+            "frequency": 8000.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          }
+        },
+        "volumeDb": 0.0,
+        "pan": 0.0,
+        "stereoSep": 0.0,
+        "polarityInvert": false,
+        "swapLr": false,
+        "latencyOffset": 0,
+        "pdcBypass": "never",
+        "muted": false,
+        "solo": false,
+        "toMaster": true,
+        "input": null,
+        "output": null,
+        "armed": false,
+        "recordTap": "postFader",
+        "recordFormat": "float32"
+      },
+      "ins_00000000000000000000000005": {
+        "id": "ins_00000000000000000000000005",
+        "name": "Cue",
+        "color": "#60a5fa",
+        "slots": [
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          },
+          {
+            "plugin": null,
+            "enabled": true,
+            "mix": 1.0,
+            "sidechain": null
+          }
+        ],
+        "eq": {
+          "low": {
+            "frequency": 80.0,
+            "gainDb": 2.5,
+            "q": 0.5
+          },
+          "mid": {
+            "frequency": 1200.0,
+            "gainDb": 0.0,
+            "q": 0.70710677
+          },
+          "high": {
+            "frequency": 8000.0,
+            "gainDb": -1.5,
+            "q": 0.70710677
+          }
+        },
+        "volumeDb": -3.5,
+        "pan": 0.25,
+        "stereoSep": -0.5,
+        "polarityInvert": true,
+        "swapLr": true,
+        "latencyOffset": -64,
+        "pdcBypass": "whileRecording",
+        "muted": true,
+        "solo": true,
+        "toMaster": false,
+        "input": {
+          "channels": [
+            0,
+            1
+          ]
+        },
+        "output": {
+          "channels": [
+            2
+          ]
+        },
+        "armed": true,
+        "recordTap": "preFx",
+        "recordFormat": "flac"
+      }
+    },
+    "order": [
+      "ins_00000000000000000000000002",
+      "ins_00000000000000000000000003",
+      "ins_00000000000000000000000004",
+      "ins_00000000000000000000000005"
+    ],
+    "routes": [
+      {
+        "from": {
+          "type": "channel",
+          "id": "ch_0000000000000000000000000C"
+        },
+        "to": "ins_00000000000000000000000003",
+        "sendLevel": 0.25,
+        "tap": "preFx",
+        "kind": "audio"
+      },
+      {
+        "from": {
+          "type": "insert",
+          "id": "ins_00000000000000000000000002"
+        },
+        "to": "ins_00000000000000000000000004",
+        "sendLevel": 0.5,
+        "tap": "postFader",
+        "kind": "audio"
+      },
+      {
+        "from": {
+          "type": "insert",
+          "id": "ins_00000000000000000000000003"
+        },
+        "to": "ins_00000000000000000000000004",
+        "sendLevel": 1.0,
+        "tap": "preFader",
+        "kind": "sidechain"
+      }
+    ]
+  },
+  "samples": {
+    "smp_00000000000000000000000009": {
+      "id": "smp_00000000000000000000000009",
+      "path": "Samples/kick.wav",
+      "hash": "abababababababababababababababababababababababababababababababab",
+      "market": null
+    },
+    "smp_0000000000000000000000000A": {
+      "id": "smp_0000000000000000000000000A",
+      "path": "factory:drums/clap.wav",
+      "hash": null,
+      "market": {
+        "package": "bodo.drums",
+        "version": "1.0.0",
+        "item": "clap.wav"
+      }
+    },
+    "smp_0000000000000000000000000B": {
+      "id": "smp_0000000000000000000000000B",
+      "path": "Loops/break.wav",
+      "hash": null,
+      "market": null
+    }
+  },
+  "markers": [
+    {
+      "at": 0,
+      "name": "Intro",
+      "color": null
+    },
+    {
+      "at": 15360,
+      "name": "Drop",
+      "color": "#facc15"
+    }
+  ]
+}

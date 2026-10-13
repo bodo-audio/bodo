@@ -9,7 +9,10 @@ use bodo_kit_core::{Frames, SampleRate, Seconds, TempoCurve, TempoMap, TempoPoin
 use bodo_kit_dsp::envelope::AdsrParams;
 use bodo_kit_dsp::pan::PanLaw;
 use bodo_model::automation::{AutoPoint, AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget, SlotParam};
-use bodo_model::channel::{ChannelKind, LoopMode, MidiBinding, PluginFormat, PluginRef, SamplerParams, SandboxMode, StretchMode};
+use bodo_model::channel::{
+    ArpDirection, Arpeggiator, ChannelKind, Declick, FilterKind, LoopMode, MidiBinding, ModEnvelope, PluginFormat, PluginRef, SampleEffects,
+    SamplerFilter, SamplerParams, SamplerStretch, SamplerStretchMode, SandboxMode, StretchMode,
+};
 use bodo_model::meter::MeterChange;
 use bodo_model::mixer::{EqBand, HwPort, PdcBypass, RecordFormat, RecordTap, Route, RouteKind, SendTap};
 use bodo_model::pattern::{ExprPoint, NoteExpression, PatternLen};
@@ -135,6 +138,37 @@ pub fn full() -> (Project, PluginIds) {
         one_shot: true,
         keep_on_disk: true,
         polyphony: 4,
+        end: 0.875,
+        start_offset: 0.0625,
+        resample: false,
+        load_regions: true,
+        load_slices: true,
+        pitch_range: 12.0,
+        declick: Declick::Smooth,
+        stretch: SamplerStretch { mode: SamplerStretchMode::Stretch, pitch_cents: -150.0, multiplier: 1.5, time_beats: Some(4.0) },
+        effects: SampleEffects {
+            trim: true,
+            remove_dc: true,
+            normalize: true,
+            reverse_polarity: true,
+            swap_stereo: true,
+            fade_stereo: true,
+            fade_in: 0.01,
+            fade_out: 0.25,
+            crossfade: 0.125,
+        },
+        filter: SamplerFilter { kind: FilterKind::BandPass, cutoff: 900.0, resonance: 0.5, key_tracking: 0.75 },
+        filter_envelope: ModEnvelope {
+            enabled: true,
+            adsr: AdsrParams { attack: Seconds(0.01), decay: Seconds(0.4), sustain: 0.25, release: Seconds(0.5) },
+            amount: 3.0,
+        },
+        pitch_envelope: ModEnvelope {
+            enabled: true,
+            adsr: AdsrParams { attack: Seconds(0.0), decay: Seconds(0.05), sustain: 0.0, release: Seconds(0.05) },
+            amount: -12.0,
+        },
+        arp: Arpeggiator { enabled: true, direction: ArpDirection::UpDown, rate: 120, gate: 0.75, octaves: 2, repeat: 3 },
     };
     let lane = |target, default| AutomationLane {
         target,
