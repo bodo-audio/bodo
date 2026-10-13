@@ -22,9 +22,9 @@ fn fixture() -> Session {
     session
 }
 
-/// Commands that read or write files outside the test's control; the beat test covers them.
-const FILE_COMMANDS: [&str; 6] =
-    ["project.open", "project.save", "project.save_as", "project.import_midi", "pattern.export_midi", "project.export_midi"];
+/// Commands that read or write files outside the test's control; the beat, MIDI and recording tests cover them.
+const FILE_COMMANDS: [&str; 7] =
+    ["project.open", "project.save", "project.save_as", "project.import_midi", "pattern.export_midi", "project.export_midi", "recording.add_takes"];
 
 /// Commands whose examples act on an audio clip channel named Crash, which the fixture gets first for them.
 const NEED_AUDIO: [&str; 2] = ["clip.place_audio", "clip.set_stretch"];

@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "format": "int24",
+    "insert": 1
+  },
+  "result": {
+    "format": "int24",
+    "insert": 1
+  },
+  "undo": "Set record format"
+}

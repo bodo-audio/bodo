@@ -79,7 +79,12 @@ fn set_loop(ctx: &mut Ctx<'_>, p: SetLoop) -> Result<Value, CommandError> {
 }
 
 fn state(ctx: &Ctx<'_>) -> Value {
-    json!({ "playing": ctx.transport.playing, "mode": ctx.transport.mode, "position": format_position(&ctx.project, ctx.transport.position) })
+    json!({
+        "playing": ctx.transport.playing,
+        "recording": ctx.transport.recording,
+        "mode": ctx.transport.mode,
+        "position": format_position(&ctx.project, ctx.transport.position),
+    })
 }
 
 fn play(ctx: &mut Ctx<'_>) -> Value {
@@ -94,6 +99,17 @@ fn stop(ctx: &mut Ctx<'_>) -> Value {
     ctx.transport.position = Tick::ZERO;
     ctx.emit(Event::Stop);
     ctx.emit(Event::Seek(Tick::ZERO));
+    state(ctx)
+}
+
+/// Starts recording the armed inserts while playing, or stops a recording.
+fn record(ctx: &mut Ctx<'_>) -> Value {
+    if ctx.transport.recording {
+        return stop(ctx);
+    }
+    ctx.transport.recording = true;
+    ctx.transport.playing = true;
+    ctx.emit(Event::Record);
     state(ctx)
 }
 
@@ -121,6 +137,14 @@ pub(super) fn register(r: &mut Registry) {
     })
     .example(json!({}))
     .shortcut("Space");
+    r.edit(
+        "transport.record",
+        "Record",
+        "Starts playing and recording the armed inserts, or stops a recording; the takes land on the playlist.",
+        Effects::NONE,
+        |ctx, _: NoParams| Ok(record(ctx)),
+    )
+    .example(json!({}));
     r.edit("transport.set_position", "Set song position", "Moves the playhead.", Effects::NONE, set_position).example(json!({ "at": "2:1:0" }));
     r.edit(
         "transport.set_mode",

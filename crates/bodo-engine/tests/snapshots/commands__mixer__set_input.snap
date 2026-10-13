@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channels": [
+      0,
+      1
+    ],
+    "insert": 1
+  },
+  "result": {
+    "channels": [
+      0,
+      1
+    ],
+    "insert": 1
+  },
+  "undo": "Set insert input"
+}

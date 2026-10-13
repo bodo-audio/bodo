@@ -9,7 +9,8 @@ expression: snapshot
   "result": {
     "mode": "song",
     "playing": false,
-    "position": "1:1:0"
+    "position": "1:1:0",
+    "recording": false
   },
   "undo": null
 }

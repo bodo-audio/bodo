@@ -1047,6 +1047,26 @@ Example:
 }
 ```
 
+### `mixer.arm`
+
+Arms an insert for recording, or disarms it; toggles without `on`. An armed insert monitors its input.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `on` | boolean, optional | Armed or not; toggles when left out. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "on": true
+}
+```
+
 ### `mixer.mute`
 
 Mutes or unmutes an insert; toggles without `on`.
@@ -1144,6 +1164,29 @@ Example:
 }
 ```
 
+### `mixer.set_input`
+
+Sets the device input channels an insert records and monitors, or none.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channels` | array, optional | The device input channels it records and monitors, counted from 0: one for mono, two for stereo. Null for none. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "channels": [
+    0,
+    1
+  ],
+  "insert": 1
+}
+```
+
 ### `mixer.set_pan`
 
 Sets an insert's pan from -1 to 1.
@@ -1182,6 +1225,46 @@ Example:
 {
   "insert": 1,
   "on": true
+}
+```
+
+### `mixer.set_record_format`
+
+Sets the file format an insert records in.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `format` | Format | The file format. |
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+
+Example:
+
+```json
+{
+  "format": "int24",
+  "insert": 1
+}
+```
+
+### `mixer.set_record_tap`
+
+Sets where on its strip an armed insert records from.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `insert` | InsertRef, optional | The insert; the selected insert by default. |
+| `tap` | Tap | Where on the strip it records. |
+
+Example:
+
+```json
+{
+  "insert": 1,
+  "tap": "input"
 }
 ```
 
@@ -2301,6 +2384,33 @@ Example:
 }
 ```
 
+## recording
+
+### `recording.add_takes`
+
+Places recorded takes on the playlist: a sample, an audio clip channel into the recording insert, and a clip for each.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `takes` | array of TakeSpec | The takes of one recording. |
+
+Example:
+
+```json
+{
+  "takes": [
+    {
+      "frames": 96000,
+      "insert": 1,
+      "path": "Recorded/Insert 1_1.wav",
+      "start": "2:1:0"
+    }
+  ]
+}
+```
+
 ## transport
 
 ### `transport.count_in`
@@ -2340,6 +2450,20 @@ Example:
 ### `transport.play`
 
 Starts playing from the song position.
+
+- Effects: none
+
+No params.
+
+Example:
+
+```json
+{}
+```
+
+### `transport.record`
+
+Starts playing and recording the armed inserts, or stops a recording; the takes land on the playlist.
 
 - Effects: none
 
