@@ -187,6 +187,7 @@ fn add(ctx: &mut Ctx<'_>, p: Add) -> Result<Value, CommandError> {
         swing: 0.0,
         muted: false,
         midi_in: None,
+        group: None,
     };
     ctx.project.channels.insert(id, Arc::new(channel));
     ctx.project.rack_order.push_back(id);

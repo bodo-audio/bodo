@@ -79,6 +79,7 @@ impl Builder {
             swing: 0.0,
             muted: false,
             midi_in: None,
+            group: None,
         };
         self.project.channels.insert(id, Arc::new(channel));
         self.project.rack_order.push_back(id);

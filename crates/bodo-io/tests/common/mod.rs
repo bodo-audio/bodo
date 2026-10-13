@@ -57,7 +57,20 @@ impl Ids {
 }
 
 fn channel(id: ChannelId, name: &str, color: Color, kind: ChannelKind) -> Channel {
-    Channel { id, name: name.into(), color, kind, target: None, volume: 1.0, pan: 0.0, pitch_cents: 0.0, swing: 0.0, muted: false, midi_in: None }
+    Channel {
+        id,
+        name: name.into(),
+        color,
+        kind,
+        target: None,
+        volume: 1.0,
+        pan: 0.0,
+        pitch_cents: 0.0,
+        swing: 0.0,
+        muted: false,
+        midi_in: None,
+        group: None,
+    }
 }
 
 fn clip(id: ClipId, start: i64, len: i64, source: ClipSource) -> Clip {
@@ -143,6 +156,7 @@ pub fn full() -> (Project, PluginIds) {
     kick_channel.pan = -0.25;
     kick_channel.pitch_cents = -12.5;
     kick_channel.swing = 0.55;
+    kick_channel.group = Some(String::from("Drums"));
     let mut clap_channel = channel(
         clap,
         "808 Clap",
@@ -151,6 +165,7 @@ pub fn full() -> (Project, PluginIds) {
     );
     clap_channel.target = Some(inserts[1]);
     clap_channel.muted = true;
+    clap_channel.group = Some(String::from("Drums"));
     let mut synth_channel = channel(
         synth,
         "Lead",
@@ -296,6 +311,9 @@ pub fn full() -> (Project, PluginIds) {
     break_clip.fades = Some(Fades { fade_in: Tick(30), fade_out: Tick(240) });
     audio.insert_clip(break_clip);
     audio.height = 96.0;
+    audio.solo = true;
+    drums.group = Some(String::from("Rhythm"));
+    audio.group = Some(String::from("Rhythm"));
     let auto_id = TrackId::from_u128(ids.next());
     let mut auto = PlaylistTrack::new(auto_id, "Automation", Color::rgb(0x22, 0xd3, 0xee));
     auto.insert_clip(clip(ClipId::from_u128(ids.next()), 0, 15_360, ClipSource::Automation(ride)));

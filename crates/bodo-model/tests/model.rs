@@ -37,6 +37,7 @@ fn channel(id: ChannelId, name: &str, kind: ChannelKind, target: Option<InsertId
         swing: 0.0,
         muted: false,
         midi_in: None,
+        group: None,
     })
 }
 

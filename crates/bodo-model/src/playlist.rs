@@ -25,6 +25,13 @@ pub struct PlaylistTrack {
     /// Whether the track is locked against edits.
     #[serde(default)]
     pub locked: bool,
+    /// Whether the track is soloed: while any track is, only soloed tracks play.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub solo: bool,
+    /// The track group it belongs to, by name. A group's tracks sit next to each other in the playlist and fold under
+    /// its header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
     /// The clips, sorted by start.
     #[serde(default)]
     pub clips: Vector<Clip>,
@@ -34,10 +41,19 @@ fn default_height() -> f32 {
     48.0
 }
 
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
 impl PlaylistTrack {
     /// An empty track.
     pub fn new(id: TrackId, name: impl Into<String>, color: Color) -> Self {
-        Self { id, name: name.into(), color, height: default_height(), muted: false, locked: false, clips: Vector::new() }
+        Self { id, name: name.into(), color, height: default_height(), muted: false, locked: false, solo: false, group: None, clips: Vector::new() }
+    }
+
+    /// Whether the track plays: it isn't muted, and either it is soloed or no track is (see [`any_solo`]).
+    pub fn plays(&self, any_solo: bool) -> bool {
+        !self.muted && (self.solo || !any_solo)
     }
 
     /// Adds a clip in its sorted place, after any clips with the same start.
@@ -50,6 +66,13 @@ impl PlaylistTrack {
             .unwrap_or_else(|i| i);
         self.clips.insert(index, clip);
     }
+}
+
+/// Whether any of `tracks` is soloed, which silences every track that isn't.
+///
+/// Complexity: O(t) in tracks.
+pub fn any_solo<'a>(tracks: impl IntoIterator<Item = &'a std::sync::Arc<PlaylistTrack>>) -> bool {
+    tracks.into_iter().any(|t| t.solo)
 }
 
 /// A clip on a playlist track.

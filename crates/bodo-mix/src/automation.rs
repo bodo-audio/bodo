@@ -241,7 +241,8 @@ impl AutomationIndex {
                 index.lanes.push(lane);
             }
         }
-        for track in project.track_order.iter().filter_map(|id| project.tracks.get(id)).filter(|t| !t.muted) {
+        let solo = bodo_model::playlist::any_solo(project.tracks.values());
+        for track in project.track_order.iter().filter_map(|id| project.tracks.get(id)).filter(|t| t.plays(solo)) {
             for clip in track.clips.iter().filter(|c| !c.muted) {
                 let offset = match clip.offset {
                     ClipOffset::Ticks(t) => t.0,

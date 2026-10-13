@@ -96,11 +96,12 @@ impl AudioIndex {
     ///
     /// Allocates. Complexity: O(n log n) in clips.
     pub fn build(project: &Project) -> Self {
+        let solo = bodo_model::playlist::any_solo(project.tracks.values());
         let tracks = project
             .track_order
             .iter()
             .filter_map(|id| project.tracks.get(id))
-            .filter(|track| !track.muted)
+            .filter(|track| track.plays(solo))
             .map(|track| {
                 let clips: Vec<IndexedAudioClip> = track
                     .clips

@@ -73,7 +73,8 @@
       "pitchCents": -12.5,
       "swing": 0.55,
       "muted": false,
-      "midiIn": null
+      "midiIn": null,
+      "group": "Drums"
     },
     "ch_0000000000000000000000000D": {
       "id": "ch_0000000000000000000000000D",
@@ -108,7 +109,8 @@
       "pitchCents": 0.0,
       "swing": 0.0,
       "muted": true,
-      "midiIn": null
+      "midiIn": null,
+      "group": "Drums"
     },
     "ch_0000000000000000000000000E": {
       "id": "ch_0000000000000000000000000E",
@@ -793,6 +795,7 @@
       "height": 48.0,
       "muted": false,
       "locked": false,
+      "group": "Rhythm",
       "clips": [
         {
           "id": "clip_0000000000000000000000000P",
@@ -835,6 +838,8 @@
       "height": 96.0,
       "muted": false,
       "locked": false,
+      "solo": true,
+      "group": "Rhythm",
       "clips": [
         {
           "id": "clip_0000000000000000000000000S",

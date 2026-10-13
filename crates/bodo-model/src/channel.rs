@@ -43,6 +43,9 @@ pub struct Channel {
     /// A MIDI input that plays the channel.
     #[serde(default)]
     pub midi_in: Option<MidiBinding>,
+    /// The channel rack group it belongs to, by name; `None` leaves it unsorted (project.md section 10.2).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<String>,
 }
 
 fn unity() -> f32 {

@@ -446,6 +446,7 @@ fn create_for(ctx: &mut Ctx<'_>, p: CreateFor) -> Result<Value, CommandError> {
             swing: 0.0,
             muted: false,
             midi_in: None,
+            group: None,
         }),
     );
     ctx.project.rack_order.push_back(id);

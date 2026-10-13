@@ -63,6 +63,7 @@ fn automation_and_the_loop_do_not_allocate() {
             swing: 0.0,
             muted: false,
             midi_in: None,
+            group: None,
         }),
     );
     b.project.rack_order.push_back(auto);

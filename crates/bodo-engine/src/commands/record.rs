@@ -241,6 +241,7 @@ fn add_takes(ctx: &mut Ctx<'_>, p: AddTakes) -> Result<Value, CommandError> {
                 swing: 0.0,
                 muted: false,
                 midi_in: None,
+                group: None,
             }),
         );
         ctx.project.rack_order.push_back(channel);

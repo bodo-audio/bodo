@@ -91,6 +91,7 @@ pub fn new_project(template: Template, ids: &mut IdSource, env: &Env, created: O
                     swing: 0.0,
                     muted: false,
                     midi_in: None,
+                    group: None,
                 }),
             );
             project.rack_order.push_back(channel);

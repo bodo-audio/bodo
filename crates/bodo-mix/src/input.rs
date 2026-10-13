@@ -184,6 +184,7 @@ mod tests {
             swing: 0.0,
             muted: false,
             midi_in,
+            group: None,
         })
     }
 

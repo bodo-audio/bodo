@@ -140,11 +140,12 @@ impl SongIndex {
         channels.dedup();
         pattern_lookup.sort_unstable();
         let mut instance = 0u32;
+        let solo = bodo_model::playlist::any_solo(project.tracks.values());
         let tracks = project
             .track_order
             .iter()
             .filter_map(|id| project.tracks.get(id))
-            .filter(|track| !track.muted)
+            .filter(|track| track.plays(solo))
             .map(|track| {
                 let clips: Vec<IndexedClip> = track
                     .clips
