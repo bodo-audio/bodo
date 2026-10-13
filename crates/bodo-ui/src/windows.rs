@@ -19,12 +19,13 @@ const MIN_SIZE: Vec2 = vec2(260.0, 120.0);
 const GRIP: f32 = 6.0;
 
 /// A free window.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum WindowKind {
     /// The step sequencer (it floats, but never leaves the main window).
     ChannelRack,
     /// The arrangement.
+    #[default]
     Playlist,
     /// The note editor.
     PianoRoll,

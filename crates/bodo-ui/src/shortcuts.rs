@@ -75,7 +75,11 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             let _ = app.run("ui.toggle_window", json!({ "window": kind.id() }));
         }
     }
+    let piano = app.view.editor == WindowKind::PianoRoll && app.prefs.layout.is_open(WindowKind::PianoRoll);
     for tool in crate::playlist::Tool::ALL {
+        if piano && !crate::piano_roll::TOOLS.contains(&tool) {
+            continue;
+        }
         if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, tool.key())) {
             let _ = app.run("ui.set_tool", json!({ "tool": tool.label() }));
         }

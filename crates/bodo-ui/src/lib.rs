@@ -38,6 +38,8 @@ use bodo_model::Project;
 use serde_json::{Value, json};
 
 pub use crate::autosave::{end_session, start_session};
+pub use crate::piano_roll::{Lane, PianoView};
+pub use crate::playlist::{PlaylistView, Tool};
 use crate::theme::{ThemePref, Tokens};
 use crate::windows::{Layout, Preset, WindowKind};
 
@@ -212,6 +214,8 @@ pub struct View {
     pub hint: Option<String>,
     /// The gesture of the step stroke being painted, so it is one undo step.
     pub step_gesture: Option<u64>,
+    /// The editor the tool keys and arrow keys act on: the playlist or the piano roll, whichever was used last.
+    pub editor: WindowKind,
 }
 
 /// The main window.
@@ -365,6 +369,9 @@ impl BodoApp {
                             self.prefs.layout.windows.insert(kind, state);
                         }
                     }
+                    if matches!(kind, WindowKind::Playlist | WindowKind::PianoRoll) && self.prefs.layout.is_open(kind) {
+                        self.view.editor = kind;
+                    }
                     Ok(json!({ "window": kind.id(), "open": self.prefs.layout.is_open(kind) }))
                 }
                 None => Err(String::from("window must be channelRack, playlist, pianoRoll or mixer")),
@@ -395,7 +402,20 @@ impl BodoApp {
                 }
                 None => Err(String::from("theme must be Dark, Light or System")),
             },
-            "ui.set_tool" => playlist::set_tool(self, &text("tool")),
+            "ui.set_tool" => {
+                let target = match params.get("window").and_then(Value::as_str) {
+                    Some(window) => WindowKind::from_id(window),
+                    None if self.view.editor == WindowKind::PianoRoll && self.prefs.layout.is_open(WindowKind::PianoRoll) => {
+                        Some(WindowKind::PianoRoll)
+                    }
+                    None => Some(WindowKind::Playlist),
+                };
+                match target {
+                    Some(WindowKind::PianoRoll) => piano_roll::set_tool(self, &text("tool")),
+                    Some(WindowKind::Playlist) => playlist::set_tool(self, &text("tool")),
+                    _ => Err(String::from("window must be playlist or pianoRoll")),
+                }
+            }
             "ui.open_piano_roll" => {
                 if let Some(channel) = params.get("channel").filter(|c| !c.is_null())
                     && let Err(e) = self.session.execute("edit.select", json!({ "channel": channel }))
@@ -409,6 +429,7 @@ impl BodoApp {
                     state.open = true;
                     self.prefs.layout.windows.insert(WindowKind::PianoRoll, state);
                 }
+                self.view.editor = WindowKind::PianoRoll;
                 Ok(json!({ "channel": self.session.editor().channel }))
             }
             "ui.palette" => {
@@ -436,7 +457,11 @@ impl BodoApp {
                 "Sets the editors' snap: {\"snap\": \"None\" | \"1/4 step\" | \"Step\" | \"1/2 beat\" | \"Beat\" | \"Bar\" ...}.",
             ),
             ("ui.set_theme", "Set theme", "Sets the theme: {\"theme\": \"Dark\" | \"Light\" | \"System\"}."),
-            ("ui.set_tool", "Set playlist tool", "Sets the playlist's tool: draw, paint, delete, mute, slip, slice, select, zoom or playback."),
+            (
+                "ui.set_tool",
+                "Set tool",
+                "Sets the tool of the editor used last, or of {\"window\": \"playlist\" or \"pianoRoll\"}: draw, paint, delete, mute, slip (playlist only), slice, select, zoom or playback.",
+            ),
             ("ui.open_piano_roll", "Open piano roll", "Opens the piano roll, optionally for a channel: {\"channel\": \"Kick\"}."),
             ("ui.palette", "Command palette", "Opens the command palette."),
         ]
@@ -518,6 +543,16 @@ impl BodoApp {
             mixer::window(self, ui.ctx(), workspace, &project);
             rack::window(self, ui.ctx(), workspace, &project);
             piano_roll::window(self, ui.ctx(), workspace, &project);
+            // A press on the playlist or the piano roll makes it the editor the tool keys act on.
+            let ctx = ui.ctx();
+            let pressed = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });
+            if let Some(layer) = pressed.and_then(|at| ctx.layer_id_at(at)) {
+                for kind in [WindowKind::Playlist, WindowKind::PianoRoll] {
+                    if layer.id == windows::area_id(kind) {
+                        self.view.editor = kind;
+                    }
+                }
+            }
         });
         dialogs::show(self, ui.ctx());
         palette::show(self, ui.ctx());

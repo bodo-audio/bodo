@@ -95,7 +95,8 @@ impl Tool {
         }
     }
 
-    fn icon(self) -> Icon {
+    /// Its icon in the playlist's and the piano roll's headers.
+    pub(crate) fn icon(self) -> Icon {
         match self {
             Self::Draw => icons::PENCIL,
             Self::Paint => icons::BRUSH,

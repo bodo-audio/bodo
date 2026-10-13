@@ -12,6 +12,7 @@ bodo-engine.workspace = true
 bodo-io.workspace = true
 bodo-kit-core.workspace = true
 bodo-kit-device.workspace = true
+bodo-kit-music.workspace = true
 bodo-kit-ui.workspace = true
 bodo-mix.workspace = true
 bodo-model.workspace = true
