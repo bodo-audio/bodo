@@ -305,6 +305,10 @@ mod tests {
     #[test]
     fn the_structure_names_every_item_in_order() {
         let model = vec![Menu { title: "File", items: vec![Item::Separator] }];
-        assert_eq!(structure_of(&model), [String::from("m:File"), String::from("-")]);
+        assert_eq!(structure_of(&model), [String::from("language:en"), String::from("m:File"), String::from("-")]);
+        // Another language changes the structure, so the menu is built again with the new labels.
+        bodo_ui::i18n::set_language(bodo_ui::i18n::Language::Turkish);
+        assert_eq!(structure_of(&model)[0], "language:tr");
+        bodo_ui::i18n::set_language(bodo_ui::i18n::Language::English);
     }
 }
