@@ -294,7 +294,11 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
     if app.view.dialogs.recording_shortcut() {
         return;
     }
-    let typing = ctx.egui_wants_keyboard_input();
+    // A text field takes every key but the file shortcuts. Another focused control, such as a knob or a step, keeps
+    // only the keys it uses itself (Space and Enter press it, the arrow, page and Delete keys move or reset it), so
+    // the menus, window and size keys still work from it.
+    let typing = ctx.text_edit_focused();
+    let focused = ctx.memory(|m| m.focused().is_some());
     let mut active: Vec<(KeyboardShortcut, Action)> =
         bindings(app).into_iter().filter_map(|b| b.keys.as_deref().and_then(parse).map(|s| (s, b.action))).collect();
     // egui matches extra Shift and Alt loosely, so the combinations with more modifiers go first: Mod+Shift+Z before
@@ -320,7 +324,7 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             Action::Window(_) => !typing,
             Action::Tool(tool) => !typing && !(piano && !crate::piano_roll::TOOLS.contains(tool)),
         };
-        if !allowed || !ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+        if !allowed || (focused && !with_mod && control_key(shortcut.logical_key)) || !ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
             continue;
         }
         match action {
@@ -335,7 +339,7 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             Action::Palette => {}
         }
     }
-    if typing {
+    if focused {
         return;
     }
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace)) {
@@ -345,6 +349,28 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             let _ = app.run("note.remove", json!({}));
         }
     }
+}
+
+/// Whether a focused control uses `key` itself: Space and Enter press it, and the arrow, page, Home, End, Delete and
+/// Backspace keys move or reset it.
+fn control_key(key: Key) -> bool {
+    matches!(
+        key,
+        Key::Space
+            | Key::Enter
+            | Key::ArrowUp
+            | Key::ArrowDown
+            | Key::ArrowLeft
+            | Key::ArrowRight
+            | Key::PageUp
+            | Key::PageDown
+            | Key::Home
+            | Key::End
+            | Key::Delete
+            | Key::Backspace
+            | Key::Tab
+            | Key::Escape
+    )
 }
 
 /// Runs command `id` as its shortcut does: the file commands through their dialogs, copy and cut on the playlist's
