@@ -115,10 +115,15 @@ fn prints_the_devices() {
     }
 }
 
-/// Plays a two-second tone through `config` and checks that audio keeps flowing in real time.
+/// Plays a two-second tone through `config` and checks that audio keeps flowing in real time. `BODO_TEST_BUFFER`
+/// overrides the buffer size, in frames.
 fn play_tone(config: &DeviceConfig) {
+    let mut config = config.clone();
+    if let Some(frames) = std::env::var("BODO_TEST_BUFFER").ok().and_then(|b| b.parse().ok()) {
+        config.buffer_frames = Some(frames);
+    }
     let mut phase = 0.0f32;
-    let stream = open(config, move |block: &mut Block<'_>| {
+    let stream = open(&config, move |block: &mut Block<'_>| {
         let step = 440.0 * std::f32::consts::TAU / block.rate.hz() as f32;
         for i in 0..block.frames {
             let sample = phase.sin() * 0.1;
@@ -136,7 +141,7 @@ fn play_tone(config: &DeviceConfig) {
     println!("after 1 s: {first:?}");
     println!("after 2 s: {second:?}");
     let latency_ms = second.output_latency.0 as f64 * 1000.0 / rate as f64;
-    println!("{:?}: output latency {latency_ms:.1} ms", config.host);
+    println!("{:?} at {:?} frames: output latency {latency_ms:.1} ms", config.host, config.buffer_frames);
     assert!(!second.disconnected);
     // In the second second the device must have asked for at least half a second of audio.
     assert!(second.frames - first.frames >= rate / 2, "audio stalled: {first:?} then {second:?}");
