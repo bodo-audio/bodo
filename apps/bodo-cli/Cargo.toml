@@ -1,0 +1,28 @@
+[package]
+name = "bodo-cli"
+description = "Bodo from the command line: the MCP server over stdio, offline rendering and project tools."
+license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "bodo-cli"
+path = "src/main.rs"
+
+[dependencies]
+anyhow.workspace = true
+bodo-control.workspace = true
+bodo-engine.workspace = true
+bodo-io.workspace = true
+bodo-kit-audio.workspace = true
+bodo-kit-core.workspace = true
+bodo-mcp.workspace = true
+bodo-mix.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true
