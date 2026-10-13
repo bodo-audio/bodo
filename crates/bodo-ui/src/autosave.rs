@@ -1,7 +1,8 @@
 //! Autosave and crash recovery (project.md section 18.1).
 //!
-//! Every few minutes, a project with unsaved changes is copied to `<data>/Autosave/`. While Bodo runs, a lock file
-//! sits in the data folder; finding it at startup means Bodo didn't close properly, so it offers the autosaves.
+//! Every few minutes, a project with unsaved changes is copied to the user library's Backup folder, or to
+//! `<data>/Autosave/` when there is no library; the Browser lists the Backup folder. While Bodo runs, a lock file sits
+//! in the data folder; finding it at startup means Bodo didn't close properly, so it offers the autosaves.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -24,8 +25,8 @@ fn lock_path(data: &Path) -> PathBuf {
 }
 
 /// Marks Bodo as running in its data folder `data`, and returns the autosaves to offer if it didn't close properly
-/// last time, newest first.
-pub fn start_session(data: &Path) -> Vec<PathBuf> {
+/// last time, newest first: from the Backup folder of the user library at `library`, and from the data folder.
+pub fn start_session(data: &Path, library: Option<&Path>) -> Vec<PathBuf> {
     let lock = lock_path(data);
     let crashed = lock.exists();
     if let Some(dir) = lock.parent() {
@@ -37,9 +38,11 @@ pub fn start_session(data: &Path) -> Vec<PathBuf> {
     if !crashed {
         return Vec::new();
     }
-    let dir = folder(data);
-    let mut found: Vec<(std::time::SystemTime, PathBuf)> = std::fs::read_dir(dir)
+    let backup = library.map(|l| bodo_engine::library::UserLibrary::new(l).backup());
+    let mut found: Vec<(std::time::SystemTime, PathBuf)> = backup
         .into_iter()
+        .chain(std::iter::once(folder(data)))
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
         .flatten()
         .filter_map(Result::ok)
         .map(|e| e.path())
@@ -66,7 +69,9 @@ pub fn end_session(app: &BodoApp) {
 fn autosave_path(app: &BodoApp) -> Option<PathBuf> {
     let title: String =
         app.title().trim_end_matches(" *").chars().map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' { c } else { '_' }).collect();
-    app.data_dir.as_deref().map(|data| folder(data).join(format!("{title} {}.bodo", app.session.project().id)))
+    let dir = app.user_library().map(|l| l.backup()).or_else(|| app.data_dir.as_deref().map(folder))?;
+    app.data_dir.as_ref()?;
+    Some(dir.join(format!("{title} {}.bodo", app.session.project().id)))
 }
 
 /// Autosaves when it is time. Call once per frame.

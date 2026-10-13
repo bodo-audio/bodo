@@ -15,6 +15,10 @@ pub(crate) enum Pending {
     New,
     /// Open a project: this file, or one the user picks.
     Open(Option<PathBuf>),
+    /// Start a new project from a template or a demo, by path or library key.
+    NewFrom(String),
+    /// Open an autosave as an unsaved project.
+    Recover(PathBuf),
     /// Close Bodo.
     Quit,
 }
@@ -70,6 +74,10 @@ fn perform(app: &mut BodoApp, action: Pending) {
                 let _ = app.run("project.open", json!({ "path": path.display().to_string(), "discardChanges": true }));
             }
         }
+        Pending::NewFrom(from) => {
+            let _ = app.run("project.new", json!({ "from": from, "discardChanges": true }));
+        }
+        Pending::Recover(path) => crate::autosave::recover(app, &path),
         Pending::Quit => app.quit_requested = true,
     }
 }
@@ -80,7 +88,12 @@ pub(crate) fn save(app: &mut BodoApp, pick: bool) -> bool {
     if !pick && app.session.file().is_some() {
         return app.run("project.save", json!({})).is_ok();
     }
-    let suggestion = format!("{}.bodo", app.title().trim_end_matches(" *"));
+    let name = format!("{}.bodo", app.title().trim_end_matches(" *"));
+    // A project's first save starts in the library's My projects folder.
+    let suggestion = match (app.session.file(), app.user_library()) {
+        (None, Some(library)) => library.my_projects().join(&name).display().to_string(),
+        _ => name,
+    };
     let Some(path) = app.services.pick_save.as_ref().and_then(|pick| pick(&suggestion)) else { return false };
     app.run("project.save_as", json!({ "path": path.display().to_string() })).is_ok()
 }

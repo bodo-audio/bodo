@@ -18,6 +18,7 @@ bodo-kit-ui.workspace = true
 bodo-mix.workspace = true
 bodo-model.workspace = true
 craft-ui.workspace = true
+directories.workspace = true
 egui.workspace = true
 image.workspace = true
 imbl.workspace = true

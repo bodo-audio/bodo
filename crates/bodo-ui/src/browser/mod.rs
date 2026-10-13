@@ -81,6 +81,9 @@ impl Section {
     }
 }
 
+/// What each Marketplace folder holds.
+type MarketListing = Vec<(MarketFolder, Vec<library::market::Owned>)>;
+
 /// How often the Marketplace folders are looked at again, so arrivals show while Bodo runs.
 const MARKET_CHECK: Duration = Duration::from_secs(2);
 
@@ -103,7 +106,7 @@ pub struct BrowserView {
     /// The file being tagged, by key, and the tag typed so far.
     tagging: Option<(String, String)>,
     /// What the Marketplace folders hold and whether each is new, and when they were read.
-    market: Option<(Instant, Vec<(MarketFolder, Vec<library::market::Owned>)>)>,
+    market: Option<(Instant, MarketListing)>,
     /// The folders that start open have been opened: Packs, so a new user sees the drum kit right away.
     started: bool,
 }
@@ -229,7 +232,8 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
 fn header(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
     ui.horizontal(|ui| {
-        ui.add_space(6.0);
+        ui.add_space(4.0);
+        back_and_up(app, ui);
         ui.label(RichText::new("Browser").color(tk.text).size(size::HEADING));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             ui.add_space(4.0);
@@ -262,31 +266,33 @@ fn header(app: &mut BodoApp, ui: &mut Ui) {
     });
 }
 
-fn navigation(app: &mut BodoApp, ui: &mut Ui) {
-    ui.horizontal(|ui| {
-        ui.add_space(4.0);
-        let can_back = !app.view.browser.history.is_empty();
-        let back = ui.add_enabled_ui(can_back, |ui| icon_button(ui, icons::ARROW_LEFT, "Browser back", false)).inner;
-        app.hint(&back, "Back to where the Browser was");
-        if back.clicked() {
-            app.view.browser.back();
-        }
-        let location = app.view.browser.location.clone();
-        let up = ui.add_enabled_ui(location.is_some(), |ui| icon_button(ui, icons::ARROW_UP, "Browser up", false)).inner;
-        app.hint(&up, "Up to the folder above");
-        if up.clicked()
-            && let Some(location) = location
-        {
-            let above = up_from(app, &location);
-            match above {
-                Some(folder) => app.view.browser.enter(folder),
-                None => {
-                    app.view.browser.history.push(Some(location));
-                    app.view.browser.location = None;
-                }
+/// Back to where the Browser was, and up to the folder above.
+fn back_and_up(app: &mut BodoApp, ui: &mut Ui) {
+    let can_back = !app.view.browser.history.is_empty();
+    let back = ui.add_enabled_ui(can_back, |ui| icon_button(ui, icons::ARROW_LEFT, "Browser back", false)).inner;
+    app.hint(&back, "Back to where the Browser was");
+    if back.clicked() {
+        app.view.browser.back();
+    }
+    let location = app.view.browser.location.clone();
+    let up = ui.add_enabled_ui(location.is_some(), |ui| icon_button(ui, icons::ARROW_UP, "Browser up", false)).inner;
+    app.hint(&up, "Up to the folder above");
+    if up.clicked()
+        && let Some(location) = location
+    {
+        match up_from(app, &location) {
+            Some(folder) => app.view.browser.enter(folder),
+            None => {
+                app.view.browser.history.push(Some(location));
+                app.view.browser.location = None;
             }
         }
-        ui.add_space(4.0);
+    }
+}
+
+fn navigation(app: &mut BodoApp, ui: &mut Ui) {
+    ui.horizontal(|ui| {
+        ui.add_space(6.0);
         for (tab, label) in [(Tab::All, "All"), (Tab::Project, "Project"), (Tab::Plugins, "Plugins"), (Tab::Sounds, "Sounds")] {
             let selected = app.view.browser.tab == tab && app.view.browser.location.is_none();
             let response = ui.selectable_label(selected, RichText::new(label).size(size::SMALL));
@@ -565,7 +571,7 @@ fn unused(dir: &Path, name: &str, extension: &str) -> String {
 
 /// The height the tag bar takes.
 fn tag_bar_height(app: &BodoApp) -> f32 {
-    if app.user_library().is_some() || app.session.env().factory.is_some() { 48.0 } else { 0.0 }
+    if app.user_library().is_some() || app.session.env().factory.is_some() { 30.0 } else { 0.0 }
 }
 
 /// The tags to filter by: the active ones, then the most common, at most a dozen.
@@ -577,20 +583,36 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
     let index = app.view.browser.index.get(&env);
     let tk = Tokens::get();
     let active = app.view.browser.tags.clone();
+    // The active tags, then the user's own, then the most common ones.
     let mut shown: Vec<String> = active.iter().cloned().collect();
     if let Some(index) = &index {
-        for (tag, _) in index.tag_counts() {
-            if shown.len() >= 12 {
+        let own: BTreeSet<&str> = index.files.iter().flat_map(|f| f.user_tags.iter().map(String::as_str)).collect();
+        let common = index.tag_counts();
+        let candidates = own.iter().map(|t| (*t).to_owned()).chain(common.into_iter().map(|(tag, _)| tag));
+        for tag in candidates {
+            if shown.len() >= 16 {
                 break;
             }
-            if !active.contains(&tag) {
+            if !shown.contains(&tag) {
                 shown.push(tag);
             }
         }
     }
-    egui::Frame::NONE.inner_margin(egui::Margin::symmetric(6, 2)).show(ui, |ui| {
-        ui.set_height(44.0);
-        ui.horizontal_wrapped(|ui| {
+    // One row of as many tags as fit, so they never push the search box down or widen the panel.
+    let font = egui::FontId::proportional(size::SMALL);
+    let padding = ui.spacing().button_padding.x * 2.0 + 4.0;
+    let mut room = ui.available_width() - 6.0 - if active.is_empty() { 0.0 } else { 44.0 };
+    let shown: Vec<String> = shown
+        .into_iter()
+        .take_while(|tag| {
+            let width = ui.fonts_mut(|f| f.layout_no_wrap(format!("#{tag}"), font.clone(), tk.text).size().x) + padding;
+            room -= width;
+            room >= 0.0
+        })
+        .collect();
+    {
+        ui.horizontal(|ui| {
+            ui.add_space(6.0);
             ui.spacing_mut().item_spacing = vec2(4.0, 2.0);
             if index.is_none() {
                 ui.label(RichText::new("Reading the library...").color(tk.text_faint).size(size::SMALL));
@@ -599,6 +621,7 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
                 let on = active.contains(&tag);
                 let chip = ui.selectable_label(on, RichText::new(format!("#{tag}")).size(size::SMALL));
                 control::record(ui, &chip, &format!("Tag {tag}"), "tag", Some(on));
+                app.hint(&chip, if on { format!("Showing what is tagged {tag}: click to stop") } else { format!("Show only what is tagged {tag}") });
                 if chip.clicked() {
                     if on {
                         app.view.browser.tags.remove(&tag);
@@ -615,7 +638,7 @@ fn tag_bar(app: &mut BodoApp, ui: &mut Ui) {
                 }
             }
         });
-    });
+    }
 }
 
 /// What the search and the tags find, of the kinds the tab shows.

@@ -20,7 +20,7 @@ use bodo_engine::{Call, Event, PlayMode, Session};
 use bodo_kit_core::{MAX_BLOCK_FRAMES, Seconds, Tick, rt_safe};
 use bodo_kit_device::midi::{self, MidiInput};
 use bodo_kit_device::{AudioCallback, AudioStream, Block, DeviceConfig, StreamStatus};
-use bodo_mix::{AudioEngine, Compensation, Engine, EngineConfig, LiveInput, MidiRouter, Take, TakeTarget};
+use bodo_mix::{AudioEngine, Compensation, Engine, EngineConfig, LiveInput, MidiRouter, Preview, PreviewPlayer, Take, TakeTarget};
 use bodo_model::{ChannelId, Project};
 use serde_json::json;
 
@@ -68,9 +68,10 @@ impl Meter {
     }
 }
 
-/// The audio thread's side: the engine, then the meter.
+/// The audio thread's side: the engine, the Browser's preview after the master, then the meter.
 struct Callback {
     engine: AudioEngine,
+    preview: PreviewPlayer,
     meter: Arc<Meter>,
 }
 
@@ -79,6 +80,7 @@ impl AudioCallback for Callback {
     #[rt_safe]
     fn process(&mut self, block: &mut Block<'_>) {
         self.engine.render_with_input(block.frames, Some(block.input), block.output);
+        self.preview.mix_into(block.output, block.frames);
         let channels = block.output.channels();
         let left = block.output.channel(0);
         let right = block.output.channel(1.min(channels.saturating_sub(1)));
@@ -89,6 +91,8 @@ impl AudioCallback for Callback {
 struct Running {
     stream: AudioStream,
     engine: Engine,
+    /// The Browser's sound preview.
+    preview: Preview,
     live: LiveInput,
     router: Arc<MidiRouter>,
     /// The open MIDI inputs; dropping one closes it.
@@ -147,12 +151,11 @@ fn needed_inputs(project: &Project) -> usize {
         .unwrap_or(0)
 }
 
-/// Where takes are written: `Recorded/` beside the project's file, or a temporary folder for an unsaved project.
+/// Where takes are written: `Recorded/` beside the project's file, the user library's Recorded folder for an unsaved
+/// project, or a temporary folder when there is no library.
 fn recording_folder(session: &Session) -> PathBuf {
-    match session.file() {
-        Some(file) => bodo_io::project_folder(file).join("Recorded"),
-        None => std::env::temp_dir().join("Bodo Recordings"),
-    }
+    let project_dir = session.file().map(bodo_io::project_folder);
+    bodo_engine::library::recorded_folder(session.env(), project_dir.as_deref()).unwrap_or_else(|| std::env::temp_dir().join("Bodo Recordings"))
 }
 
 /// Places `takes` on the playlist through the session, as one undo step.
@@ -247,7 +250,8 @@ impl Audio {
                 input_map: (0..inputs).collect(),
                 ..DeviceConfig::default()
             };
-            match bodo_kit_device::open(&device, Callback { engine: audio, meter: Arc::clone(&self.meter) }) {
+            let (preview, preview_player) = bodo_mix::preview(rate);
+            match bodo_kit_device::open(&device, Callback { engine: audio, preview: preview_player, meter: Arc::clone(&self.meter) }) {
                 Ok(stream) => {
                     engine.set_thread_group(stream.thread_group());
                     let transport = session.transport();
@@ -265,7 +269,7 @@ impl Audio {
                         (None, n) => format!(", {n} inputs"),
                     };
                     self.status = format!("{} kHz, {} frames{inputs_note}", f64::from(rate.hz()) / 1000.0, prefs.buffer_frames.unwrap_or(256));
-                    self.running = Some(Running { stream, engine, live, router, midi, routed, take: None, wanted_inputs });
+                    self.running = Some(Running { stream, engine, preview, live, router, midi, routed, take: None, wanted_inputs });
                     return;
                 }
                 Err(error) if inputs > 0 => {
@@ -316,6 +320,30 @@ impl Audio {
         self.running.as_ref().is_some_and(|r| r.live.note(channel, key, velocity, on))
     }
 
+    /// Plays the audio file at `path` on its own, after the master, replacing any sound previewing now. Returns false
+    /// when there is no sound.
+    pub fn preview(&mut self, path: &std::path::Path) -> bool {
+        match self.running.as_mut() {
+            Some(running) => {
+                running.preview.play(path);
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Stops the preview, fading it out.
+    pub fn stop_preview(&mut self) {
+        if let Some(running) = self.running.as_mut() {
+            running.preview.stop();
+        }
+    }
+
+    /// The file previewing now, while it loads or plays.
+    pub fn previewing(&self) -> Option<&std::path::Path> {
+        self.running.as_ref().and_then(|r| r.preview.current())
+    }
+
     /// The names of the MIDI inputs that are open.
     pub fn midi_inputs(&self) -> Vec<&str> {
         self.running.as_ref().map(|r| r.midi.iter().map(MidiInput::name).collect()).unwrap_or_default()
@@ -339,6 +367,9 @@ impl Audio {
             self.open(session, &prefs);
         }
         let Some(running) = self.running.as_mut() else { return };
+        if let Some(error) = running.preview.poll() {
+            self.status = format!("Could not preview: {error}");
+        }
         let mut reopen = false;
         for event in events {
             match event {
@@ -518,7 +549,8 @@ mod tests {
             pacing: Pacing::Freewheel,
             ..VirtualConfig::default()
         };
-        let mut device = VirtualDevice::new(config, Callback { engine: audio, meter: Arc::new(Meter::default()) });
+        let preview = bodo_mix::preview(project.settings.sample_rate).1;
+        let mut device = VirtualDevice::new(config, Callback { engine: audio, preview, meter: Arc::new(Meter::default()) });
         let compensation = Compensation::from_status(&device.status());
         assert_eq!(engine.start_recording(&project, &recording_folder(&session), compensation).unwrap(), 1);
         engine.seek(Tick(3840));

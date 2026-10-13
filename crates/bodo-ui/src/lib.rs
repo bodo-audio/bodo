@@ -17,6 +17,7 @@ mod autosave;
 mod browser;
 pub mod control;
 mod dialogs;
+pub mod library;
 mod mixer;
 mod palette;
 mod piano_roll;
@@ -92,6 +93,9 @@ pub struct Prefs {
     pub library: Vec<PathBuf>,
     /// Recently opened or saved projects, newest first.
     pub recent: Vec<PathBuf>,
+    /// The user library: a Bodo folder in the user's documents, chosen on first run. `None` for no library, as in
+    /// tests.
+    pub user_library: Option<PathBuf>,
     /// Minutes between autosaves; 0 turns autosave off.
     pub autosave_minutes: u32,
     /// The audio device.
@@ -105,6 +109,7 @@ impl Default for Prefs {
             layout: Layout::default(),
             library: Vec::new(),
             recent: Vec::new(),
+            user_library: None,
             autosave_minutes: 5,
             audio: audio::AudioPrefs::default(),
         }
@@ -490,10 +495,16 @@ impl BodoApp {
     /// Keeps the session's environment in step with the user's sample folders.
     fn sync_library(&mut self) {
         let mut env = self.session.env().clone();
-        if env.library != self.prefs.library {
+        if env.library != self.prefs.library || env.user != self.prefs.user_library {
             env.library.clone_from(&self.prefs.library);
+            env.user.clone_from(&self.prefs.user_library);
             self.session.set_env(env);
         }
+    }
+
+    /// The user library, when there is one.
+    pub fn user_library(&self) -> Option<bodo_engine::library::UserLibrary> {
+        self.prefs.user_library.as_ref().map(bodo_engine::library::UserLibrary::new)
     }
 
     /// Bookkeeping after any command: the audio engine, recent files.
@@ -577,6 +588,7 @@ impl BodoApp {
         });
         dialogs::show(self, ui.ctx());
         palette::show(self, ui.ctx());
+        browser::handle_drops(self, ui.ctx());
     }
 
     /// Closes Bodo, asking first when there are unsaved changes.

@@ -125,16 +125,27 @@ fn start_control(port: Option<u16>) -> anyhow::Result<ControlServer> {
     Ok(ControlServer(server))
 }
 
+/// A save dialog for `suggestion`: a file name, or a path whose folder the dialog opens in.
+fn save_dialog(suggestion: &str) -> rfd::FileDialog {
+    let path = std::path::Path::new(suggestion);
+    let name = path.file_name().map_or_else(|| suggestion.to_owned(), |n| n.to_string_lossy().into_owned());
+    let dialog = rfd::FileDialog::new().set_file_name(name);
+    match path.parent().filter(|p| !p.as_os_str().is_empty() && p.is_dir()) {
+        Some(folder) => dialog.set_directory(folder),
+        None => dialog,
+    }
+}
+
 fn services() -> Services {
     Services {
         pick_open: Some(Box::new(|| rfd::FileDialog::new().add_filter("Bodo project", &["bodo"]).pick_file())),
-        pick_save: Some(Box::new(|name: &str| rfd::FileDialog::new().add_filter("Bodo project", &["bodo"]).set_file_name(name).save_file())),
+        pick_save: Some(Box::new(|name: &str| save_dialog(name).add_filter("Bodo project", &["bodo"]).save_file())),
         pick_samples: Some(Box::new(|| {
             rfd::FileDialog::new().add_filter("Audio", &bodo_engine::samples::AUDIO_EXTENSIONS).pick_files().unwrap_or_default()
         })),
         pick_folder: Some(Box::new(|| rfd::FileDialog::new().pick_folder())),
         pick_midi: Some(Box::new(|| rfd::FileDialog::new().add_filter("MIDI file", &["mid", "midi"]).pick_file())),
-        pick_midi_save: Some(Box::new(|name: &str| rfd::FileDialog::new().add_filter("MIDI file", &["mid"]).set_file_name(name).save_file())),
+        pick_midi_save: Some(Box::new(|name: &str| save_dialog(name).add_filter("MIDI file", &["mid"]).save_file())),
         memory: Some(bodo_ui::resident_memory),
     }
 }
@@ -219,7 +230,16 @@ fn run(args: Args) -> anyhow::Result<()> {
             if args.light {
                 prefs.theme = bodo_ui::theme::ThemePref::Light;
             }
-            let env = Env { factory: locate_factory(), library: prefs.library.clone(), user: None };
+            let factory = locate_factory();
+            if prefs.user_library.is_none() {
+                prefs.user_library = bodo_ui::library::default_root();
+            }
+            if let Some(root) = &prefs.user_library
+                && let Err(error) = bodo_ui::library::prepare(root, factory.as_deref())
+            {
+                tracing::warn!(%error, "the user library is not ready");
+            }
+            let env = Env { factory, library: prefs.library.clone(), user: prefs.user_library.clone() };
             let session = Session::new(env);
             let screenshot = args.screenshot.is_some();
             let mut app = BodoApp::new(session, prefs, services(), !args.no_audio && !screenshot);
@@ -229,7 +249,7 @@ fn run(args: Args) -> anyhow::Result<()> {
             if !screenshot {
                 app.data_dir = bodo_control::data_dir();
                 if let Some(data) = &app.data_dir {
-                    app.view.dialogs.recovery = bodo_ui::start_session(data);
+                    app.view.dialogs.recovery = bodo_ui::start_session(data, app.prefs.user_library.as_deref());
                 }
             }
             // `bodo-cli mcp --connect`: MCP tools run on this app's own session, so agent edits share its undo history.

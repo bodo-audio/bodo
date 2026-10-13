@@ -919,6 +919,7 @@ dependencies = [
  "bodo-mix",
  "bodo-model",
  "craft-ui",
+ "directories",
  "egui",
  "egui_kittest",
  "image",
