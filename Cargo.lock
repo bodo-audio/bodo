@@ -276,6 +276,7 @@ dependencies = [
  "bodo-kit-dsp",
  "bodo-kit-graph",
  "bodo-model",
+ "imbl",
  "proptest",
  "thiserror 2.0.21",
  "tracing",

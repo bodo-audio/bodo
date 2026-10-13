@@ -324,3 +324,13 @@ proptest! {
         prop_assert_eq!(back, project);
     }
 }
+
+#[test]
+fn sample_paths_resolve_from_the_project_or_the_factory() {
+    let roots = SampleRoots::new("/songs/demo").with_factory(Some("/opt/bodo/factory".into()));
+    assert_eq!(roots.resolve("Samples/kick.wav"), std::path::Path::new("/songs/demo/Samples/kick.wav"));
+    assert_eq!(roots.resolve("/elsewhere/snare.wav"), std::path::Path::new("/elsewhere/snare.wav"));
+    assert_eq!(roots.resolve("factory:Packs/Bodo Drums/Kick.wav"), std::path::Path::new("/opt/bodo/factory/Packs/Bodo Drums/Kick.wav"));
+    let missing = SampleRoots::new("/songs/demo").resolve("factory:Packs/Kick.wav");
+    assert!(!missing.starts_with("/songs/demo"), "a factory path never resolves into the project: {}", missing.display());
+}

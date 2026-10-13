@@ -13,7 +13,7 @@ use bodo_kit_dsp::AudioBuffer;
 use bodo_mix::{EngineConfig, engine};
 use bodo_model::channel::{LoopMode, SamplerParams};
 use bodo_model::mixer::{Route, RouteKind, SendTap};
-use bodo_model::{RouteKey, RouteSource};
+use bodo_model::{RouteKey, RouteSource, SampleRoots};
 use common::{Builder, temp_dir, write_tone};
 
 #[global_allocator]
@@ -30,7 +30,7 @@ fn the_audio_engine_does_not_allocate() {
     let pattern = b.pattern(Some(3840), &[(channel, 60, 0, 1920), (channel, 64, 960, 1920), (channel, 67, 1920, 1920)]);
     b.clip(pattern, 0, 3840 * 4, 0);
     let project = b.build();
-    let (mut control, mut audio) = engine(&project, &dir, EngineConfig { max_frames: 128, ..EngineConfig::default() }).unwrap();
+    let (mut control, mut audio) = engine(&project, &SampleRoots::new(&dir), EngineConfig { max_frames: 128, ..EngineConfig::default() }).unwrap();
     control.play();
     let mut buffer = AudioBuffer::new(2, 128);
     let mut render = |audio: &mut bodo_mix::AudioEngine| {

@@ -6,7 +6,6 @@
 //! or sample, compiles a new plan, and processors whose settings didn't change carry over into it.
 
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
@@ -15,7 +14,7 @@ use bodo_kit_core::{MAX_BLOCK_FRAMES, SampleRate};
 use bodo_kit_graph::{EdgeDesc, EdgeGains, GraphDesc, LatencyReport, Layout, NodeDesc, Plan, compile};
 use bodo_model::channel::{ChannelKind, SamplerParams};
 use bodo_model::mixer::{RouteKind, RouteSource};
-use bodo_model::{ChannelId, InsertId, Project};
+use bodo_model::{ChannelId, InsertId, Project, SampleRoots};
 
 use crate::MixError;
 use crate::keys;
@@ -44,7 +43,7 @@ impl SamplerSource {
 /// Keeps the graph and the live parameters in step with the project.
 #[derive(Debug)]
 pub(crate) struct Compiler {
-    base: PathBuf,
+    roots: SampleRoots,
     max_frames: usize,
     cache: SampleCache,
     layout: Option<Layout>,
@@ -60,9 +59,9 @@ pub(crate) struct Compiler {
 }
 
 impl Compiler {
-    pub(crate) fn new(base: PathBuf, max_frames: usize, rate: SampleRate) -> Self {
+    pub(crate) fn new(roots: SampleRoots, max_frames: usize, rate: SampleRate) -> Self {
         Self {
-            base,
+            roots,
             max_frames: max_frames.clamp(1, MAX_BLOCK_FRAMES),
             cache: SampleCache::new(),
             layout: None,
@@ -75,6 +74,12 @@ impl Compiler {
             latency: LatencyReport::default(),
             rate,
         }
+    }
+
+    /// Resolves sample paths through `roots` from the next update on, and tries missing samples again.
+    pub(crate) fn set_roots(&mut self, roots: SampleRoots) {
+        self.roots = roots;
+        self.cache.retry_failed();
     }
 
     pub(crate) fn latency(&self) -> &LatencyReport {
@@ -196,7 +201,7 @@ impl Compiler {
         let mut sources = HashMap::new();
         for (id, channel) in &project.channels {
             if let ChannelKind::Sampler(params) = &channel.kind {
-                let sample = params.sample.and_then(|sample| self.cache.get(project, sample, &self.base));
+                let sample = params.sample.and_then(|sample| self.cache.get(project, sample, &self.roots));
                 sources.insert(*id, SamplerSource { params: Arc::clone(params), sample });
             }
         }

@@ -28,5 +28,5 @@ pub use meter::MeterMap;
 pub use mixer::{FX_SLOTS, Mixer, MixerInsert, Route, RouteKey, RouteSource};
 pub use pattern::{Note, NoteSeq, Pattern};
 pub use playlist::{Clip, ClipSource, PlaylistTrack};
-pub use project::{Project, SampleRef, Settings};
+pub use project::{FACTORY_PREFIX, Project, SampleRef, SampleRoots, Settings};
 pub use validate::{ValidationError, Violation};

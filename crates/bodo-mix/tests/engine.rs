@@ -15,7 +15,7 @@ use bodo_model::*;
 use common::{Builder, temp_dir, write_impulse, write_tone};
 
 fn render(project: &Project, dir: &Path, options: OfflineOptions) -> Vec<Vec<f32>> {
-    render_offline(project, dir, &options).unwrap().channels
+    render_offline(project, &SampleRoots::new(dir), &options).unwrap().channels
 }
 
 /// The level of a center-panned mono impulse at the default note velocity.
@@ -146,7 +146,7 @@ fn fader_changes_apply_without_a_new_plan() {
     let pattern = b.pattern(Some(3840), &[(channel, 60, 0, 3840)]);
     b.clip(pattern, 0, 3840, 0);
     let project = b.build();
-    let (mut control, mut audio) = engine(&project, &dir, EngineConfig { max_frames: 256, ..EngineConfig::default() }).unwrap();
+    let (mut control, mut audio) = engine(&project, &SampleRoots::new(&dir), EngineConfig { max_frames: 256, ..EngineConfig::default() }).unwrap();
     control.play();
     let mut buffer = AudioBuffer::new(2, 256);
     audio.render(256, &mut buffer);

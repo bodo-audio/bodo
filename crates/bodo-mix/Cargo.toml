@@ -14,6 +14,7 @@ bodo-kit-device.workspace = true
 bodo-kit-dsp.workspace = true
 bodo-kit-graph.workspace = true
 bodo-model.workspace = true
+imbl.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

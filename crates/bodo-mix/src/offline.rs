@@ -3,12 +3,10 @@
 //! It runs exactly the engine that plays live, so a render matches what the user hears. It is deterministic: the
 //! same project gives bit-identical output on every run, whatever the block size or number of workers.
 
-use std::path::Path;
-
 use bodo_kit_audio::AudioData;
 use bodo_kit_core::{Seconds, Tick};
 use bodo_kit_dsp::AudioBuffer;
-use bodo_model::Project;
+use bodo_model::{Project, SampleRoots};
 
 use crate::MixError;
 use crate::engine::{EngineConfig, engine};
@@ -37,13 +35,13 @@ impl Default for OfflineOptions {
     }
 }
 
-/// Renders `project` to stereo audio at its sample rate. Sample paths are relative to `base`.
+/// Renders `project` to stereo audio at its sample rate. Sample paths resolve through `roots`.
 ///
 /// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block.
-pub fn render_offline(project: &Project, base: &Path, options: &OfflineOptions) -> Result<AudioData, MixError> {
+pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<AudioData, MixError> {
     let rate = project.settings.sample_rate;
     let block = options.block.max(1);
-    let (mut control, mut audio) = engine(project, base, EngineConfig { workers: options.workers, max_frames: block, realtime_buffer: None })?;
+    let (mut control, mut audio) = engine(project, roots, EngineConfig { workers: options.workers, max_frames: block, realtime_buffer: None })?;
     control.set_mode(options.mode);
     control.seek(options.start);
     control.play();

@@ -13,6 +13,7 @@ use std::time::Duration;
 use bodo_kit_core::SampleRate;
 use bodo_kit_device::{Pacing, VirtualConfig, open_virtual};
 use bodo_mix::{EngineConfig, engine};
+use bodo_model::SampleRoots;
 use bodo_model::channel::{LoopMode, SamplerParams};
 use common::{Builder, temp_dir, write_tone};
 
@@ -46,7 +47,7 @@ fn hundred_voices_at_64_frames_without_dropouts() {
         .and_then(|w| w.parse().ok())
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get().saturating_sub(1)).min(7));
     let config = EngineConfig { workers, max_frames: BUFFER as usize, realtime_buffer: Some(BUFFER) };
-    let (mut control, audio) = engine(&project, &dir, config).unwrap();
+    let (mut control, audio) = engine(&project, &SampleRoots::new(&dir), config).unwrap();
     control.play();
     let device = VirtualConfig { sample_rate: SampleRate::HZ_48000, buffer_frames: BUFFER, pacing: Pacing::RealTime, ..VirtualConfig::default() };
     let stream = open_virtual(device, audio).unwrap();

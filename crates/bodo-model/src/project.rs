@@ -4,6 +4,7 @@
 //! between versions. Changing one note copies only the path to it, so a snapshot costs a handful of pointers and undo
 //! is a stack of snapshots (ADR 0006).
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bodo_kit_core::{SampleRate, TempoMap, Tick};
@@ -104,6 +105,43 @@ pub struct SampleRef {
     /// Where it came from in the marketplace, if it did.
     #[serde(default)]
     pub market: Option<MarketRef>,
+}
+
+/// The prefix of sample paths inside Bodo's factory content, such as `factory:Packs/Bodo Drums/Kick.wav`. Such paths
+/// stay valid when Bodo is installed somewhere else.
+pub const FACTORY_PREFIX: &str = "factory:";
+
+/// The folders that stored sample paths start from (project.md section 18.1).
+///
+/// A [`SampleRef::path`] is relative to the project's folder, absolute, or starts with [`FACTORY_PREFIX`] and is
+/// relative to Bodo's factory content.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SampleRoots {
+    /// The project's folder. Relative paths start here.
+    pub project: PathBuf,
+    /// Bodo's factory content. Paths with [`FACTORY_PREFIX`] start here.
+    pub factory: Option<PathBuf>,
+}
+
+impl SampleRoots {
+    /// Roots for a project in `project`, without factory content.
+    pub fn new(project: impl Into<PathBuf>) -> Self {
+        Self { project: project.into(), factory: None }
+    }
+
+    /// The same roots with factory content in `factory`.
+    pub fn with_factory(self, factory: Option<PathBuf>) -> Self {
+        Self { factory, ..self }
+    }
+
+    /// Where the stored sample path `path` points. A factory path without a factory folder resolves to a path that
+    /// doesn't exist, so the sample is reported missing.
+    pub fn resolve(&self, path: &str) -> PathBuf {
+        match path.strip_prefix(FACTORY_PREFIX) {
+            Some(rest) => self.factory.as_deref().unwrap_or_else(|| Path::new("<no factory content>")).join(rest),
+            None => self.project.join(path),
+        }
+    }
 }
 
 /// A marketplace item a sample came from (project.md section 15.2).

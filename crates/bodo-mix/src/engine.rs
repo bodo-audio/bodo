@@ -4,10 +4,10 @@
 //! The audio side switches to whatever arrived at the start of a block, runs the sequencer and the graph, and copies
 //! the master into the device's output. Neither side ever waits for the other.
 
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
 
+use bodo_kit_core::TempoMap;
 use bodo_kit_core::handoff::{self, Receiver, Sender};
 use bodo_kit_core::pool::{RtPoolConfig, RtPriority, ThreadGroup, ThreadGroupSlot};
 use bodo_kit_core::queue::{Consumer, Producer, spsc};
@@ -15,7 +15,9 @@ use bodo_kit_core::{MAX_BLOCK_FRAMES, SampleRate, Tick, rt_safe};
 use bodo_kit_device::{AudioCallback, Block};
 use bodo_kit_dsp::AudioBuffer;
 use bodo_kit_graph::{GraphRunner, LatencyReport, Plan, PlanSender, runner};
-use bodo_model::Project;
+use bodo_model::meter::MeterMap;
+use bodo_model::{Pattern, PatternId, PlaylistTrack, Project, SampleRoots, TrackId};
+use imbl::{OrdMap, Vector};
 
 use crate::MixError;
 use crate::compile::Compiler;
@@ -78,8 +80,40 @@ pub struct Engine {
     commands: Producer<Command>,
     shared: Arc<Shared>,
     song: SongIndex,
+    song_inputs: SongInputs,
     rate: SampleRate,
     thread_group: ThreadGroupSlot,
+}
+
+/// What a song index is built from. Snapshots share unchanged parts, so comparing pointers tells cheaply whether an
+/// edit can have changed the index.
+#[derive(Clone)]
+struct SongInputs {
+    tempo: Arc<TempoMap>,
+    meter: Arc<MeterMap>,
+    patterns: OrdMap<PatternId, Arc<Pattern>>,
+    tracks: OrdMap<TrackId, Arc<PlaylistTrack>>,
+    track_order: Vector<TrackId>,
+}
+
+impl SongInputs {
+    fn of(project: &Project) -> Self {
+        Self {
+            tempo: Arc::clone(&project.tempo),
+            meter: Arc::clone(&project.meter),
+            patterns: project.patterns.clone(),
+            tracks: project.tracks.clone(),
+            track_order: project.track_order.clone(),
+        }
+    }
+
+    fn same_as(&self, project: &Project) -> bool {
+        Arc::ptr_eq(&self.tempo, &project.tempo)
+            && Arc::ptr_eq(&self.meter, &project.meter)
+            && self.patterns.ptr_eq(&project.patterns)
+            && self.tracks.ptr_eq(&project.tracks)
+            && self.track_order.ptr_eq(&project.track_order)
+    }
 }
 
 impl std::fmt::Debug for Engine {
@@ -106,14 +140,14 @@ impl std::fmt::Debug for AudioEngine {
     }
 }
 
-/// Builds the two sides of an engine for `project`, whose sample paths are relative to `base`. The engine renders at
+/// Builds the two sides of an engine for `project`, whose sample paths resolve through `roots`. The engine renders at
 /// the project's sample rate.
 ///
 /// Compiles the first plan, loads samples and spawns the workers.
-pub fn engine(project: &Project, base: &Path, config: EngineConfig) -> Result<(Engine, AudioEngine), MixError> {
+pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> Result<(Engine, AudioEngine), MixError> {
     let rate = project.settings.sample_rate;
     let max_frames = config.max_frames.clamp(1, MAX_BLOCK_FRAMES);
-    let mut compiler = Compiler::new(base.to_path_buf(), max_frames, rate);
+    let mut compiler = Compiler::new(roots.clone(), max_frames, rate);
     let plan = compiler.update(project)?.unwrap_or_else(|| Plan::empty(max_frames));
     let pool = RtPoolConfig {
         priority: config.realtime_buffer.map(|buffer_frames| RtPriority { buffer_frames, sample_rate: rate }),
@@ -134,6 +168,7 @@ pub fn engine(project: &Project, base: &Path, config: EngineConfig) -> Result<(E
         commands: commands_tx,
         shared: Arc::clone(&shared),
         song: song.clone(),
+        song_inputs: SongInputs::of(project),
         rate,
         thread_group,
     };
@@ -154,18 +189,28 @@ impl Engine {
     /// Brings the engine up to date with `project`: live parameters at once, and a new plan and song index when
     /// they changed. The audio side switches over at its next block.
     ///
-    /// Allocates. Complexity: O(V + E) plus O(N log N) in notes and clips for the song index.
+    /// Allocates. Complexity: O(V + E), plus O(N log N) in notes and clips when the patterns, playlist, tempo or
+    /// meter changed and the song index is rebuilt.
     pub fn set_project(&mut self, project: &Project) -> Result<(), MixError> {
         if let Some(plan) = self.compiler.update(project)? {
             self.pending_plan = Some(Box::new(plan));
         }
-        let song = SongIndex::build(project);
-        if song != self.song {
-            self.song = song.clone();
-            self.pending_song = Some(Box::new(song));
+        if !self.song_inputs.same_as(project) {
+            self.song_inputs = SongInputs::of(project);
+            let song = SongIndex::build(project);
+            if song != self.song {
+                self.song = song.clone();
+                self.pending_song = Some(Box::new(song));
+            }
         }
         self.flush();
         Ok(())
+    }
+
+    /// Resolves sample paths through `roots` from the next [`Engine::set_project`] on, for example after the project
+    /// was saved to another folder. Samples that were missing are looked for again.
+    pub fn set_sample_roots(&mut self, roots: SampleRoots) {
+        self.compiler.set_roots(roots);
     }
 
     /// Sends anything still waiting and drops whatever the audio side retired. Call it regularly.
