@@ -179,6 +179,7 @@ pub(crate) fn topology<P>(project: &Project, recording: bool, stems: bool, mut m
     }
     let mut sidechain_ports = Vec::new();
     let mut slot_latency = HashMap::new();
+    let fed = if stems { fed_inserts(project) } else { HashSet::new() };
     let inserts = project.mixer.order.iter().copied().chain(std::iter::once(master));
     for id in inserts {
         let Some(insert) = project.mixer.insert(id) else { continue };
@@ -216,7 +217,7 @@ pub(crate) fn topology<P>(project: &Project, recording: bool, stems: bool, mut m
         if id != master && insert.to_master {
             let edge_key = keys::edge(output, keys::insert_input(master)) ^ 3;
             desc.edges.push(edge(edge_key, output, keys::insert_input(master), 0, 0, 1.0, !bypassed(insert, recording)));
-            if stems {
+            if stems && fed.contains(&id) {
                 stem_sources.push(StemSource { source: RouteSource::Insert(id), name: insert.name.clone(), edge: edge_key });
             }
         }
@@ -243,6 +244,37 @@ pub(crate) fn topology<P>(project: &Project, recording: bool, stems: bool, mut m
         desc.taps.extend(stem_sources.iter().enumerate().map(|(i, s)| (s.edge_source(&desc.edges), i as u64)));
     }
     Topology { desc, sidechain_ports, slot_latency, stems: stem_sources }
+}
+
+/// The inserts some channel's audio reaches, through targets and audio routes: the only ones that can sound.
+///
+/// Complexity: O(V + E) in channels, inserts and routes.
+fn fed_inserts(project: &Project) -> HashSet<InsertId> {
+    let master = project.mixer.master.id;
+    let mut fed: HashSet<InsertId> = HashSet::new();
+    let mut stack: Vec<InsertId> = project
+        .rack_order
+        .iter()
+        .filter(|id| has_node(project, **id))
+        .filter_map(|id| project.channels.get(id))
+        .map(|c| c.target.filter(|t| project.mixer.insert(*t).is_some()).unwrap_or(master))
+        .collect();
+    stack.extend(project.mixer.routes.iter().filter_map(|(key, route)| match key.from {
+        RouteSource::Channel(c) if route.kind == RouteKind::Audio && has_node(project, c) => Some(key.to),
+        _ => None,
+    }));
+    while let Some(id) = stack.pop() {
+        if fed.insert(id) {
+            stack.extend(
+                project
+                    .mixer
+                    .routes
+                    .iter()
+                    .filter_map(|(key, route)| (key.from == RouteSource::Insert(id) && route.kind == RouteKind::Audio).then_some(key.to)),
+            );
+        }
+    }
+    fed
 }
 
 impl StemSource {

@@ -26,6 +26,8 @@ pub(crate) enum Capture {
     Note(CapturedNote),
     /// Recording ended at this timeline frame.
     End { frame: i64 },
+    /// The Song loop wrapped at this timeline frame, its end, back to its start.
+    Wrap { from: i64 },
 }
 
 /// A live note on or off, captured while recording.
@@ -52,6 +54,9 @@ pub struct CapturedTake {
     pub end: i64,
     /// The notes on and off, in the order they arrived.
     pub notes: Vec<CapturedNote>,
+    /// Where the Song loop wrapped while recording: before note `index`, at the loop's end `frame`. Each pass's notes
+    /// keep their place in the loop, so the passes add up.
+    pub wraps: Vec<(usize, i64)>,
 }
 
 /// Where a take's notes go.
@@ -108,17 +113,30 @@ pub fn place(take: &CapturedTake, project: &Project, rate: SampleRate, target: T
     let hz = f64::from(rate.hz());
     let tick = |frame: i64| project.tempo.ticks_at(Seconds(frame as f64 / hz)).round() as i64;
     let channels: HashMap<u64, ChannelId> = project.channels.keys().map(|id| (keys::channel(*id), *id)).collect();
+    let looped = !take.wraps.is_empty();
     let (origin, wrap) = match target {
         TakeTarget::Pattern(pattern) => (0, Some(pattern_length(project, pattern))),
         TakeTarget::Song(_) => {
-            let at = Tick(tick(take.start));
+            // A looped take's later passes can start before the recording did: count from the earliest note's bar.
+            let first = if looped { take.notes.iter().map(|n| n.frame).chain([take.start]).min().unwrap_or(take.start) } else { take.start };
+            let at = Tick(tick(first.max(0)));
             (project.meter.bar_start(project.meter.position(at).bar).0, None)
         }
     };
     let mut held: HashMap<(u64, u8), (i64, f32)> = HashMap::new();
     let mut spans: Vec<(u64, u8, i64, i64, f32)> = Vec::new();
-    for note in &take.notes {
-        let at = tick(note.frame.clamp(take.start, take.end.max(take.start)));
+    let mut wraps = take.wraps.iter().peekable();
+    for (index, note) in take.notes.iter().enumerate() {
+        // Notes still held when the loop wrapped end at the loop's end.
+        while let Some(&&(before, from)) = wraps.peek() {
+            if before > index {
+                break;
+            }
+            let at = tick(from);
+            spans.extend(held.drain().map(|((channel, key), (start, velocity))| (channel, key, start, at, velocity)));
+            wraps.next();
+        }
+        let at = if looped { tick(note.frame.max(0)) } else { tick(note.frame.clamp(take.start, take.end.max(take.start))) };
         let id = (note.channel, note.key);
         if let Some((start, velocity)) = held.remove(&id) {
             spans.push((note.channel, note.key, start, at, velocity));
@@ -205,6 +223,7 @@ mod tests {
                 note(channel, 62, true, 3840 + 480),
                 note(channel, 62, false, 3840 + 960),
             ],
+            wraps: Vec::new(),
         };
         let notes = place(&take, &project, RATE, TakeTarget::Pattern(pattern));
         let shape: Vec<(u8, i64, i64)> = notes.iter().map(|n| (n.key, n.start.0, n.len.0)).collect();
@@ -220,6 +239,7 @@ mod tests {
             start: frame(7680 + 1000),
             end: frame(7680 + 3000),
             notes: vec![note(channel, 64, true, 7680 + 1920), note(channel, 67, true, 7680 + 2400)],
+            wraps: Vec::new(),
         };
         let notes = place(&take, &project, RATE, TakeTarget::Song(pattern));
         let shape: Vec<(u8, i64, i64)> = notes.iter().map(|n| (n.key, n.start.0, n.len.0)).collect();
@@ -234,9 +254,32 @@ mod tests {
             start: 0,
             end: frame(3840),
             notes: vec![note(channel, 60, true, 0), note(channel, 60, true, 480), note(channel, 60, false, 720), note(stranger, 61, true, 10)],
+            wraps: Vec::new(),
         };
         let notes = place(&take, &project, RATE, TakeTarget::Pattern(pattern));
         let shape: Vec<(i64, i64)> = notes.iter().map(|n| (n.start.0, n.len.0)).collect();
         assert_eq!(shape, [(0, 480), (480, 240)]);
+    }
+
+    #[test]
+    fn song_loop_passes_add_up_and_held_notes_end_at_the_wrap() {
+        let (project, channel, pattern) = project();
+        // The Song loop covers bar 3 (7680 to 11520). Recording began part-way through it and ran into a second pass.
+        let take = CapturedTake {
+            start: frame(7680 + 1000),
+            end: frame(7680 + 1200),
+            notes: vec![
+                note(channel, 64, true, 7680 + 1920),
+                note(channel, 64, false, 7680 + 2400),
+                note(channel, 67, true, 7680 + 3000),
+                note(channel, 60, true, 7680 + 500),
+                note(channel, 60, false, 7680 + 800),
+            ],
+            wraps: vec![(3, frame(11_520))],
+        };
+        let notes = place(&take, &project, RATE, TakeTarget::Song(pattern));
+        let shape: Vec<(u8, i64, i64)> = notes.iter().map(|n| (n.key, n.start.0, n.len.0)).collect();
+        // Both passes land in the loop, counted from bar 3; the note held over the wrap ends at the loop's end.
+        assert_eq!(shape, [(60, 500, 300), (64, 1920, 480), (67, 3000, 840)]);
     }
 }

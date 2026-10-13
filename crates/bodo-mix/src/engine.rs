@@ -130,6 +130,8 @@ pub struct Engine {
     captures: Consumer<Capture>,
     capture_start: Option<i64>,
     captured: Vec<CapturedNote>,
+    /// Where the Song loop wrapped in the take being collected: before which note, at which frame.
+    capture_wraps: Vec<(usize, i64)>,
     recorder: Recorder,
     targets: Sender<Box<AutomationTargets>>,
     pending_targets: Option<Box<AutomationTargets>>,
@@ -301,6 +303,7 @@ pub(crate) fn build(project: &Project, roots: &SampleRoots, config: EngineConfig
         captures: captures_rx,
         capture_start: None,
         captured: Vec::new(),
+        capture_wraps: Vec::new(),
         recorder: Recorder::default(),
         targets: targets_tx,
         pending_targets: None,
@@ -531,11 +534,15 @@ impl Engine {
                 Capture::Start { frame } => {
                     self.capture_start = Some(frame);
                     self.captured.clear();
+                    self.capture_wraps.clear();
                 }
                 Capture::Note(note) => self.captured.push(note),
+                Capture::Wrap { from } => self.capture_wraps.push((self.captured.len(), from)),
                 Capture::End { frame } => {
                     let start = self.capture_start.take().unwrap_or(frame);
-                    return Some(CapturedTake { start, end: frame.max(start), notes: std::mem::take(&mut self.captured) });
+                    let wraps = std::mem::take(&mut self.capture_wraps);
+                    let end = if wraps.is_empty() { frame.max(start) } else { frame };
+                    return Some(CapturedTake { start, end, notes: std::mem::take(&mut self.captured), wraps });
                 }
             }
         }
@@ -866,6 +873,9 @@ impl AudioEngine {
             if let Some(start) = wrap_to
                 && rendered == frames
             {
+                if self.capturing {
+                    let _ = self.captures.push(Capture::Wrap { from: self.transport.frame });
+                }
                 self.transport.frame = start;
                 self.wrapped = true;
                 if self.capturing && self.shared.loop_record.load(Ordering::Relaxed) {
