@@ -41,6 +41,7 @@ use serde_json::{Value, json};
 pub use crate::autosave::{end_session, start_session};
 pub use crate::piano_roll::{Lane, PianoView};
 pub use crate::playlist::{PlaylistView, Tool};
+pub use crate::rack::{GroupFilter, RackView, StepParam};
 use crate::theme::{ThemePref, Tokens};
 pub use crate::typing::Typing;
 use crate::windows::{Layout, Preset, WindowKind};
@@ -224,6 +225,10 @@ pub struct View {
     pub editor: WindowKind,
     /// The typing keyboard: whether the computer keyboard plays notes, and the notes it holds.
     pub typing: typing::Typing,
+    /// The channel rack's group filter, view options and graph editor.
+    pub rack: rack::RackView,
+    /// Whether the playlist and the piano roll follow the playhead while it plays.
+    pub auto_scroll: bool,
 }
 
 /// The main window.
