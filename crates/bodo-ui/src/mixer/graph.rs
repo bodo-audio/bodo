@@ -11,14 +11,15 @@ use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Shape, Stroke, StrokeKind
 use serde_json::json;
 
 use super::{insert_label, insert_ref, number_of};
-use crate::theme::{self, Tokens, size};
+use crate::i18n::t;
+use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// A node's size.
-const NODE: egui::Vec2 = vec2(104.0, 28.0);
+const NODE: egui::Vec2 = vec2(rem(8.32), rem(2.24));
 /// The distance between columns and between rows.
-const COLUMN: f32 = 150.0;
-const ROW: f32 = 38.0;
+const COLUMN: f32 = rem(12.0);
+const ROW: f32 = rem(3.04);
 
 /// A node of the graph.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -118,10 +119,11 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
         places.insert(*node, Rect::from_min_size(pos2(f32::from(*column as u16) * COLUMN, row as f32 * ROW), NODE));
     }
     let tallest = rows.iter().copied().max().unwrap_or(1) as f32;
-    let canvas = vec2(columns as f32 * COLUMN + 20.0, tallest * ROW + 20.0);
+    let margin = rem(0.8);
+    let canvas = vec2(columns as f32 * COLUMN + 2.0 * margin, tallest * ROW + 2.0 * margin);
     egui::ScrollArea::both().id_salt("bodo-mixer-graph").auto_shrink([false, false]).show(ui, |ui| {
         let (area, _) = ui.allocate_exact_size(canvas.max(ui.available_size()), Sense::hover());
-        let origin = area.min.to_vec2() + vec2(10.0, 10.0);
+        let origin = area.min.to_vec2() + vec2(margin, margin);
         let painter = ui.painter().with_clip_rect(ui.clip_rect());
         painter.rect_filled(area, 0.0, tk.panel);
         let place = |node: &Node| places.get(node).map(|r| r.translate(origin));
@@ -147,7 +149,7 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
                 Node::Insert(i) => {
                     let number = number_of(project, *i).unwrap_or(0);
                     let Some(insert) = project.mixer.insert(*i) else { continue };
-                    let title = if number == 0 { String::from("Master") } else { format!("{number} {}", insert.name) };
+                    let title = if number == 0 { String::from(t("Master")) } else { format!("{number} {}", insert.name) };
                     (title, theme::color(insert.color), Some((*i, number)))
                 }
             };
@@ -160,10 +162,10 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
             } else {
                 tk.chrome
             };
-            painter.rect(rect, 4.0, fill, Stroke::new(1.0, if chosen { tk.accent } else { tk.border }), StrokeKind::Inside);
-            painter.rect_filled(Rect::from_min_size(rect.min + vec2(3.0, 4.0), vec2(3.0, rect.height() - 8.0)), 1.0, color);
+            painter.rect(rect, rem(0.32), fill, Stroke::new(1.0, if chosen { tk.accent } else { tk.border }), StrokeKind::Inside);
+            painter.rect_filled(Rect::from_min_size(rect.min + vec2(rem(0.24), rem(0.32)), vec2(rem(0.24), rect.height() - rem(0.64))), 1.0, color);
             painter.with_clip_rect(rect.shrink(2.0)).text(
-                pos2(rect.left() + 10.0, rect.center().y),
+                pos2(rect.left() + rem(0.8), rect.center().y),
                 Align2::LEFT_CENTER,
                 &name,
                 FontId::proportional(size::SMALL),
@@ -172,7 +174,7 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
             match id {
                 Some((insert, number)) => {
                     control::record(ui, &response, &format!("Graph {}", insert_label(number)), "node", Some(chosen));
-                    app.hint(&response, format!("{name}: click to select it"));
+                    app.hint(&response, tf!("{name}: click to select it", name = name));
                     if response.clicked() {
                         let _ = app.run("edit.select", json!({ "insert": insert_ref(number) }));
                     }
@@ -180,7 +182,7 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
                 }
                 None => {
                     control::record(ui, &response, &format!("Graph channel {name}"), "node", None);
-                    app.hint(&response, format!("The channel {name}"));
+                    app.hint(&response, tf!("The channel {name}", name = name));
                 }
             }
         }
@@ -189,15 +191,16 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
 
 /// A curve from `a` to `b`, dashed for sidechains.
 fn edge(painter: &egui::Painter, a: Pos2, b: Pos2, stroke: Stroke, dashed: bool) {
-    let bend = ((b.x - a.x).abs() * 0.5).max(30.0);
+    let bend = ((b.x - a.x).abs() * 0.5).max(rem(2.4));
     let curve =
         egui::epaint::CubicBezierShape::from_points_stroke([a, a + vec2(bend, 0.0), b - vec2(bend, 0.0), b], false, Color32::TRANSPARENT, stroke);
     if dashed {
         let points: Vec<Pos2> = curve.flatten(Some(0.5));
-        painter.extend(Shape::dashed_line(&points, stroke, 5.0, 4.0));
+        painter.extend(Shape::dashed_line(&points, stroke, rem(0.4), rem(0.32)));
     } else {
         painter.add(curve);
     }
     // An arrow head where it arrives.
-    painter.add(Shape::convex_polygon(vec![b, b + vec2(-6.0, -3.5), b + vec2(-6.0, 3.5)], stroke.color, Stroke::NONE));
+    let (length, half) = (rem(0.48), rem(0.28));
+    painter.add(Shape::convex_polygon(vec![b, b + vec2(-length, -half), b + vec2(-length, half)], stroke.color, Stroke::NONE));
 }

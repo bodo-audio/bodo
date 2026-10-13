@@ -28,7 +28,8 @@ use egui::{Rect, RichText, Ui, pos2, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::theme::{Tokens, size};
+use crate::i18n::{en, t};
+use crate::theme::{Tokens, rem, size};
 use crate::windows::{self, WindowKind, icon_button};
 use crate::{BodoApp, control};
 
@@ -51,21 +52,30 @@ impl StripSize {
     /// Every size, in the menu's order.
     pub const ALL: [Self; 3] = [Self::Wide, Self::Compact, Self::ExtraCompact];
 
-    /// Its name in the menu.
+    /// Its name in the menu, in English; [`t`] shows it in the interface's language.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Wide => "Wide",
-            Self::Compact => "Compact",
-            Self::ExtraCompact => "Extra compact",
+            Self::Wide => en("Wide"),
+            Self::Compact => en("Compact"),
+            Self::ExtraCompact => en("Extra compact"),
         }
     }
 
-    /// A strip's width in points.
+    /// A strip's width in points, in [`rem`] so it scales with the interface.
     pub fn width(self) -> f32 {
         match self {
-            Self::Wide => 64.0,
-            Self::Compact => 46.0,
-            Self::ExtraCompact => 30.0,
+            Self::Wide => rem(5.12),
+            Self::Compact => rem(3.68),
+            Self::ExtraCompact => rem(2.4),
+        }
+    }
+
+    /// Its one- or two-letter mark on the header's size buttons, in the interface's language.
+    fn mark(self) -> &'static str {
+        match self {
+            Self::Wide => t("W"),
+            Self::Compact => t("C"),
+            Self::ExtraCompact => t("XC"),
         }
     }
 }
@@ -120,10 +130,10 @@ impl Default for MixerView {
 const UNKNOWN_CHANNELS: u16 = 8;
 
 /// The insert panel's width.
-const PANEL: f32 = 252.0;
+const PANEL: f32 = rem(20.16);
 
 /// The dB scale's width.
-const SCALE: f32 = 26.0;
+const SCALE: f32 = rem(2.08);
 
 /// How an insert is named in commands: its number, or `master`.
 pub(crate) fn insert_ref(number: usize) -> Value {
@@ -280,30 +290,30 @@ pub(crate) fn window(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, pr
 }
 
 fn header(app: &mut BodoApp, ui: &mut Ui) {
-    let options = ui.menu_button(RichText::new("Options").size(size::SMALL), |ui| {
-        ui.set_min_width(190.0);
+    let options = ui.menu_button(RichText::new(t("Options")).size(size::SMALL), |ui| {
+        ui.set_min_width(rem(15.2));
         for choice in StripSize::ALL {
-            if ui.radio(app.view.mixer.size == choice, choice.label()).clicked() {
+            if ui.radio(app.view.mixer.size == choice, t(choice.label())).clicked() {
                 app.view.mixer.size = choice;
             }
         }
         ui.separator();
-        if ui.button("Add insert").clicked() {
+        if ui.button(t("Add insert")).clicked() {
             let _ = app.run("mixer.add_insert", json!({}));
         }
-        if ui.button("Clear every clip light").clicked() {
+        if ui.button(t("Clear every clip light")).clicked() {
             clear_all_clips(app);
         }
-        if ui.button("Unsolo all").clicked() {
+        if ui.button(t("Unsolo all")).clicked() {
             unsolo_all(app);
         }
         ui.separator();
-        ui.menu_button("Pan law", |ui| {
+        ui.menu_button(t("Pan law"), |ui| {
             let law = app.session.project().settings.pan_law;
             for (value, id, label) in [
-                (bodo_kit_dsp::pan::PanLaw::ConstantPower3dB, "constantPower3dB", "Constant power (-3 dB)"),
-                (bodo_kit_dsp::pan::PanLaw::Compromise4_5dB, "compromise4_5dB", "Compromise (-4.5 dB)"),
-                (bodo_kit_dsp::pan::PanLaw::Linear6dB, "linear6dB", "Linear (-6 dB)"),
+                (bodo_kit_dsp::pan::PanLaw::ConstantPower3dB, "constantPower3dB", t("Constant power (-3 dB)")),
+                (bodo_kit_dsp::pan::PanLaw::Compromise4_5dB, "compromise4_5dB", t("Compromise (-4.5 dB)")),
+                (bodo_kit_dsp::pan::PanLaw::Linear6dB, "linear6dB", t("Linear (-6 dB)")),
             ] {
                 if ui.radio(law == value, label).clicked() {
                     let _ = app.run("project.set_pan_law", json!({ "law": id }));
@@ -330,15 +340,10 @@ fn header(app: &mut BodoApp, ui: &mut Ui) {
     }
     ui.separator();
     for choice in StripSize::ALL {
-        let short = match choice {
-            StripSize::Wide => "W",
-            StripSize::Compact => "C",
-            StripSize::ExtraCompact => "XC",
-        };
         let selected = app.view.mixer.size == choice;
-        let button = ui.selectable_label(selected, RichText::new(short).size(size::SMALL));
+        let button = ui.selectable_label(selected, RichText::new(choice.mark()).size(size::SMALL));
         control::record(ui, &button, &format!("Mixer size {}", choice.label()), "button", Some(selected));
-        app.hint(&button, format!("{} strips", choice.label()));
+        app.hint(&button, tf!("{size} strips", size = t(choice.label())));
         if button.clicked() {
             app.view.mixer.size = choice;
         }
@@ -368,7 +373,7 @@ fn unsolo_all(app: &mut BodoApp) {
         .map(|(n, _)| bodo_engine::Call::new("mixer.solo", json!({ "insert": n + 1, "on": false })))
         .collect();
     if !calls.is_empty() {
-        let _ = app.session.batch(&calls, Some("Unsolo all"));
+        let _ = app.session.batch(&calls, Some(en("Unsolo all")));
     }
 }
 
@@ -392,7 +397,7 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
     if panel_width > 0.0 {
         ui.painter().rect_filled(panel_rect, 0.0, tk.chrome_dark);
         ui.painter().vline(panel_rect.left(), panel_rect.y_range(), egui::Stroke::new(1.0, tk.border));
-        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(panel_rect.shrink2(vec2(6.0, 4.0))));
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(panel_rect.shrink2(vec2(rem(0.48), rem(0.32)))));
         panel::show(app, &mut child, project);
     }
 }
@@ -403,10 +408,10 @@ fn strips(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) -> Option<(f32
     let mut faders = None;
     egui::ScrollArea::horizontal().id_salt("bodo-mixer-strips").auto_shrink([false, false]).show(ui, |ui| {
         ui.horizontal_top(|ui| {
-            ui.spacing_mut().item_spacing.x = 2.0;
-            ui.add_space(2.0);
+            ui.spacing_mut().item_spacing.x = rem(0.16);
+            ui.add_space(rem(0.16));
             faders = Some(strip::show(app, ui, project, &project.mixer.master, 0, size));
-            ui.add_space(6.0);
+            ui.add_space(rem(0.48));
             for (n, id) in project.mixer.order.iter().enumerate() {
                 if let Some(insert) = project.mixer.inserts.get(id) {
                     strip::show(app, ui, project, insert, n + 1, size);

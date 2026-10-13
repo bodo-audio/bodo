@@ -11,7 +11,8 @@ use egui::{Align2, FontId, Rect, RichText, Sense, Shape, Stroke, Ui, pos2, vec2}
 use serde_json::json;
 
 use super::insert_ref;
-use crate::theme::{self, Tokens, size};
+use crate::i18n::{en, t};
+use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
 /// The lowest and highest frequencies the knobs reach and the curve shows.
@@ -80,48 +81,57 @@ pub(crate) fn response_db(eq: &StripEq, hz: f64, rate: SampleRate) -> f64 {
 /// Draws the EQ: its curve and the knobs of its three bands.
 pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Project, insert: &MixerInsert, number: usize) {
     let tk = Tokens::get();
-    ui.label(RichText::new("EQ").size(size::SMALL).color(tk.text_dim));
+    ui.label(RichText::new(t("EQ")).size(size::SMALL).color(tk.text_dim));
     let width = ui.available_width();
-    let (rect, response) = ui.allocate_exact_size(vec2(width, 64.0), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, rem(5.12)), Sense::hover());
     control::record(ui, &response, "Panel EQ curve", "graph", None);
     app.hint(&response, "The EQ's response: the low shelf, the peaking mid and the high shelf together");
     curve(ui, rect, &insert.eq, project.settings.sample_rate);
     ui.horizontal(|ui| {
-        ui.spacing_mut().item_spacing.x = 2.0;
-        for (band, name, eq_band) in [("low", "Low", insert.eq.low), ("mid", "Mid", insert.eq.mid), ("high", "High", insert.eq.high)] {
+        ui.spacing_mut().item_spacing.x = rem(0.16);
+        for (band, name, eq_band) in [("low", en("Low"), insert.eq.low), ("mid", en("Mid"), insert.eq.mid), ("high", en("High"), insert.eq.high)] {
             ui.vertical(|ui| {
-                ui.label(RichText::new(name).size(size::SMALL).color(tk.text_faint));
+                ui.label(RichText::new(t(name)).size(size::SMALL).color(tk.text_faint));
                 band_knobs(app, ui, number, band, name, eq_band);
             });
-            ui.add_space(4.0);
+            ui.add_space(rem(0.32));
         }
     });
 }
 
-/// The frequency, gain and Q knobs of one band.
-fn band_knobs(app: &mut BodoApp, ui: &mut Ui, number: usize, band: &str, name: &str, values: EqBand) {
+/// The frequency, gain and Q knobs of one band; `name` is the band's English name.
+fn band_knobs(app: &mut BodoApp, ui: &mut Ui, number: usize, band: &str, name: &'static str, values: EqBand) {
     let insert = insert_ref(number);
     let label = |what: &str| format!("{} EQ {name} {what}", super::insert_label(number));
+    let shown = t(name);
+    let diameter = rem(1.6);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 1.0;
         let mut p = frequency_position(values.frequency);
-        let knob = ui.add(Knob::new(&mut p, 0.0..=1.0).diameter(20.0).format(format_frequency).label(label("frequency")));
+        let knob = ui.add(Knob::new(&mut p, 0.0..=1.0).diameter(diameter).format(format_frequency).label(tf!("{band} band frequency", band = shown)));
         control::record(ui, &knob, &label("frequency"), "knob", None);
-        app.hint(&knob, format!("{name} band frequency: {}", format_frequency(p)));
+        app.hint(&knob, tf!("{band} band frequency: {value}", band = shown, value = format_frequency(p)));
         if knob.changed() {
             app.run_gesture(&knob, "mixer.set_eq", json!({ "insert": insert, "band": band, "frequency": frequency_at(p) }));
         }
         let mut gain = values.gain_db;
-        let knob = ui.add(Knob::new(&mut gain, -GAIN_DB..=GAIN_DB).origin(0.0).default(0.0).diameter(20.0).format(format_gain).label(label("gain")));
+        let knob = ui.add(
+            Knob::new(&mut gain, -GAIN_DB..=GAIN_DB)
+                .origin(0.0)
+                .default(0.0)
+                .diameter(diameter)
+                .format(format_gain)
+                .label(tf!("{band} band gain", band = shown)),
+        );
         control::record(ui, &knob, &label("gain"), "knob", None);
-        app.hint(&knob, format!("{name} band gain: {}", format_gain(gain)));
+        app.hint(&knob, tf!("{band} band gain: {value}", band = shown, value = format_gain(gain)));
         if knob.changed() {
             app.run_gesture(&knob, "mixer.set_eq", json!({ "insert": insert, "band": band, "gainDb": gain }));
         }
         let mut q = q_position(values.q);
-        let knob = ui.add(Knob::new(&mut q, 0.0..=1.0).diameter(20.0).format(format_q).label(label("Q")));
+        let knob = ui.add(Knob::new(&mut q, 0.0..=1.0).diameter(diameter).format(format_q).label(tf!("{band} band Q", band = shown)));
         control::record(ui, &knob, &label("Q"), "knob", None);
-        app.hint(&knob, format!("{name} band {} (for the shelves, the slope)", format_q(q)));
+        app.hint(&knob, tf!("{band} band {value} (for the shelves, the slope)", band = shown, value = format_q(q)));
         if knob.changed() {
             app.run_gesture(&knob, "mixer.set_eq", json!({ "insert": insert, "band": band, "q": q_at(q) }));
         }
@@ -133,12 +143,12 @@ fn curve(ui: &Ui, rect: Rect, eq: &StripEq, rate: SampleRate) {
     let tk = Tokens::get();
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, 3.0, tk.field);
-    let y_of = |db: f64| rect.center().y - (db as f32 / GAIN_DB) * (rect.height() / 2.0 - 3.0);
+    let y_of = |db: f64| rect.center().y - (db as f32 / GAIN_DB) * (rect.height() / 2.0 - rem(0.24));
     for hz in [100.0, 1000.0, 10_000.0] {
         let x = rect.left() + frequency_position(hz) * rect.width();
         painter.vline(x, rect.y_range(), Stroke::new(1.0, tk.grid_beat));
         let text = if hz >= 1000.0 { format!("{}k", hz / 1000.0) } else { format!("{hz}") };
-        painter.text(pos2(x + 2.0, rect.bottom() - 2.0), Align2::LEFT_BOTTOM, text, FontId::monospace(8.0), tk.text_faint);
+        painter.text(pos2(x + rem(0.16), rect.bottom() - rem(0.16)), Align2::LEFT_BOTTOM, text, FontId::monospace(rem(0.64)), tk.text_faint);
     }
     painter.hline(rect.x_range(), rect.center().y, Stroke::new(1.0, tk.grid_bar));
     let points: Vec<egui::Pos2> = (0..=POINTS)
@@ -152,7 +162,7 @@ fn curve(ui: &Ui, rect: Rect, eq: &StripEq, rate: SampleRate) {
     for band in [eq.low, eq.mid, eq.high] {
         let x = rect.left() + frequency_position(band.frequency) * rect.width();
         let y = y_of(f64::from(band.gain_db));
-        painter.circle_filled(pos2(x, y), 3.0, theme::faded(tk.accent, if band.gain_db == 0.0 { 0.4 } else { 1.0 }));
+        painter.circle_filled(pos2(x, y), rem(0.24), theme::faded(tk.accent, if band.gain_db == 0.0 { 0.4 } else { 1.0 }));
     }
 }
 

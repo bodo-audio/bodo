@@ -291,15 +291,15 @@ const SCOPE_FRAMES: usize = 1024;
 /// The oscilloscope: the master output's latest frames, mixed to mono, as a line.
 fn oscilloscope(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
-    let (rect, response) = ui.allocate_exact_size(vec2(72.0, 18.0), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(vec2(rem(5.76), rem(1.44)), Sense::hover());
     let painter = ui.painter().with_clip_rect(rect);
-    painter.rect_filled(rect, 3.0, tk.field);
+    painter.rect_filled(rect, rem(0.24), tk.field);
     let mut frames = vec![0.0f32; SCOPE_FRAMES];
     let live = app.audio.scope(&mut frames);
     // One point per column: the sample of largest size among the frames it covers, so peaks don't vanish.
     let columns = rect.width().max(1.0) as usize;
     let per = (SCOPE_FRAMES / columns).max(1);
-    let half = rect.height() / 2.0 - 1.5;
+    let half = rect.height() / 2.0 - rem(0.12);
     let points: Vec<egui::Pos2> = (0..columns)
         .map(|c| {
             let chunk = &frames[(c * per).min(SCOPE_FRAMES)..((c + 1) * per).min(SCOPE_FRAMES)];

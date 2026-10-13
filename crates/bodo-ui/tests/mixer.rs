@@ -282,7 +282,7 @@ fn the_strip_menu_sets_an_icon_and_automates_the_fader() {
     right_click(&mut h, pos2(rect.center().x, rect.top() + 16.0));
     click_containing(&mut h, "Icon");
     h.run_steps(2);
-    click_labeled(&mut h, "drum");
+    click_labeled(&mut h, "Drum");
     h.run_steps(3);
     assert_eq!(insert(&h, 2).icon.as_deref(), Some("drum"));
     let at = element(&h, "Insert 2 volume").center();
