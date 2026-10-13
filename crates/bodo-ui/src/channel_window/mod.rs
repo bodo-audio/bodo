@@ -3,8 +3,8 @@
 //!
 //! Every window but the automation channel's starts with the channel's header: pan, volume, pitch with its range,
 //! and the mixer insert it plays into. Below it, the window for the channel's kind: the Sampler window with its
-//! Sample and Envelopes tabs ([`sampler`]), and the windows of audio clip, automation, layer, MIDI Out and instrument
-//! channels ([`kinds`]). Every control changes the project through commands; knob drags are one undo step each.
+//! Sample and Envelopes tabs (in `sampler`), and the windows of audio clip, automation, layer, MIDI Out and instrument
+//! channels (in `kinds`). Every control changes the project through commands; knob drags are one undo step each.
 
 mod kinds;
 mod preview;
