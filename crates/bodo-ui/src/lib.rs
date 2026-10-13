@@ -345,9 +345,15 @@ pub struct BodoApp {
     /// The interface size showing: the preference, or what Auto picked.
     shown_scale: f32,
     status: Option<(String, bool, Instant)>,
+    /// The commands that made recent undo steps, by the steps' labels, newest last, so a step whose label the engine
+    /// built shows by its command's translated title.
+    step_titles: std::collections::VecDeque<(String, &'static str)>,
     gestures: std::collections::HashMap<egui::Id, u64>,
     next_gesture: u64,
 }
+
+/// How many recent undo steps remember the command that made them, for [`BodoApp::step_name`].
+const STEP_TITLES: usize = 256;
 
 /// How long a status message stays in the hint bar.
 const STATUS_TIME: Duration = Duration::from_secs(6);
@@ -372,6 +378,7 @@ impl BodoApp {
             shown_theme: None,
             shown_scale: 1.0,
             status: None,
+            step_titles: std::collections::VecDeque::new(),
             gestures: std::collections::HashMap::new(),
             next_gesture: 1,
         };
@@ -406,7 +413,14 @@ impl BodoApp {
         match self.session.invoke(&call) {
             Ok(output) => {
                 if let Some(undo) = &output.undo {
-                    self.set_status(undo.clone(), false);
+                    if let Some(spec) = self.session.registry().get(&call.id) {
+                        if self.step_titles.len() >= STEP_TITLES {
+                            self.step_titles.pop_front();
+                        }
+                        self.step_titles.push_back((undo.clone(), spec.title));
+                    }
+                    let shown = self.step_name(undo);
+                    self.set_status(shown, false);
                 }
                 self.after_command();
                 Ok(output.result)
@@ -445,6 +459,21 @@ impl BodoApp {
             text.push_str(&format!(" ({hint})"));
         }
         self.set_status(text, true);
+    }
+
+    /// Undo step `label` in the interface's language: its translation when the catalog has the label, or else, when
+    /// the interface isn't in English, the translated title of the command that made it, such as "Örnekleyiciyi
+    /// düzenle" for "Edit sampler Kick". Steps made elsewhere, such as by an agent, keep their English label.
+    ///
+    /// Complexity: O(s) in the remembered steps, at most a few hundred.
+    pub fn step_name(&self, label: &str) -> String {
+        if let Some(shown) = i18n::lookup(label) {
+            return shown.to_owned();
+        }
+        if i18n::language() == i18n::Language::English {
+            return label.to_owned();
+        }
+        self.step_titles.iter().rev().find(|(step, _)| step == label).map_or_else(|| label.to_owned(), |(_, title)| i18n::tr(title))
     }
 
     /// Shows `text` in the hint bar for a few seconds; `error` shows it in the error color.
