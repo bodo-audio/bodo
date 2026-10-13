@@ -231,3 +231,18 @@ proptest! {
         prop_assert_eq!(&**s.project(), &*start);
     }
 }
+
+#[test]
+fn taking_a_track_from_the_middle_of_a_group_keeps_the_rest_together() {
+    let mut s = beat();
+    s.execute("playlist.group_tracks", json!({ "name": "A", "tracks": [5, 6, 4] })).unwrap();
+    // The fifth track sits in the middle of A now; moving it to B must not split A.
+    let middle = s.project().track_order[4];
+    s.execute("playlist.group_tracks", json!({ "name": "B", "tracks": [middle.to_string()] })).unwrap();
+    assert!(groups_are_together(&s), "{:?}", s.project().track_order);
+    // Ungrouping a middle track moves it after its group.
+    s.execute("playlist.group_tracks", json!({ "name": "C", "tracks": [8, 9, 10] })).unwrap();
+    let middle = s.project().track_order[8];
+    s.execute("playlist.ungroup_tracks", json!({ "tracks": [middle.to_string()] })).unwrap();
+    assert!(groups_are_together(&s), "{:?}", s.project().track_order);
+}

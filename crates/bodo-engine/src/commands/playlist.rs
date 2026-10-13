@@ -189,6 +189,35 @@ fn delete_time(ctx: &mut Ctx<'_>, p: TimeSpan) -> Result<Value, CommandError> {
     Ok(json!({ "removed": removed, "moved": moved }))
 }
 
+/// Gathers every track group's tracks together where the group's first track is, keeping the order of everything
+/// else. Grouping, ungrouping or inserting a track can leave a group split around other tracks; this mends it.
+///
+/// Complexity: O(t log t) in tracks.
+fn keep_groups_together(ctx: &mut Ctx<'_>) {
+    let group_of = |id: &TrackId| ctx.project.tracks.get(id).and_then(|t| t.group.clone());
+    let mut members: std::collections::BTreeMap<String, Vec<TrackId>> = std::collections::BTreeMap::new();
+    for id in ctx.project.track_order.iter() {
+        if let Some(group) = group_of(id) {
+            members.entry(group).or_default().push(*id);
+        }
+    }
+    let mut order = Vec::with_capacity(ctx.project.track_order.len());
+    for id in ctx.project.track_order.iter() {
+        match group_of(id) {
+            // The group's first track brings the whole group; its later tracks are already placed.
+            Some(group) => {
+                if let Some(run) = members.remove(&group) {
+                    order.extend(run);
+                }
+            }
+            None => order.push(*id),
+        }
+    }
+    if order.iter().ne(ctx.project.track_order.iter()) {
+        ctx.project.track_order = order.into_iter().collect();
+    }
+}
+
 fn add_track(ctx: &mut Ctx<'_>, p: AddTrack) -> Result<Value, CommandError> {
     let count = ctx.project.track_order.len();
     let at = p.at.map_or(count, |at| at.saturating_sub(1).min(count));
@@ -198,6 +227,7 @@ fn add_track(ctx: &mut Ctx<'_>, p: AddTrack) -> Result<Value, CommandError> {
     let id = ctx.ids().track();
     ctx.project.tracks.insert(id, Arc::new(PlaylistTrack::new(id, name.clone(), color)));
     ctx.project.track_order.insert(at, id);
+    keep_groups_together(ctx);
     ctx.editor.track = Some(id);
     ctx.set_label(format!("Add track {name}"));
     Ok(json!({ "track": id, "name": name, "position": at + 1 }))
@@ -295,6 +325,8 @@ fn group_tracks(ctx: &mut Ctx<'_>, p: GroupTracks) -> Result<Value, CommandError
             Ok(())
         })?;
     }
+    // A track taken from the middle of another group leaves that group's tracks apart.
+    keep_groups_together(ctx);
     ctx.set_label(format!("Group tracks into {name}"));
     Ok(json!({ "group": name, "tracks": group }))
 }
@@ -311,6 +343,8 @@ fn ungroup(ctx: &mut Ctx<'_>, p: Ungroup) -> Result<Value, CommandError> {
             Ok(())
         })?;
     }
+    // A track ungrouped from the middle of its group moves to just after the group.
+    keep_groups_together(ctx);
     ctx.set_label(String::from("Ungroup tracks"));
     Ok(json!({ "tracks": tracks }))
 }
