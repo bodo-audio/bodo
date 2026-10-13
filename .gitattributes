@@ -1,0 +1,2 @@
+# Check out text with LF endings on every OS, so formatting and byte-exact checks agree everywhere.
+* text=auto eol=lf
