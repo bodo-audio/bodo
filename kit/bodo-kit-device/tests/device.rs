@@ -1,6 +1,6 @@
 //! Tests for the device layer, mostly through the virtual device so they run without audio hardware.
 
-#![allow(clippy::unwrap_used, reason = "test helpers outside #[test] functions")]
+#![allow(clippy::unwrap_used, clippy::print_stdout, reason = "test helpers outside #[test] functions")]
 
 use std::time::{Duration, Instant};
 
@@ -115,15 +115,10 @@ fn prints_the_devices() {
     }
 }
 
-/// Plays a two-second tone on the default output device, with its default buffer size, and checks that audio keeps
-/// flowing in real time. Run it by hand, or in the CI job that installs a virtual sound card:
-/// `cargo test -p bodo-kit-device -- --ignored`.
-#[test]
-#[ignore = "needs an audio device"]
-fn plays_a_tone_on_the_default_device() {
+/// Plays a two-second tone through `config` and checks that audio keeps flowing in real time.
+fn play_tone(config: &DeviceConfig) {
     let mut phase = 0.0f32;
-    let config = DeviceConfig { buffer_frames: None, ..DeviceConfig::default() };
-    let stream = open(&config, move |block: &mut Block<'_>| {
+    let stream = open(config, move |block: &mut Block<'_>| {
         let step = 440.0 * std::f32::consts::TAU / block.rate.hz() as f32;
         for i in 0..block.frames {
             let sample = phase.sin() * 0.1;
@@ -140,7 +135,27 @@ fn plays_a_tone_on_the_default_device() {
     let second = stream.status();
     println!("after 1 s: {first:?}");
     println!("after 2 s: {second:?}");
+    let latency_ms = second.output_latency.0 as f64 * 1000.0 / rate as f64;
+    println!("{:?}: output latency {latency_ms:.1} ms", config.host);
     assert!(!second.disconnected);
     // In the second second the device must have asked for at least half a second of audio.
     assert!(second.frames - first.frames >= rate / 2, "audio stalled: {first:?} then {second:?}");
+}
+
+/// Plays a tone on the default output device, with its default buffer size. Run it by hand, or in the CI job that
+/// installs a virtual sound card: `cargo test -p bodo-kit-device -- --ignored`.
+#[test]
+#[ignore = "needs an audio device"]
+fn plays_a_tone_on_the_default_device() {
+    play_tone(&DeviceConfig { buffer_frames: None, ..DeviceConfig::default() });
+}
+
+/// Plays a tone in WASAPI exclusive mode on the default output device, at the shortest period it allows.
+#[cfg(windows)]
+#[test]
+#[ignore = "needs an audio device"]
+fn plays_a_tone_in_wasapi_exclusive_mode() {
+    let exclusive = DeviceConfig { host: Some(String::from("WASAPI Exclusive")), buffer_frames: None, ..DeviceConfig::default() };
+    assert!(hosts().iter().any(|h| Some(&h.name) == exclusive.host.as_ref()));
+    play_tone(&exclusive);
 }

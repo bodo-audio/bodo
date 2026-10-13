@@ -1,6 +1,7 @@
 //! Audio devices for Bodo Kit (project.md section 6.2).
 //!
-//! - [`hosts`] and [`devices`] list what this machine offers.
+//! - [`hosts`] and [`devices`] list what this machine offers. On Windows that includes "WASAPI Exclusive", which
+//!   takes over a sound card for low latency without an ASIO driver.
 //! - [`open`] starts a stream on a real device with a [`DeviceConfig`]: host, devices, sample rate, buffer size and
 //!   channel maps.
 //! - [`open_virtual`] and [`VirtualDevice`] run the same engine without hardware, for tests, CI and timing runs.
@@ -19,6 +20,8 @@ use std::thread::JoinHandle;
 use bodo_kit_core::SampleRate;
 
 mod driver;
+#[cfg(windows)]
+mod exclusive;
 mod hardware;
 mod virtual_device;
 
@@ -102,13 +105,9 @@ pub struct AudioStream {
 
 pub(crate) enum StreamInner {
     /// Boxed: cpal's streams are large on some platforms.
-    Hardware {
-        _streams: Box<HardwareStreams>,
-    },
-    Virtual {
-        stop: Arc<AtomicBool>,
-        handle: Option<JoinHandle<()>>,
-    },
+    Hardware { _streams: Box<HardwareStreams> },
+    /// A stream driven by a thread of our own: the virtual device, or WASAPI exclusive mode.
+    Thread { stop: Arc<AtomicBool>, handle: Option<JoinHandle<()>> },
 }
 
 /// The cpal streams of a hardware stream, kept alive until the stream is dropped.
@@ -141,7 +140,7 @@ impl AudioStream {
 
 impl Drop for AudioStream {
     fn drop(&mut self) {
-        if let StreamInner::Virtual { stop, handle } = &mut self.inner {
+        if let StreamInner::Thread { stop, handle } = &mut self.inner {
             stop.store(true, Ordering::Relaxed);
             if let Some(handle) = handle.take() {
                 let _ = handle.join();

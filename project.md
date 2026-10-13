@@ -132,7 +132,7 @@ All versions were checked against crates.io and GitHub on 2026-10-13. The worksp
 | GUI tests | `egui_kittest` | 0.36.2 | MIT/Apache | UI snapshot tests |
 | Audio I/O | `cpal` (+ `asio` feature) | 0.18.2 | Apache-2.0 | CoreAudio, WASAPI, ASIO, ALSA, PipeWire, JACK |
 | Audio I/O | `rtaudio` | 0.8.1 | MIT | Fallback for duplex on backends cpal lacks |
-| Audio I/O | `wasapi` | 0.26.0 | MIT | WASAPI exclusive mode (later) |
+| Audio I/O | `wasapi` | 0.26.0 | MIT | WASAPI exclusive mode ([ADR 0017](docs/adr/0017-wasapi-exclusive-mode.md)) |
 | MIDI | `midir` | 0.11.1 | MIT | MIDI device I/O |
 | MIDI | `midly` | 0.5.3 | Unlicense | Standard MIDI File read and write |
 | MIDI | `midi2` | 0.11.1 | MIT/Apache | MIDI 2.0 / UMP |
@@ -385,7 +385,7 @@ Implementations: `ClapPlugin` (clack-host), `Vst3Plugin` (vst3), `AuPlugin` (obj
 
 Soundcraft's main alpha blocker was the device layer, so Bodo builds it first.
 
-- **Selection:** host and device per platform (CoreAudio; WASAPI shared and ASIO; ALSA, PipeWire and JACK), sample rate, buffer size from 32 to 4096 frames, and input and output channel maps. Settings are saved, and the Hub has a setup wizard.
+- **Selection:** host and device per platform (CoreAudio; WASAPI shared, WASAPI exclusive and ASIO; ALSA, PipeWire and JACK), sample rate, buffer size from 32 to 4096 frames, and input and output channel maps. Settings are saved, and the Hub has a setup wizard.
 - **One duplex clock:** when the backend allows it (CoreAudio aggregate devices, ASIO, JACK), input and output share one device clock. Where cpal can't do duplex, `rtaudio` is the fallback.
 - **Latency:** the device layer reports input latency, output latency and buffer size. Recordings are offset to compensate, and the wizard includes a loopback "ping" calibration.
 - **Hot-plug:** if the device disappears, the engine stops cleanly and the UI offers to reconnect. The project is never lost.

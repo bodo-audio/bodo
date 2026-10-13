@@ -51,13 +51,28 @@ const OPEN_TIMEOUT: Duration = Duration::from_secs(5);
 /// The audio hosts available here.
 pub fn hosts() -> Vec<HostInfo> {
     let default = cpal::default_host().id();
-    cpal::available_hosts().into_iter().map(|id| HostInfo { name: id.name().to_owned(), is_default: id == default }).collect()
+    #[allow(unused_mut, reason = "only Windows adds a host of its own")]
+    let mut hosts: Vec<HostInfo> =
+        cpal::available_hosts().into_iter().map(|id| HostInfo { name: id.name().to_owned(), is_default: id == default }).collect();
+    #[cfg(windows)]
+    hosts.push(HostInfo { name: crate::exclusive::HOST.to_owned(), is_default: false });
+    hosts
+}
+
+/// Whether `host` names WASAPI exclusive mode.
+#[cfg(windows)]
+fn is_exclusive(host: Option<&str>) -> bool {
+    host.is_some_and(|name| name.eq_ignore_ascii_case(crate::exclusive::HOST))
 }
 
 /// The devices of `host`, or of the default host.
 ///
 /// Talks to the OS; may take a while on some hosts.
 pub fn devices(host: Option<&str>) -> Result<Vec<DeviceInfo>, DeviceError> {
+    #[cfg(windows)]
+    if is_exclusive(host) {
+        return crate::exclusive::devices();
+    }
     let host = find_host(host)?;
     let default_output = host.default_output_device().and_then(|d| device_name(&d));
     let default_input = host.default_input_device().and_then(|d| device_name(&d));
@@ -100,6 +115,10 @@ pub fn devices(host: Option<&str>) -> Result<Vec<DeviceInfo>, DeviceError> {
 ///
 /// Talks to the OS and allocates the stream's buffers.
 pub(crate) fn open<C: AudioCallback>(config: &DeviceConfig, callback: C) -> Result<AudioStream, DeviceError> {
+    #[cfg(windows)]
+    if is_exclusive(config.host.as_deref()) {
+        return crate::exclusive::open(config, callback);
+    }
     let host = find_host(config.host.as_deref())?;
     let output = match &config.output {
         Some(name) => find_device(&host, name)?,

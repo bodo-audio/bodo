@@ -119,5 +119,5 @@ pub(crate) fn spawn<C: AudioCallback>(config: VirtualConfig, callback: C) -> Res
             }
         })
         .map_err(DeviceError::Thread)?;
-    Ok(AudioStream { stats, input_stats: None, inner: StreamInner::Virtual { stop, handle: Some(handle) }, rate: config.sample_rate })
+    Ok(AudioStream { stats, input_stats: None, inner: StreamInner::Thread { stop, handle: Some(handle) }, rate: config.sample_rate })
 }

@@ -37,6 +37,7 @@ rtsan-standalone = "0.3.0"
 
 # Audio devices
 cpal = "0.18.2"
+wasapi = "0.26.0"
 
 # Audio files
 audioadapter-buffers = "5.1.0"
