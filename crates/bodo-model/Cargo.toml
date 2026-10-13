@@ -1,0 +1,24 @@
+[package]
+name = "bodo-model"
+description = "The Bodo project document: channels, patterns, playlist, mixer, their invariants and snapshots."
+license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bodo-kit-core = { workspace = true, features = ["serde"] }
+bodo-kit-dsp = { workspace = true, features = ["serde"] }
+bodo-kit-graph.workspace = true
+imbl.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+ulid.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true

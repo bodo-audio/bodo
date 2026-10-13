@@ -1,8 +1,8 @@
 [workspace]
 resolver = "3"
-# Cargo rejects a member glob that matches nothing, so `crates/*`, `plugins/*` and `apps/*`
-# are added here when their first crate lands.
-members = ["kit/*", "xtask"]
+# Cargo rejects a member glob that matches nothing, so `plugins/*` and `apps/*` are added here
+# when their first crate lands.
+members = ["kit/*", "crates/*", "xtask"]
 # Fixture workspaces that the xtask gates run against. They are separate workspaces on purpose.
 exclude = ["xtask/fixtures"]
 
@@ -21,6 +21,9 @@ bodo-kit-dsp = { path = "kit/bodo-kit-dsp" }
 bodo-kit-graph = { path = "kit/bodo-kit-graph" }
 bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
+
+# Bodo DAW
+bodo-model = { path = "crates/bodo-model" }
 
 # Real-time
 atomic_refcell = "0.1.14"
@@ -44,9 +47,11 @@ symphonia = { version = "0.6.1", features = ["aac", "aiff", "alac", "isomp4", "m
 midly = { version = "0.5.3", default-features = false, features = ["std"] }
 
 # Data, errors and logging
-serde = { version = "1.0.229", features = ["derive"] }
+imbl = { version = "7.0.2", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 thiserror = "2.0.21"
+ulid = "3.0.0"
 tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 
 # Tooling (xtask only)
