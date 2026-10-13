@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use bodo_kit_audio::{AudioData, SampleMarkers, edit};
+use bodo_kit_core::SampleRate;
 use bodo_model::channel::{LoopMode, SamplerParams, SamplerStretchMode};
 
 use crate::stretch::stretch_and_shift;
@@ -23,6 +24,8 @@ pub struct SamplerData {
     pub sample: Option<Arc<AudioData>>,
     /// The slices or regions, one per key from the root key up.
     pub zones: Arc<[Zone]>,
+    /// The sample streamed from disk, in place of `sample`, when the sampler keeps it there.
+    pub disk: Option<Arc<crate::disk_sample::DiskSample>>,
 }
 
 /// Silence below this level is trimmed: -60 dB.
@@ -80,7 +83,7 @@ pub fn derive(base: &AudioData, markers: &SampleMarkers, params: &SamplerParams,
     }
     let mut scale = 1.0;
     if params.stretch.mode == SamplerStretchMode::Stretch && !params.stretch.is_identity() {
-        let multiplier = length_multiplier(&data, params, bpm);
+        let multiplier = length_multiplier(data.frames() as u64, data.rate, params, bpm);
         if (multiplier - 1.0).abs() > 1e-6 || params.stretch.pitch_cents != 0.0 {
             data = stretch_and_shift(&data, 1.0 / multiplier, params.stretch.pitch_cents / 100.0);
             scale = multiplier;
@@ -90,12 +93,13 @@ pub fn derive(base: &AudioData, markers: &SampleMarkers, params: &SamplerParams,
     (data, zones)
 }
 
-/// How many times longer the stretch makes the played part: the multiplier, or the fit to a length in beats.
-pub fn length_multiplier(data: &AudioData, params: &SamplerParams, bpm: f64) -> f64 {
+/// How many times longer the stretch makes the played part of a sample `frames` long at `rate`: the multiplier, or
+/// the fit to a length in beats.
+pub fn length_multiplier(frames: u64, rate: SampleRate, params: &SamplerParams, bpm: f64) -> f64 {
     let stretch = &params.stretch;
     match stretch.time_beats {
         Some(beats) if beats > 0.0 && bpm > 0.0 => {
-            let part = f64::from((params.end - params.start).clamp(0.0, 1.0)) * data.frames() as f64 / f64::from(data.rate.hz());
+            let part = f64::from((params.end - params.start).clamp(0.0, 1.0)) * frames as f64 / f64::from(rate.hz());
             let target = beats * 60.0 / bpm;
             if part > 0.0 { (target / part).clamp(0.05, 20.0) } else { 1.0 }
         }
@@ -140,10 +144,10 @@ impl DerivedCache {
             params.effects.is_identity() && !params.reverse && (params.stretch.mode == SamplerStretchMode::Resample || params.stretch.is_identity());
         if untouched {
             // Nothing to render: the source itself, which the sample cache already keeps.
-            return SamplerData { sample: Some(Arc::clone(base)), zones: zones(markers, params, base.frames() as f64, 1.0).into() };
+            return SamplerData { sample: Some(Arc::clone(base)), zones: zones(markers, params, base.frames() as f64, 1.0).into(), disk: None };
         }
         let (rendered, zones) = derive(base, markers, params, bpm);
-        let data = SamplerData { sample: Some(Arc::new(rendered)), zones: zones.into() };
+        let data = SamplerData { sample: Some(Arc::new(rendered)), zones: zones.into(), disk: None };
         self.entries.insert(key, (Arc::clone(base), data.clone()));
         data
     }

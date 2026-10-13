@@ -6,10 +6,10 @@
 //! the filter, whose cutoff and the pitch follow their own envelopes. The arpeggiator turns held keys into a run of
 //! notes in time with the song. Modulation updates every [`MOD_FRAMES`] frames; everything else is per frame.
 
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, PoisonError};
 
-use bodo_kit_audio::AudioData;
+use bodo_kit_audio::{AudioData, StreamConfig, StreamReader};
 use bodo_kit_core::{PPQ, SampleRate, rt_safe};
 use bodo_kit_dsp::envelope::Adsr;
 use bodo_kit_dsp::filter::{Svf, SvfMode};
@@ -22,6 +22,7 @@ use bodo_model::channel::{FilterKind, LoopMode, SamplerParams, SamplerStretchMod
 use super::arp::{Arp, ArpAction};
 use crate::automation::{Param, param_key};
 use crate::context::{BlockContext, EventKind, NoteEvent};
+use crate::disk_sample::DiskSample;
 use crate::live::ChannelLive;
 use crate::sampler_source::{SamplerData, Zone, length_multiplier};
 
@@ -55,11 +56,95 @@ struct Voice {
     pitch: f64,
 }
 
+/// Frames of the window a streaming voice keeps behind its head.
+const WINDOW: usize = 16_384;
+
+/// A voice's stream, for a sampler that keeps its sample on disk ([`crate::disk_sample`]): its reader, the head it
+/// plays from memory, and the window of frames streamed after the head.
+#[derive(Debug)]
+struct DiskVoice {
+    reader: StreamReader,
+    /// The head the voice reads first, by its index in the sample's heads.
+    head: Option<usize>,
+    /// Frames streamed after the head, per channel.
+    window: [Vec<f32>; 2],
+    /// The sample frame the window starts at.
+    window_start: u64,
+    /// How many frames of the window are filled.
+    filled: usize,
+}
+
+impl DiskVoice {
+    /// Starts reading at `position`: from the head that covers it, with the stream picking up where the head ends.
+    ///
+    /// RT-safe.
+    fn start(&mut self, disk: &DiskSample, position: f64) {
+        let at = position.max(0.0) as u64;
+        self.head = disk.heads.partition_point(|(start, _)| *start <= at).checked_sub(1);
+        let end = match self.head.and_then(|i| disk.heads.get(i)) {
+            Some((start, data)) if at < start + data.frames() as u64 => start + data.frames() as u64,
+            _ => at,
+        };
+        self.window_start = end;
+        self.filled = 0;
+        self.reader.seek(end);
+    }
+
+    /// Makes sure the window covers the frames around `position`: drops what the voice has passed and reads on.
+    ///
+    /// RT-safe. Complexity: O(w) in the window, now and then.
+    fn fill(&mut self, position: f64) {
+        let passed = (position.floor() as i64 - 2).max(0) as u64;
+        if passed > self.window_start + (WINDOW / 2) as u64 {
+            let drop = ((passed - self.window_start) as usize).min(self.filled);
+            for channel in &mut self.window {
+                channel.copy_within(drop..self.filled, 0);
+            }
+            self.window_start += drop as u64;
+            self.filled -= drop;
+        }
+        let reach = position.floor() as i64 + 3;
+        let end = (self.window_start + self.filled as u64) as i64;
+        if reach >= end && reach >= self.window_start as i64 && self.filled < WINDOW {
+            let [left, right] = &mut self.window;
+            self.filled += self.reader.read(&mut [&mut left[self.filled..], &mut right[self.filled..]]);
+        }
+    }
+
+    /// Sample frame `k` of channel `channel`: from the head, or the window; silence when the disk hasn't caught up.
+    fn at(&self, disk: &DiskSample, channel: usize, k: i64) -> f32 {
+        let Ok(k) = u64::try_from(k) else { return 0.0 };
+        if let Some((start, data)) = self.head.and_then(|i| disk.heads.get(i))
+            && k >= *start
+            && k < start + data.frames() as u64
+        {
+            return data.channels.get(channel).and_then(|c| c.get((k - start) as usize)).copied().unwrap_or(0.0);
+        }
+        if k >= self.window_start && k < self.window_start + self.filled as u64 {
+            return self.window[channel.min(1)].get((k - self.window_start) as usize).copied().unwrap_or(0.0);
+        }
+        0.0
+    }
+
+    /// Channel `channel` at fractional `position`, by Hermite interpolation like [`read`].
+    fn read(&self, disk: &DiskSample, channel: usize, position: f64) -> f32 {
+        let index = position.floor();
+        let t = (position - index) as f32;
+        let i = index as i64;
+        hermite(self.at(disk, channel, i - 1), self.at(disk, channel, i), self.at(disk, channel, i + 1), self.at(disk, channel, i + 2), t)
+    }
+}
+
 /// A sampler channel's processor.
 #[derive(Debug)]
 pub struct SamplerNode {
     key: u64,
     sample: Option<Arc<AudioData>>,
+    /// The sample streamed from disk, when the sampler keeps it there.
+    disk: Option<Arc<DiskSample>>,
+    /// Each voice's stream, when the sample streams; by voice index. Graph processors must be `Sync` and stream
+    /// readers are not, so they sit in a mutex that is never locked: [`Mutex::get_mut`] borrows them without a lock.
+    streams: Mutex<Vec<Option<DiskVoice>>>,
     zones: Arc<[Zone]>,
     params: SamplerParams,
     /// Sample frames per output frame at the sample's own pitch: the sample's rate over the project's.
@@ -114,13 +199,26 @@ impl SamplerNode {
             pitch: 1.0,
         };
         let hz = f64::from(rate.hz());
-        let rate_ratio = data.sample.as_ref().map_or(1.0, |s| f64::from(s.rate.hz()) / hz);
+        let own_rate = data.sample.as_ref().map(|s| s.rate).or_else(|| data.disk.as_ref().map(|d| d.rate));
+        let rate_ratio = own_rate.map_or(1.0, |r| f64::from(r.hz()) / hz);
         let (fade_in, fade_out) = params.declick.times();
         let volume = live.volume.get();
         let pan = live.pan.get();
+        let polyphony = usize::from(params.polyphony.max(1));
+        // A streaming sampler opens a reader per voice here, off the audio thread.
+        let streams = (0..polyphony)
+            .map(|_| {
+                let disk = data.disk.as_ref()?;
+                let config = StreamConfig { chunk_frames: 2048, chunks: 16 };
+                let reader = disk.thread.open(&disk.path, config).map_err(|err| tracing::warn!(%err, "a sampler voice can't stream")).ok()?;
+                Some(DiskVoice { reader, head: None, window: [vec![0.0; WINDOW], vec![0.0; WINDOW]], window_start: 0, filled: 0 })
+            })
+            .collect();
         Self {
             key,
             sample: data.sample,
+            disk: data.disk,
+            streams: Mutex::new(streams),
             zones: data.zones,
             params: params.clone(),
             rate_ratio,
@@ -128,7 +226,7 @@ impl SamplerNode {
             fade_out: fade_out * hz,
             filter_mode,
             filter_q,
-            voices: vec![voice; usize::from(params.polyphony.max(1))],
+            voices: vec![voice; polyphony],
             arp: Arp::new(params.arp),
             free_tick: 0.0,
             live,
@@ -222,12 +320,17 @@ impl SamplerNode {
 
     /// Starts a voice for `key`.
     fn note_on(&mut self, key: u8, velocity: f32, voice_id: u64, context: &BlockContext) {
-        let Some(sample) = self.sample.as_ref() else { return };
+        let (frames, own_rate) = match (&self.sample, &self.disk) {
+            (Some(sample), _) => (sample.frames() as u64, sample.rate),
+            (None, Some(disk)) => (disk.frames, disk.rate),
+            (None, None) => return,
+        };
         let params = &self.params;
         if !(params.key_range.0..=params.key_range.1).contains(&key) {
             return;
         }
-        let frames = sample.frames() as f64;
+        let total = frames;
+        let frames = frames as f64;
         if frames < 1.0 {
             return;
         }
@@ -248,9 +351,13 @@ impl SamplerNode {
             (zone, zone.0, cents / 100.0, None)
         };
         let bpm = context.ticks_per_frame * f64::from(self.rate.hz()) * 60.0 / PPQ as f64;
-        let speed = 2f64.powf(semitones / 12.0) * self.rate_ratio * resample_speed(sample, params, bpm);
+        let speed = 2f64.powf(semitones / 12.0) * self.rate_ratio * resample_speed(total, own_rate, params, bpm);
         // Take a free voice, or steal the oldest.
         let index = self.voices.iter().position(|v| !v.active).or_else(|| self.voices.iter().enumerate().min_by_key(|(_, v)| v.age).map(|(i, _)| i));
+        let streams = self.streams.get_mut().unwrap_or_else(PoisonError::into_inner);
+        if let (Some(disk), Some(stream)) = (&self.disk, index.and_then(|i| streams.get_mut(i)).and_then(Option::as_mut)) {
+            stream.start(disk, position);
+        }
         let Some(voice) = index.and_then(|i| self.voices.get_mut(i)) else { return };
         self.started += 1;
         voice.active = true;
@@ -284,17 +391,26 @@ impl SamplerNode {
 
     /// Adds the voices into the output from frame `from` up to `to`.
     fn render(&mut self, io: &mut NodeIo<'_>, from: usize, to: usize) {
-        let Some(sample) = self.sample.as_ref() else { return };
         if from >= to {
             return;
         }
-        let (Some(first_channel), second_channel) = (sample.channels.first(), sample.channels.get(1)) else { return };
-        let stereo = second_channel.is_some();
+        let channels = match (&self.sample, &self.disk) {
+            (Some(sample), _) => sample.channel_count(),
+            (None, Some(disk)) => disk.channels,
+            (None, None) => return,
+        };
+        if channels == 0 {
+            return;
+        }
+        let stereo = channels >= 2;
+        let memory = self.sample.as_ref().map(|s| (s.channels.first(), s.channels.get(1)));
         let Some((left, right)) = io.output.stereo_mut() else { return };
         let params = &self.params;
         let (pitch_mod, filter_mod) = (params.pitch_envelope.enabled, params.filter_envelope.enabled && self.filter_mode.is_some());
         let cutoff = f64::from(params.filter.cutoff.clamp(20.0, 20_000.0));
-        for voice in self.voices.iter_mut().filter(|v| v.active) {
+        let streams = self.streams.get_mut().unwrap_or_else(PoisonError::into_inner);
+        for (index, voice) in self.voices.iter_mut().enumerate().filter(|(_, v)| v.active) {
+            let mut stream = streams.get_mut(index).and_then(Option::as_mut);
             let tracking = f64::from(params.filter.key_tracking) * (f64::from(voice.key) - 60.0) / 12.0;
             for f in from..to {
                 if voice.amp.is_idle() {
@@ -329,8 +445,17 @@ impl SamplerNode {
                         gain *= (remaining / self.fade_out).max(0.0) as f32;
                     }
                 }
-                let mut l = read(first_channel, voice.position);
-                let mut r = second_channel.map_or(0.0, |c| read(c, voice.position));
+                let (mut l, mut r) = match (memory, &self.disk, stream.as_deref_mut()) {
+                    (Some((first, second)), _, _) => {
+                        (first.map_or(0.0, |c| read(c, voice.position)), second.map_or(0.0, |c| read(c, voice.position)))
+                    }
+                    (None, Some(disk), Some(stream)) => {
+                        stream.fill(voice.position);
+                        let r = if stereo { stream.read(disk, 1, voice.position) } else { 0.0 };
+                        (stream.read(disk, 0, voice.position), r)
+                    }
+                    _ => (0.0, 0.0),
+                };
                 if let Some(mode) = self.filter_mode {
                     l = voice.filters[0].process_sample(l, mode);
                     if stereo {
@@ -340,9 +465,16 @@ impl SamplerNode {
                 left[f] += l * gain;
                 right[f] += r * gain;
                 voice.elapsed += 1;
+                let before = voice.position;
                 if !advance(voice, step, params.loop_mode) {
                     voice.active = false;
                     break;
+                }
+                // A loop jumped back: the stream starts again from the loop's head.
+                if voice.position < before
+                    && let (Some(disk), Some(stream)) = (&self.disk, stream.as_deref_mut())
+                {
+                    stream.start(disk, voice.position);
                 }
             }
         }
@@ -358,7 +490,8 @@ impl SamplerNode {
         let automated = |param, live: f32| context.params.get(param_key(self.key, param)).unwrap_or(live);
         let volume = if muted { 0.0 } else { automated(Param::Volume, self.live.volume.get()) };
         let pan = automated(Param::Pan, self.live.pan.get()).clamp(-1.0, 1.0);
-        let mono = self.sample.as_ref().is_none_or(|s| s.channel_count() < 2);
+        let channels = self.sample.as_ref().map(|s| s.channel_count()).or_else(|| self.disk.as_ref().map(|d| d.channels));
+        let mono = channels.is_none_or(|c| c < 2);
         let Some((left, right)) = io.output.stereo_mut() else { return };
         if mono {
             let (from, to) = (self.pan_law.mono_gains(self.pan), self.pan_law.mono_gains(pan));
@@ -391,12 +524,13 @@ impl SamplerNode {
     }
 }
 
-/// How much faster Resample mode reads the sample: the pitch shift, over how much longer it plays.
-fn resample_speed(sample: &AudioData, params: &SamplerParams, bpm: f64) -> f64 {
+/// How much faster Resample mode reads a sample `frames` long at `rate`: the pitch shift, over how much longer it
+/// plays.
+fn resample_speed(frames: u64, rate: SampleRate, params: &SamplerParams, bpm: f64) -> f64 {
     if params.stretch.mode != SamplerStretchMode::Resample || params.stretch.is_identity() {
         return 1.0;
     }
-    2f64.powf(f64::from(params.stretch.pitch_cents) / 1200.0) / length_multiplier(sample, params, bpm)
+    2f64.powf(f64::from(params.stretch.pitch_cents) / 1200.0) / length_multiplier(frames, rate, params, bpm)
 }
 
 /// Moves `voice` on by `step` frames, looping as it should. Returns false when the note has run out of sample.

@@ -18,6 +18,7 @@ use bodo_model::{ChannelId, InsertId, Project, SampleRoots};
 
 use crate::MixError;
 use crate::audio_clips::stretch_keys;
+use crate::disk_sample::DiskCache;
 use crate::keys;
 use crate::live::{ChannelLive, StripLive};
 use crate::midi_out::{MidiOutNode, MidiOutTap};
@@ -41,7 +42,12 @@ impl SamplerSource {
             (None, None) => true,
             _ => false,
         };
-        (Arc::ptr_eq(&self.params, &other.params) || self.params == other.params) && same_sample && self.data.zones == other.data.zones
+        let same_disk = match (&self.data.disk, &other.data.disk) {
+            (Some(a), Some(b)) => Arc::ptr_eq(a, b),
+            (None, None) => true,
+            _ => false,
+        };
+        (Arc::ptr_eq(&self.params, &other.params) || self.params == other.params) && same_sample && same_disk && self.data.zones == other.data.zones
     }
 }
 
@@ -77,6 +83,10 @@ pub(crate) struct Compiler {
     stretch: StretchCache,
     /// Samples with the samplers' precomputed effects rendered in.
     derived: DerivedCache,
+    /// Whether samplers may stream their samples from disk; offline renders load them fully.
+    streaming: bool,
+    /// Samples that samplers stream from disk.
+    disk: DiskCache,
     /// The MIDI Out channels the running plan has nodes for: each one's port and MIDI channel.
     midi_out: HashMap<ChannelId, (String, u8)>,
     /// The control side's ends of the MIDI Out channels' queues.
@@ -104,6 +114,8 @@ impl Compiler {
             audio: HashMap::new(),
             stretch: StretchCache::default(),
             derived: DerivedCache::default(),
+            streaming: false,
+            disk: DiskCache::default(),
             midi_out: HashMap::new(),
             midi_tap: MidiOutTap::default(),
             channels: HashMap::new(),
@@ -130,6 +142,12 @@ impl Compiler {
 
     pub(crate) fn latency(&self) -> &LatencyReport {
         &self.latency
+    }
+
+    /// Lets samplers that keep their sample on disk stream it, from the next update on. Real-time engines do; offline
+    /// renders must never wait for the disk, so they load every sample fully.
+    pub(crate) fn set_streaming(&mut self, streaming: bool) {
+        self.streaming = streaming;
     }
 
     /// The control side's ends of the MIDI Out channels' queues.
@@ -251,6 +269,7 @@ impl Compiler {
         self.signature = signature;
         self.stretch.trim();
         self.derived.trim();
+        self.disk.trim();
         self.cache.trim();
         Ok(Some(compiled.plan))
     }
@@ -286,7 +305,14 @@ impl Compiler {
         let bpm = project.tempo.bpm_at(bodo_kit_core::Tick::ZERO);
         for (id, channel) in &project.channels {
             if let ChannelKind::Sampler(params) = &channel.kind {
+                let streamed = match (params.sample, self.streaming && crate::disk_sample::streamable(params)) {
+                    (Some(sample), true) => {
+                        project.samples.get(&sample).and_then(|reference| self.disk.get(&self.roots.resolve(&reference.path), params))
+                    }
+                    _ => None,
+                };
                 let data = match params.sample {
+                    _ if streamed.is_some() => SamplerData { sample: None, zones: Arc::from(Vec::new()), disk: streamed },
                     Some(sample) => {
                         let base = if params.resample {
                             self.cache.get(project, sample, &self.roots)
@@ -374,6 +400,7 @@ fn signature(project: &Project, sources: &HashMap<ChannelId, SamplerSource>, aud
             out.push(keys::channel(*id));
             out.push(Arc::as_ptr(&source.params) as usize as u64);
             out.push(source.data.sample.as_ref().map_or(0, |s| Arc::as_ptr(s) as usize as u64));
+            out.push(source.data.disk.as_ref().map_or(0, |d| Arc::as_ptr(d) as usize as u64));
             out.push(project.channels.get(id).and_then(|c| c.target).map_or(0, keys::insert));
         }
         if let Some(source) = audio.get(id) {

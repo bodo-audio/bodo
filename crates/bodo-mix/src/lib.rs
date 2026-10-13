@@ -17,6 +17,7 @@ pub mod audio_clips;
 pub mod automation;
 mod compile;
 pub mod context;
+pub mod disk_sample;
 pub mod engine;
 pub mod input;
 pub mod keys;

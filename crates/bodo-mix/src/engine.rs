@@ -43,7 +43,8 @@ pub struct EngineConfig {
     pub workers: usize,
     /// The largest block the engine renders at once; larger requests are rendered in pieces.
     pub max_frames: usize,
-    /// Promote the workers to real-time priority for this device buffer size, in frames.
+    /// Promote the workers to real-time priority for this device buffer size, in frames. A real-time engine also lets
+    /// samplers that keep their sample on disk stream it; without one, as in offline renders, every sample loads.
     pub realtime_buffer: Option<u32>,
 }
 
@@ -229,6 +230,7 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
     let rate = project.settings.sample_rate;
     let max_frames = config.max_frames.clamp(1, MAX_BLOCK_FRAMES);
     let mut compiler = Compiler::new(roots.clone(), max_frames, rate);
+    compiler.set_streaming(config.realtime_buffer.is_some());
     let plan = compiler.update(project)?.unwrap_or_else(|| Plan::empty(max_frames));
     let pool = RtPoolConfig {
         priority: config.realtime_buffer.map(|buffer_frames| RtPriority { buffer_frames, sample_rate: rate }),
