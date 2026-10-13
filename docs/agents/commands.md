@@ -1065,6 +1065,7 @@ Example:
 Turns one step of a channel on or off.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
