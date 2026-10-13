@@ -1,0 +1,18 @@
+# Rust
+/target
+**/*.rs.bk
+*.pdb
+
+# Bodo runtime artifacts
+*.bodo-autosave
+*.bodo.tmp
+/.bodo-cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+/.idea
+/.vscode
+*.swp
