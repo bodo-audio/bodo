@@ -103,10 +103,22 @@ struct SetProps {
     pan: Option<f32>,
     /// Muted or not.
     muted: Option<bool>,
+    /// A new release velocity from 0 to 1.
+    release_velocity: Option<f32>,
+    /// A new fine pitch in cents, from -1200 to 1200.
+    fine_pitch_cents: Option<f32>,
+    /// A new Mod X from 0 to 1.
+    mod_x: Option<f32>,
+    /// A new Mod Y from 0 to 1.
+    mod_y: Option<f32>,
+    /// Slide to the next note or not.
+    slide: Option<bool>,
+    /// Portamento or not.
+    porta: Option<bool>,
 }
 
 /// The ids `ids` names, or else the selected notes.
-fn targets(ctx: &Ctx<'_>, ids: &[u32]) -> Result<BTreeSet<NoteId>, CommandError> {
+pub(super) fn targets(ctx: &Ctx<'_>, ids: &[u32]) -> Result<BTreeSet<NoteId>, CommandError> {
     if ids.is_empty() {
         if ctx.editor.notes.is_empty() {
             return Err(CommandError::nothing_selected("notes"));
@@ -263,8 +275,17 @@ fn set_props(ctx: &mut Ctx<'_>, p: SetProps) -> Result<Value, CommandError> {
     let key = p.key.as_ref().map(Key::resolve).transpose()?;
     let length = p.length.as_ref().map(|l| l.resolve(&ctx.project, start.unwrap_or(Tick::ZERO))).transpose()?;
     let vel = p.velocity.map(|v| velocity(Some(v))).transpose()?;
+    let release = p.release_velocity.map(|v| velocity(Some(v))).transpose()?;
     if let Some(pan) = p.pan {
         super::in_range("pan", f64::from(pan), -1.0..=1.0)?;
+    }
+    if let Some(cents) = p.fine_pitch_cents {
+        super::in_range("finePitchCents", f64::from(cents), -1200.0..=1200.0)?;
+    }
+    for (name, value) in [("modX", p.mod_x), ("modY", p.mod_y)] {
+        if let Some(value) = value {
+            super::in_range(name, f64::from(value), 0.0..=1.0)?;
+        }
     }
     ctx.edit_pattern(id, |pattern| {
         let changed = edit_notes(pattern, &ids, |note| {
@@ -286,12 +307,36 @@ fn set_props(ctx: &mut Ctx<'_>, p: SetProps) -> Result<Value, CommandError> {
             if let Some(muted) = p.muted {
                 note.muted = muted;
             }
+            if let Some(v) = release {
+                note.release_velocity = v;
+            }
+            if let Some(cents) = p.fine_pitch_cents {
+                note.fine_pitch_cents = cents;
+            }
+            if let Some(x) = p.mod_x {
+                note.mod_x = x;
+            }
+            if let Some(y) = p.mod_y {
+                note.mod_y = y;
+            }
+            if let Some(slide) = p.slide {
+                note.slide = slide;
+            }
+            if let Some(porta) = p.porta {
+                note.porta = porta;
+            }
             Ok(())
         })?;
         Ok((changed, ()))
     })?;
     ctx.set_label(if ids.len() == 1 { String::from("Edit note") } else { format!("Edit {} notes", ids.len()) });
     Ok(json!({ "pattern": id, "edited": ids.len() }))
+}
+
+/// Merge key: the pattern alone, so a brush stroke across a lane of many notes is one undo step; the gesture id keeps
+/// separate strokes apart.
+fn by_pattern(params: &Value) -> String {
+    params.get("pattern").map(Value::to_string).unwrap_or_default()
 }
 
 pub(super) fn register(r: &mut Registry) {
@@ -307,7 +352,13 @@ pub(super) fn register(r: &mut Registry) {
     r.edit("note.resize", "Resize notes", "Sets notes' length, or changes it by ticks.", Effects::UNDOABLE, resize)
         .example(json!({ "notes": [0], "length": "2 steps" }))
         .merge(by_notes);
-    r.edit("note.set_props", "Edit notes", "Sets start, key, length, velocity, pan or mute of notes.", Effects::UNDOABLE, set_props)
-        .example(json!({ "notes": [0], "velocity": 0.5 }))
-        .merge(by_notes);
+    r.edit(
+        "note.set_props",
+        "Edit notes",
+        "Sets start, key, length, velocity, release velocity, pan, fine pitch, Mod X and Y, slide, portamento or mute of notes.",
+        Effects::UNDOABLE,
+        set_props,
+    )
+    .example(json!({ "notes": [0], "velocity": 0.5, "modX": 0.25 }))
+    .merge(by_pattern);
 }

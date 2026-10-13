@@ -1,0 +1,22 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "notes": [
+      0,
+      1
+    ],
+    "semitones": 2
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      1
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Transpose notes by +2"
+}

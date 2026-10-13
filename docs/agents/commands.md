@@ -962,6 +962,179 @@ Example:
 }
 ```
 
+### `note.arpeggiate`
+
+Turns each chord into a run of single notes over its length.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `gate` | number, optional | How long each note lasts, as a fraction of the rate from 0 to 1; 1 by default. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `order` | ArpOrder, optional | The order; up by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `rate` | Length, optional | How often a new note starts; one step by default. |
+| `seed` | integer, optional | The seed of the random order; 1 by default. |
+
+Example:
+
+```json
+{
+  "gate": 0.5,
+  "notes": [
+    0
+  ],
+  "order": "up",
+  "rate": "120 ticks"
+}
+```
+
+### `note.chop`
+
+Splits notes into pieces of a length.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `length` | Length | The length of each piece. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "length": "120 ticks",
+  "notes": [
+    0
+  ]
+}
+```
+
+### `note.flip`
+
+Reverses notes in time, or mirrors their keys.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `axis` | Axis | Time or keys. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "axis": "keys",
+  "notes": [
+    0,
+    1
+  ]
+}
+```
+
+### `note.glue`
+
+Joins notes of the same key and channel that touch or overlap.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ]
+}
+```
+
+### `note.humanize`
+
+Moves starts by a player-like drift and varies velocities, from a seed.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `seed` | integer, optional | The seed; the same seed gives the same performance. 1 by default. |
+| `timingMs` | number, optional | How far starts drift, in milliseconds (the drift's standard deviation), from 0 to 200; 10 by default. |
+| `velocity` | number, optional | How much velocities vary, as a fraction from 0 to 1; 0.1 by default. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ],
+  "seed": 7,
+  "timingMs": 10,
+  "velocity": 0.1
+}
+```
+
+### `note.legato`
+
+Lengthens each note to the start of the next one on its channel.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ]
+}
+```
+
+### `note.limit_to_scale`
+
+Moves notes to the nearest key of a scale.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `root` | Root | The scale's root, such as "C" or "F#". |
+| `scale` | string | The scale: major, minor, harmonic minor, melodic minor, dorian, phrygian, lydian, mixolydian, locrian, major pentatonic, minor pentatonic, blues, whole tone or chromatic. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ],
+  "root": "E",
+  "scale": "major"
+}
+```
+
 ### `note.move`
 
 Moves notes by ticks and semitones.
@@ -985,6 +1158,34 @@ Example:
     0
   ],
   "ticks": 240
+}
+```
+
+### `note.quantize`
+
+Moves notes toward a grid, with strength and swing; remembers the grid position for un-humanize.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `ends` | boolean, optional | Quantize the ends too, not only the starts. |
+| `grid` | Length, optional | The grid; one step (a sixteenth note) by default. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `strength` | number, optional | How far notes move toward the grid, from 0 (not at all) to 1 (onto it); 1 by default. |
+| `swing` | number, optional | Moves every second grid line later by up to half a grid, from 0 to 1; 0 by default. |
+
+Example:
+
+```json
+{
+  "grid": "1 beat",
+  "notes": [
+    0,
+    1
+  ],
+  "strength": 0.5
 }
 ```
 
@@ -1034,21 +1235,59 @@ Example:
 }
 ```
 
+### `note.set_expression`
+
+Sets a note's pitch, pressure and timbre curves (MPE).
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `note` | integer | The note's id. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `pitch` | array, optional | The pitch curve in semitones; an empty list clears it, leaving it out keeps it. |
+| `pressure` | array, optional | The pressure curve, 0 to 1. |
+| `timbre` | array, optional | The timbre (MPE slide) curve, 0 to 1. |
+
+Example:
+
+```json
+{
+  "note": 1,
+  "pitch": [
+    {
+      "at": 0,
+      "value": 0.0
+    },
+    {
+      "at": 120,
+      "value": 1.0
+    }
+  ]
+}
+```
+
 ### `note.set_props`
 
-Sets start, key, length, velocity, pan or mute of notes.
+Sets start, key, length, velocity, release velocity, pan, fine pitch, Mod X and Y, slide, portamento or mute of notes.
 
 - Effects: undoable
 - Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
+| `finePitchCents` | number, optional | A new fine pitch in cents, from -1200 to 1200. |
 | `key` | Key, optional | A new key for every note. |
 | `length` | Length, optional | A new length for every note. |
+| `modX` | number, optional | A new Mod X from 0 to 1. |
+| `modY` | number, optional | A new Mod Y from 0 to 1. |
 | `muted` | boolean, optional | Muted or not. |
 | `notes` | array of integer, optional | The note ids; the selected notes by default. |
 | `pan` | number, optional | A new pan from -1 to 1. |
 | `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `porta` | boolean, optional | Portamento or not. |
+| `releaseVelocity` | number, optional | A new release velocity from 0 to 1. |
+| `slide` | boolean, optional | Slide to the next note or not. |
 | `start` | Position, optional | A new start for every note. |
 | `velocity` | number, optional | A new velocity from 0 to 1. |
 
@@ -1056,10 +1295,109 @@ Example:
 
 ```json
 {
+  "modX": 0.25,
   "notes": [
     0
   ],
   "velocity": 0.5
+}
+```
+
+### `note.stamp`
+
+Adds a chord from its symbol, such as Am7 or C/E, and selects it.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel that plays it; the piano roll's channel by default. |
+| `chord` | string | The chord symbol, such as "Am7", "Fmaj7", "G7sus4" or "C/E". |
+| `length` | Length, optional | How long it lasts; one beat by default. |
+| `octave` | integer, optional | The octave of the root, where C4 is middle C; 4 by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `start` | Position | Where the chord starts. |
+| `velocity` | number, optional | Velocity from 0 to 1; 0.8 by default. |
+
+Example:
+
+```json
+{
+  "channel": "808",
+  "chord": "Cmaj7",
+  "start": "1:3:0"
+}
+```
+
+### `note.strum`
+
+Rolls chords so each voice starts a little after the one before.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `direction` | StrumDirection, optional | Up from the lowest key, or down from the highest; up by default. |
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `time` | Length, optional | How much later each voice of a chord starts than the one before; 30 ticks by default. |
+
+Example:
+
+```json
+{
+  "direction": "down",
+  "notes": [
+    0,
+    1
+  ],
+  "time": 30
+}
+```
+
+### `note.transpose`
+
+Moves notes up or down by semitones.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `semitones` | integer | Semitones to move by, up when positive. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ],
+  "semitones": 2
+}
+```
+
+### `note.unhumanize`
+
+Puts notes back where quantize or humanize found them.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `notes` | array of integer, optional | The note ids; the selected notes by default. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "notes": [
+    0,
+    1
+  ]
 }
 ```
 

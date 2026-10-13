@@ -1,0 +1,23 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "gate": 0.5,
+    "notes": [
+      0
+    ],
+    "order": "up",
+    "rate": "120 ticks"
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      2,
+      3
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Arpeggiate"
+}

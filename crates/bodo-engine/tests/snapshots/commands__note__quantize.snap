@@ -1,0 +1,23 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "grid": "1 beat",
+    "notes": [
+      0,
+      1
+    ],
+    "strength": 0.5
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      1
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Quantize notes"
+}

@@ -685,6 +685,7 @@ dependencies = [
  "bodo-kit-core",
  "bodo-kit-graph",
  "bodo-kit-midi",
+ "bodo-kit-music",
  "bodo-model",
  "imbl",
  "insta",

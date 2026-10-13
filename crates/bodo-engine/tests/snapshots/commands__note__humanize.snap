@@ -1,0 +1,24 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "notes": [
+      0,
+      1
+    ],
+    "seed": 7,
+    "timingMs": 10,
+    "velocity": 0.1
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      1
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Humanize notes"
+}

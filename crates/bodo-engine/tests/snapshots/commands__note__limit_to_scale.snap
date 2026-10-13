@@ -1,0 +1,23 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "notes": [
+      0,
+      1
+    ],
+    "root": "E",
+    "scale": "major"
+  },
+  "result": {
+    "changed": true,
+    "notes": [
+      0,
+      1
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Limit notes to E major"
+}

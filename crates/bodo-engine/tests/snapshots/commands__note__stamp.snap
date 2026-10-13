@@ -1,0 +1,29 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "808",
+    "chord": "Cmaj7",
+    "start": "1:3:0"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041E",
+    "chord": "Cmaj7",
+    "keys": [
+      60,
+      64,
+      67,
+      71
+    ],
+    "notes": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Stamp Cmaj7"
+}
