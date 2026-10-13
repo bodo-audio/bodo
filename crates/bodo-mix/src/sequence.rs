@@ -11,6 +11,7 @@
 use std::collections::HashMap;
 
 use bodo_kit_core::{Frames, SampleRate, TempoMap, Tick, rt_safe};
+use bodo_model::meter::MeterMap;
 use bodo_model::pattern::PatternLen;
 use bodo_model::playlist::ClipSource;
 use bodo_model::{PatternId, Project};
@@ -61,6 +62,8 @@ struct IndexedTrack {
 #[derive(Clone, Debug, PartialEq)]
 pub struct SongIndex {
     tempo: TempoMap,
+    /// The meter, for the metronome and count-in.
+    meter: MeterMap,
     patterns: Vec<IndexedPattern>,
     /// Pattern keys and their index in `patterns`, sorted by key.
     pattern_lookup: Vec<(u64, u32)>,
@@ -139,12 +142,17 @@ impl SongIndex {
                 IndexedTrack { clips, max_len }
             })
             .collect();
-        Self { tempo: (*project.tempo).clone(), patterns, pattern_lookup, tracks, channels, audio: AudioIndex::build(project) }
+        Self { tempo: (*project.tempo).clone(), meter: (*project.meter).clone(), patterns, pattern_lookup, tracks, channels, audio: AudioIndex::build(project) }
     }
 
     /// The tempo map the index was built with.
     pub fn tempo(&self) -> &TempoMap {
         &self.tempo
+    }
+
+    /// The meter map the index was built with.
+    pub fn meter(&self) -> &MeterMap {
+        &self.meter
     }
 
     /// The index of the pattern with `key`. O(log p).

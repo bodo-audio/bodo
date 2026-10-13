@@ -1,8 +1,9 @@
 //! The engine: [`Engine`] on the control thread, [`AudioEngine`] on the audio thread (project.md section 6.4).
 //!
 //! The control side compiles plans and song indexes and sends them, with transport commands, through bounded queues.
-//! The audio side switches to whatever arrived at the start of a block, runs the sequencer and the graph, and copies
-//! the master into the device's output. Neither side ever waits for the other.
+//! The audio side switches to whatever arrived at the start of a block, takes in notes played live, runs the
+//! sequencer and the graph, copies the master into the device's output and adds the metronome. Neither side ever
+//! waits for the other.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
@@ -21,9 +22,17 @@ use imbl::{OrdMap, Vector};
 
 use crate::MixError;
 use crate::compile::Compiler;
-use crate::context::BlockContext;
+use crate::context::{BlockContext, EventKind, NoteEvent};
+use crate::input::{LIVE_CAPACITY, LiveEvent, LiveInput};
+use crate::metronome::{Metronome, count_in_beats};
+use crate::midi_record::{CAPTURE_CAPACITY, Capture, CapturedNote, CapturedTake};
 use crate::nodes::MixNode;
 use crate::sequence::{PlayMode, SongIndex, Transport, all_notes_off, emit, frame_at};
+
+/// Marks the voices of live notes, so they never collide with the sequencer's.
+const LIVE_VOICE: u64 = 1 << 63;
+/// The most channels with live notes a stop releases.
+const LIVE_CHANNELS: usize = 256;
 
 /// How to build an engine.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +55,8 @@ impl Default for EngineConfig {
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Command {
     Play,
+    /// Play and capture live notes, after a bar of count-in clicks when count-in is on.
+    Record,
     Stop,
     Seek(i64),
     Mode(PlayMode),
@@ -57,6 +68,10 @@ struct Shared {
     playing: AtomicBool,
     frame: AtomicI64,
     dropped_events: AtomicU64,
+    metronome: AtomicBool,
+    count_in: AtomicBool,
+    counting_in: AtomicBool,
+    recording: AtomicBool,
 }
 
 /// A snapshot of the engine's state.
@@ -68,6 +83,10 @@ pub struct EngineStatus {
     pub frame: i64,
     /// Note events dropped because a block had too many.
     pub dropped_events: u64,
+    /// Whether a count-in is clicking before the playhead moves.
+    pub counting_in: bool,
+    /// Whether live notes are being recorded.
+    pub recording: bool,
 }
 
 /// The control-thread side of the engine.
@@ -83,6 +102,10 @@ pub struct Engine {
     song_inputs: SongInputs,
     rate: SampleRate,
     thread_group: ThreadGroupSlot,
+    live: LiveInput,
+    captures: Consumer<Capture>,
+    capture_start: Option<i64>,
+    captured: Vec<CapturedNote>,
 }
 
 /// What a song index is built from. Snapshots share unchanged parts, so comparing pointers tells cheaply whether an
@@ -133,6 +156,33 @@ pub struct AudioEngine {
     shared: Arc<Shared>,
     rate: SampleRate,
     max_frames: usize,
+    /// Notes played live, and this block's share of them as events. Capacity [`LIVE_CAPACITY`].
+    live: LiveInput,
+    live_events: Vec<(u64, NoteEvent)>,
+    /// Channels with live notes since the last stop. Capacity [`LIVE_CHANNELS`].
+    live_channels: Vec<u64>,
+    metronome: Metronome,
+    /// What the last block was, for the metronome.
+    block: BlockKind,
+    /// Count-in frames still to click, the count-in's length, and its beat in frames.
+    count_in_left: i64,
+    count_in_total: i64,
+    count_in_beat: i64,
+    /// Whether live notes are captured, and whether the take's start was sent.
+    capturing: bool,
+    capture_started: bool,
+    captures: Producer<Capture>,
+}
+
+/// What a block played, for the metronome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BlockKind {
+    /// Nothing moved.
+    Still,
+    /// The song played from this timeline frame.
+    Song(i64),
+    /// The count-in clicked, this many frames in.
+    CountIn(i64),
 }
 
 impl std::fmt::Debug for AudioEngine {
@@ -159,6 +209,8 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
     let song = SongIndex::build(project);
     let (songs_tx, songs_rx) = handoff::handoff(4);
     let (commands_tx, commands_rx) = spsc(64);
+    let (captures_tx, captures_rx) = spsc(CAPTURE_CAPACITY);
+    let live = LiveInput::new(LIVE_CAPACITY);
     let shared = Arc::new(Shared::default());
     let control = Engine {
         compiler,
@@ -172,6 +224,10 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         song_inputs: SongInputs::of(project),
         rate,
         thread_group,
+        live: live.clone(),
+        captures: captures_rx,
+        capture_start: None,
+        captured: Vec::new(),
     };
     let audio = AudioEngine {
         runner: graph,
@@ -182,6 +238,17 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         shared,
         rate,
         max_frames,
+        live,
+        live_events: Vec::with_capacity(LIVE_CAPACITY),
+        live_channels: Vec::with_capacity(LIVE_CHANNELS),
+        metronome: Metronome::new(rate),
+        block: BlockKind::Still,
+        count_in_left: 0,
+        count_in_total: 0,
+        count_in_beat: 1,
+        capturing: false,
+        capture_started: false,
+        captures: captures_tx,
     };
     Ok((control, audio))
 }
@@ -235,9 +302,51 @@ impl Engine {
         self.command(Command::Play);
     }
 
-    /// Stops playing and releases every note.
+    /// Starts playing to record: live notes are captured until [`Engine::stop`], and with count-in on a bar of clicks
+    /// plays first while the playhead waits. Collect the take with [`Engine::take_midi_recording`].
+    pub fn record(&mut self) {
+        self.command(Command::Record);
+    }
+
+    /// Stops playing, ends a recording and releases every note, live ones included.
     pub fn stop(&mut self) {
         self.command(Command::Stop);
+    }
+
+    /// Turns the metronome on or off; it clicks while the transport plays.
+    pub fn set_metronome(&self, on: bool) {
+        self.shared.metronome.store(on, Ordering::Relaxed);
+    }
+
+    /// Turns count-in before recording on or off.
+    pub fn set_count_in(&self, on: bool) {
+        self.shared.count_in.store(on, Ordering::Relaxed);
+    }
+
+    /// Where notes played live go: from MIDI inputs, the computer keyboard, or anything else. Clones feed this engine.
+    pub fn live_input(&self) -> LiveInput {
+        self.live.clone()
+    }
+
+    /// The MIDI take of the last recording, once the audio side has finished it; `None` until then. Turn it into notes
+    /// with [`crate::midi_record::place`].
+    ///
+    /// Complexity: O(e) in events captured since the last call.
+    pub fn take_midi_recording(&mut self) -> Option<CapturedTake> {
+        while let Some(capture) = self.captures.pop() {
+            match capture {
+                Capture::Start { frame } => {
+                    self.capture_start = Some(frame);
+                    self.captured.clear();
+                }
+                Capture::Note(note) => self.captured.push(note),
+                Capture::End { frame } => {
+                    let start = self.capture_start.take().unwrap_or(frame);
+                    return Some(CapturedTake { start, end: frame.max(start), notes: std::mem::take(&mut self.captured) });
+                }
+            }
+        }
+        None
     }
 
     /// Moves the playhead to `tick`.
@@ -269,6 +378,8 @@ impl Engine {
             playing: self.shared.playing.load(Ordering::Relaxed),
             frame: self.shared.frame.load(Ordering::Relaxed),
             dropped_events: self.shared.dropped_events.load(Ordering::Relaxed),
+            counting_in: self.shared.counting_in.load(Ordering::Relaxed),
+            recording: self.shared.recording.load(Ordering::Relaxed),
         }
     }
 
@@ -304,6 +415,13 @@ impl AudioEngine {
                     out[done..done + rendered].fill(0.0);
                 }
             }
+            match self.block {
+                BlockKind::Song(first) if self.shared.metronome.load(Ordering::Relaxed) => {
+                    self.metronome.song(&self.song, self.rate, first, rendered, output, done);
+                }
+                BlockKind::CountIn(elapsed) => self.metronome.count_in(elapsed, self.count_in_beat, rendered, output, done),
+                _ => {}
+            }
             done += rendered;
         }
         for out in output.channels_mut() {
@@ -311,14 +429,17 @@ impl AudioEngine {
         }
     }
 
-    /// Runs one block of at most `max_frames` and advances the transport.
+    /// Runs one block of at most `max_frames` and advances the transport. A block never spans the end of a count-in.
     fn render_block(&mut self, frames: usize) -> usize {
         let mut jumped = false;
         while let Some(command) = self.commands.pop() {
             match command {
                 Command::Play => self.transport.playing = true,
+                Command::Record => self.start_recording(),
                 Command::Stop => {
                     self.transport.playing = false;
+                    self.count_in_left = 0;
+                    self.end_recording();
                     jumped = true;
                 }
                 Command::Seek(frame) => {
@@ -332,28 +453,114 @@ impl AudioEngine {
             }
         }
         self.songs.update(&mut self.song);
+        let counting = self.transport.playing && self.count_in_left > 0;
+        let frames = if counting { frames.min(usize::try_from(self.count_in_left).unwrap_or(frames)) } else { frames };
+        let playing = self.transport.playing && !counting;
+        if playing && self.capturing && !self.capture_started && self.captures.push(Capture::Start { frame: self.transport.frame }).is_ok() {
+            self.capture_started = true;
+        }
+        self.take_live(playing);
+        if jumped {
+            self.metronome.silence();
+        }
+
         let (song, transport, rate) = (&*self.song, self.transport, self.rate);
+        let (live, live_channels) = (&self.live_events, &self.live_channels);
         let mut dropped = 0;
         let rendered = self.runner.process(frames, |context| {
             context.clear();
             context.frames = frames;
-            context.playing = transport.playing;
+            context.playing = playing;
             if jumped {
                 all_notes_off(song, context);
+                for &channel in live_channels {
+                    context.push(channel, NoteEvent { frame: 0, kind: EventKind::AllOff, key: 0, velocity: 0.0, voice: 0 });
+                }
             }
-            if transport.playing {
+            if playing {
                 emit(song, &transport, frames, rate, context);
+            }
+            for &(channel, event) in live {
+                context.push(channel, event);
             }
             context.finish();
             dropped = context.dropped_events;
         });
-        if self.transport.playing {
+        if jumped {
+            self.live_channels.clear();
+        }
+        for &(channel, event) in &self.live_events {
+            if event.kind == EventKind::On && !self.live_channels.contains(&channel) && self.live_channels.len() < self.live_channels.capacity() {
+                self.live_channels.push(channel);
+            }
+        }
+
+        self.block = if counting {
+            BlockKind::CountIn(self.count_in_total - self.count_in_left)
+        } else if playing {
+            BlockKind::Song(self.transport.frame)
+        } else {
+            BlockKind::Still
+        };
+        if counting {
+            self.count_in_left -= rendered as i64;
+        } else if playing {
             self.transport.frame += rendered as i64;
         }
         self.shared.playing.store(self.transport.playing, Ordering::Relaxed);
         self.shared.frame.store(self.transport.frame, Ordering::Relaxed);
         self.shared.dropped_events.store(dropped, Ordering::Relaxed);
+        self.shared.counting_in.store(self.count_in_left > 0 && self.transport.playing, Ordering::Relaxed);
+        self.shared.recording.store(self.capturing, Ordering::Relaxed);
         rendered
+    }
+
+    /// Starts playing to record, with a count-in when it is on.
+    fn start_recording(&mut self) {
+        self.transport.playing = true;
+        self.capturing = true;
+        self.capture_started = false;
+        if self.shared.count_in.load(Ordering::Relaxed) {
+            let seconds = bodo_kit_core::Seconds(self.transport.frame as f64 / f64::from(self.rate.hz()));
+            let tick = Tick(self.song.tempo().ticks_at(seconds).round() as i64);
+            let (beat, beats) = count_in_beats(&self.song, self.rate, tick);
+            self.count_in_beat = beat.max(1);
+            self.count_in_total = self.count_in_beat * i64::from(beats.max(1));
+            self.count_in_left = self.count_in_total;
+        }
+    }
+
+    /// Ends a recording, marking the end of the take for the control side.
+    fn end_recording(&mut self) {
+        if self.capturing {
+            let frame = self.transport.frame;
+            if !self.capture_started {
+                let _ = self.captures.push(Capture::Start { frame });
+            }
+            let _ = self.captures.push(Capture::End { frame });
+        }
+        self.capturing = false;
+        self.capture_started = false;
+    }
+
+    /// Takes the notes played live since the last block as this block's events, and captures them while recording.
+    fn take_live(&mut self, playing: bool) {
+        self.live_events.clear();
+        while self.live_events.len() < self.live_events.capacity() {
+            let Some(event) = self.live.pop() else { break };
+            let (channel, event) = match event {
+                LiveEvent::Note { channel, key, velocity, on } => {
+                    if playing && self.capturing {
+                        let note = CapturedNote { channel, key, velocity, on, frame: self.transport.frame };
+                        let _ = self.captures.push(Capture::Note(note));
+                    }
+                    let kind = if on { EventKind::On } else { EventKind::Off };
+                    (channel, NoteEvent { frame: 0, kind, key, velocity, voice: LIVE_VOICE | u64::from(key) })
+                }
+                LiveEvent::AllOff { channel } => (channel, NoteEvent { frame: 0, kind: EventKind::AllOff, key: 0, velocity: 0.0, voice: 0 }),
+            };
+            self.live_events.push((channel, event));
+        }
     }
 
     /// How many internal faults the graph has seen; zero unless something is badly wrong.

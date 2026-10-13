@@ -67,3 +67,35 @@ fn the_audio_engine_does_not_allocate() {
     render(&mut audio);
     assert_eq!(audio.faults(), 0);
 }
+
+#[test]
+fn live_notes_the_metronome_and_recording_do_not_allocate() {
+    let dir = temp_dir("rt-live");
+    write_tone(&dir);
+    let mut b = Builder::new();
+    let sample = b.sample("tone.wav");
+    let channel = b.sampler(sample, None, SamplerParams::default());
+    let project = b.build();
+    let (mut control, mut audio) = engine(&project, &SampleRoots::new(&dir), EngineConfig { max_frames: 128, ..EngineConfig::default() }).unwrap();
+    let live = control.live_input();
+    control.set_metronome(true);
+    control.set_count_in(true);
+    control.record();
+    let mut buffer = AudioBuffer::new(2, 128);
+    for round in 0..40u8 {
+        live.note(channel, 48 + round % 24, 0.8, true);
+        live.note(channel, 48 + (round + 7) % 24, 0.0, false);
+        reset_violation_count();
+        assert_no_alloc(|| {
+            for _ in 0..30 {
+                audio.render(128, &mut buffer);
+            }
+        });
+        assert_eq!(violation_count(), 0);
+    }
+    control.stop();
+    reset_violation_count();
+    assert_no_alloc(|| audio.render(128, &mut buffer));
+    assert_eq!(violation_count(), 0);
+    assert!(control.take_midi_recording().is_some());
+}
