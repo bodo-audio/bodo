@@ -450,7 +450,7 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: &Pattern, ch
 
     lanes::split(app, ui, split, rect);
     if lane_height > 0.0 {
-        lanes::show(app, ui, project, lanes_rect, &grid, channel, &in_view);
+        lanes::show(app, ui, project, lanes_rect, &grid, channel, pattern, &in_view);
     }
 }
 

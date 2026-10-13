@@ -296,3 +296,44 @@ fn arrow_keys_transpose_and_tool_keys_reach_the_editor_in_front() {
     assert_eq!(h.state().view.piano.tool, bodo_ui::Tool::Paint);
     assert_eq!(h.state().view.playlist.tool, bodo_ui::Tool::Draw);
 }
+
+#[test]
+fn a_controller_lane_draws_a_point_per_snap_step_and_right_drag_erases() {
+    let (mut h, canvas) = setup("draw");
+    h.state_mut().view.piano.lane = bodo_ui::Lane::Cc(74);
+    h.run_steps(2);
+    let lane = element(&h, "Piano roll lane");
+    let points = |h: &Harness<'_, BodoApp>| -> Vec<(i64, f32)> {
+        let project = h.state().session.project();
+        let pattern = &project.patterns[&h.state().session.editor().pattern.unwrap()];
+        let target = bodo_model::automation::ParamTarget::Channel(channel(h, "Kick"), bodo_model::automation::ChannelParam::Cc(74));
+        pattern.automation.iter().find(|l| l.target == target).map(|l| l.points.iter().map(|p| (p.at.0, p.value)).collect()).unwrap_or_default()
+    };
+    let before = steps(&h);
+    let y = lane.bottom() - 0.75 * lane.height();
+    let (from, to) = (pos2(canvas.left() + 1.0, y), pos2(canvas.left() + 2.0 * BEAT + 2.0, y));
+    drag(&mut h, PointerButton::Primary, from, &line(from, to, 8), Modifiers::NONE);
+    let drawn = points(&h);
+    assert_eq!(drawn.iter().map(|(at, _)| *at).collect::<Vec<_>>(), [0, 960, 1920], "a point on each beat, the snap");
+    assert!(drawn.iter().all(|(_, v)| (v - 0.75).abs() < 0.03), "{drawn:?}");
+    assert_eq!(steps(&h), before + 1, "a stroke is one undo step");
+    // A right-drag over the middle point erases it; one over everything removes the lane.
+    let middle = pos2(canvas.left() + BEAT, y);
+    drag(
+        &mut h,
+        PointerButton::Secondary,
+        middle - egui::vec2(4.0, 0.0),
+        &line(middle - egui::vec2(4.0, 0.0), middle + egui::vec2(4.0, 0.0), 2),
+        Modifiers::NONE,
+    );
+    assert_eq!(points(&h).iter().map(|(at, _)| *at).collect::<Vec<_>>(), [0, 1920]);
+    drag(
+        &mut h,
+        PointerButton::Secondary,
+        pos2(canvas.left(), y),
+        &line(pos2(canvas.left(), y), pos2(canvas.left() + 3.0 * BEAT, y), 8),
+        Modifiers::NONE,
+    );
+    assert!(points(&h).is_empty());
+    assert!(h.state().session.project().patterns.values().all(|p| p.automation.is_empty()), "the empty lane is gone");
+}
