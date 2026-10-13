@@ -5,6 +5,7 @@
 //! - [`open`] starts a stream on a real device with a [`DeviceConfig`]: host, devices, sample rate, buffer size and
 //!   channel maps.
 //! - [`open_virtual`] and [`VirtualDevice`] run the same engine without hardware, for tests, CI and timing runs.
+//! - [`midi`] lists, opens and talks to MIDI inputs and outputs.
 //!
 //! Every callback runs with denormals flushed to zero and inside the real-time checks, in blocks of at most
 //! `MAX_BLOCK_FRAMES`. Each stream counts dropouts (callbacks that overran their deadline, or that the device
@@ -25,6 +26,7 @@ mod exclusive;
 #[allow(unsafe_code)]
 mod ffi;
 mod hardware;
+pub mod midi;
 mod virtual_device;
 
 pub use driver::{AudioCallback, Block, StreamStatus};

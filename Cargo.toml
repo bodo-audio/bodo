@@ -41,8 +41,9 @@ assert_no_alloc = "1.1.2"
 no_denormals = "0.3.0"
 rtsan-standalone = "0.3.0"
 
-# Audio devices
+# Audio and MIDI devices
 cpal = "0.18.2"
+midir = "0.11.1"
 wasapi = "0.26.0"
 
 # Audio files

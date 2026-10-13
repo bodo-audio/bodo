@@ -18,7 +18,9 @@ serde = ["dep:serde", "bodo-kit-core/serde"]
 audio_thread_priority.workspace = true
 bodo-kit-core.workspace = true
 bodo-kit-dsp.workspace = true
+bodo-kit-midi.workspace = true
 cpal.workspace = true
+midir.workspace = true
 serde = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
