@@ -64,18 +64,28 @@ fn sound_path(app: &BodoApp, file: &Path) -> String {
 /// One sound row: drag it to the channel rack, double-click to add it as a channel.
 fn sound_row(app: &mut BodoApp, ui: &mut Ui, name: &str, path: String, depth: usize) {
     let tk = Tokens::get();
-    let id = ui.id().with(("sound", &path));
-    let response = ui
-        .dnd_drag_source(id, SoundPayload(path.clone()), |ui| {
-            ui.horizontal(|ui| {
-                ui.add_space(depth as f32 * 12.0 + 14.0);
-                let (rect, _) = ui.allocate_exact_size(vec2(12.0, 12.0), Sense::hover());
-                icons::WAVE_SINE.paint(ui.painter(), rect, tk.text_faint);
-                ui.label(RichText::new(name).color(tk.text).size(size::BODY));
-            })
-        })
-        .response;
-    let response = ui.interact(response.rect, id.with("click"), Sense::click()).on_hover_text(&path);
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), size::ROW - 4.0), Sense::click_and_drag());
+    if response.hovered() {
+        ui.painter().rect_filled(rect, 4.0, tk.control_hover);
+    }
+    let icon = egui::Rect::from_min_size(rect.left_center() + vec2(depth as f32 * 12.0 + 14.0, -6.0), vec2(12.0, 12.0));
+    icons::WAVE_SINE.paint(ui.painter(), icon, tk.text_faint);
+    ui.painter().with_clip_rect(rect).text(
+        icon.right_center() + vec2(6.0, 0.0),
+        egui::Align2::LEFT_CENTER,
+        name,
+        egui::FontId::proportional(size::BODY),
+        tk.text,
+    );
+    response.dnd_set_drag_payload(SoundPayload(path.clone()));
+    if response.dragged()
+        && let Some(pointer) = ui.ctx().pointer_interact_pos()
+    {
+        egui::Area::new(ui.id().with("dragged-sound")).order(egui::Order::Tooltip).fixed_pos(pointer + vec2(12.0, 4.0)).show(ui.ctx(), |ui| {
+            egui::Frame::popup(ui.style()).show(ui, |ui| ui.label(RichText::new(name).color(tk.text)));
+        });
+    }
+    let response = response.on_hover_text(&path);
     control::record(ui, &response, &format!("Sound {name}"), "sound", None);
     app.hint(&response, format!("{name}: drag it onto the channel rack, or double-click to add a channel"));
     if response.double_clicked() {

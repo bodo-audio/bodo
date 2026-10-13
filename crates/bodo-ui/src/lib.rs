@@ -135,10 +135,11 @@ impl Snap {
         }
     }
 
-    /// `ticks` rounded down to the grid.
+    /// `ticks` rounded down to the grid. A position a hair below a grid line, as converting from points can give,
+    /// counts as on it.
     pub fn floor(self, project: &Project, ticks: f64) -> i64 {
         let grid = self.ticks(project).max(1) as f64;
-        ((ticks / grid).floor() * grid) as i64
+        ((ticks / grid + 1e-6).floor() * grid) as i64
     }
 
     /// `ticks` rounded to the nearest grid line.
@@ -466,10 +467,11 @@ impl BodoApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(tk.border)).show(ui, |ui| {
             let workspace = ui.max_rect();
             let project = Arc::clone(self.session.project());
-            rack::window(self, ui.ctx(), workspace, &project);
+            // Windows that appear together stack in this order, the last on top; after that, the one used last is.
             playlist::window(self, ui.ctx(), workspace, &project);
-            piano_roll::window(self, ui.ctx(), workspace, &project);
             mixer::window(self, ui.ctx(), workspace, &project);
+            rack::window(self, ui.ctx(), workspace, &project);
+            piano_roll::window(self, ui.ctx(), workspace, &project);
         });
         dialogs::show(self, ui.ctx());
         palette::show(self, ui.ctx());
@@ -485,5 +487,20 @@ impl BodoApp {
         if response.hovered() {
             self.view.hint = Some(text.into());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn snapping_treats_a_hair_below_a_line_as_on_it() {
+        let project = Project::new(120.0).unwrap();
+        let zoom = 72.0f64 / 3840.0;
+        assert_eq!(Snap::Beat.floor(&project, 36.0 / zoom), 1920);
+        assert_eq!(Snap::Beat.floor(&project, 1919.0), 960);
+        assert_eq!(Snap::Bar.round(&project, 2000.0), 3840);
+        assert_eq!(Snap::None.floor(&project, 123.7), 123);
     }
 }

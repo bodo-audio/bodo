@@ -56,7 +56,7 @@ pub struct PianoView {
 
 impl Default for PianoView {
     fn default() -> Self {
-        Self { zoom: 160.0 / 3840.0 * 4.0, scroll: 0.0, top_key: 84.0, key_height: 14.0, note_length: STEP, drag: None }
+        Self { zoom: 160.0 / 3840.0 * 4.0, scroll: 0.0, top_key: 76.0, key_height: 14.0, note_length: STEP, drag: None }
     }
 }
 

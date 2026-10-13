@@ -283,6 +283,11 @@ pub fn show<T>(
     let full = if state.maximized { workspace } else { frame_rect(state.frame, workspace) };
     let rect = if state.minimized { Rect::from_min_size(full.min, vec2(full.width().min(300.0), size::TITLE_BAR)) } else { full };
     let id = area_id(kind);
+    // A window that wasn't showing comes to the front when it appears, however it was opened.
+    let layer = egui::LayerId::new(Order::Middle, id);
+    if !ctx.memory(|m| m.areas().visible_last_frame(&layer)) {
+        ctx.move_to_top(layer);
+    }
     let mut new_state = state;
     let mut events = WindowEvents::default();
     egui::Area::new(id).order(Order::Middle).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
