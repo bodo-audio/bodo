@@ -1,8 +1,12 @@
-//! Design tokens and egui styling (project.md sections 14.2 and 14.3).
+//! Design tokens and egui styling (project.md sections 14.2, 14.3 and 14.7).
 //!
-//! Panel code never uses literal colors: it reads [`Tokens::get`], the tokens of the theme in use. Dark is the
-//! default; Light and System (follow the operating system) are supported. The values come from pixel3d's tokens,
-//! extended for a DAW.
+//! Panel code never uses literal colors: it reads [`Tokens::get`], the tokens of the look in use. Dark is the default;
+//! Light, High contrast and System (follow the operating system) are supported. The values come from pixel3d's
+//! tokens, extended for a DAW.
+//!
+//! The color-blind-safe option swaps the meters' green to red gradient for one that never relies on telling red from
+//! green, and draws clip, pattern and channel colors from a palette built on Okabe and Ito's colors, which stay apart
+//! for the common color-vision deficiencies. It changes only how colors are shown: the project keeps its own.
 
 use std::cell::Cell;
 
@@ -21,33 +25,72 @@ pub enum ThemePref {
     /// Always dark.
     #[default]
     Dark,
+    /// White text on black with strong outlines: every text pair reads at 7:1 or better.
+    HighContrast,
 }
 
 impl ThemePref {
     /// Every choice, in menu order.
-    pub const ALL: [Self; 3] = [Self::Dark, Self::Light, Self::System];
+    pub const ALL: [Self; 4] = [Self::Dark, Self::Light, Self::HighContrast, Self::System];
 
-    /// Its name in menus.
+    /// Its name in `ui.set_theme` and the English source of its name in menus.
     pub fn label(self) -> &'static str {
         match self {
             Self::System => "System",
             Self::Light => "Light",
             Self::Dark => "Dark",
+            Self::HighContrast => "High contrast",
         }
     }
 
-    /// The theme to show, given what the system reports.
-    pub fn resolve(self, system: Option<Theme>) -> Theme {
+    /// The look to show, given what the system reports.
+    pub fn resolve(self, system: Option<Theme>) -> Look {
         match self {
-            Self::System => system.unwrap_or(Theme::Dark),
+            Self::System => match system {
+                Some(Theme::Light) => Look::Light,
+                _ => Look::Dark,
+            },
+            Self::Light => Look::Light,
+            Self::Dark => Look::Dark,
+            Self::HighContrast => Look::HighContrast,
+        }
+    }
+}
+
+/// The look being shown: the theme once System is resolved.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Look {
+    /// The dark theme.
+    #[default]
+    Dark,
+    /// The light theme.
+    Light,
+    /// The high-contrast theme, a dark one.
+    HighContrast,
+}
+
+impl Look {
+    /// egui's theme it builds on: high contrast is a dark theme.
+    pub fn egui(self) -> Theme {
+        match self {
             Self::Light => Theme::Light,
-            Self::Dark => Theme::Dark,
+            Self::Dark | Self::HighContrast => Theme::Dark,
+        }
+    }
+}
+
+impl From<Theme> for Look {
+    fn from(theme: Theme) -> Self {
+        match theme {
+            Theme::Dark => Self::Dark,
+            Theme::Light => Self::Light,
         }
     }
 }
 
 thread_local! {
-    static ACTIVE: Cell<Theme> = const { Cell::new(Theme::Dark) };
+    static ACTIVE: Cell<Look> = const { Cell::new(Look::Dark) };
+    static COLOR_SAFE: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Every color the interface uses.
@@ -184,18 +227,63 @@ impl Tokens {
         shadow: Color32::from_black_alpha(40),
     };
 
-    /// The tokens of the theme in use on this thread.
+    /// The high-contrast theme: white and near-white text on black, bright outlines and a yellow accent, so every
+    /// text pair reads at 7:1 or better and selections never rely on a faint tint.
+    pub const HIGH_CONTRAST: Self = Self {
+        chrome: hex(0x000000),
+        chrome_dark: hex(0x000000),
+        panel: hex(0x000000),
+        control: hex(0x1f1f1f),
+        control_hover: hex(0x383838),
+        border: hex(0x9e9e9e),
+        field: hex(0x000000),
+        popup: hex(0x0a0a0a),
+        text: hex(0xffffff),
+        text_dim: hex(0xe6e6e6),
+        text_faint: hex(0xcccccc),
+        accent: hex(0xffd60a),
+        accent_hover: hex(0xffe766),
+        accent_soft: hex(0x423800),
+        on_accent: hex(0x000000),
+        select_bg: hex(0x3a3000),
+        ok: hex(0x5cff8a),
+        warn: hex(0xffb340),
+        error: hex(0xff7a7a),
+        record: hex(0xff6161),
+        playhead: hex(0xffd60a),
+        grid_bar: hex(0x8f8f8f),
+        grid_beat: hex(0x525252),
+        grid_step: hex(0x2e2e2e),
+        marquee: hex(0x33e6ff),
+        key_black: hex(0x1f1f1f),
+        key_white: hex(0xf2f2f2),
+        row_black: hex(0x101010),
+        shadow: Color32::from_black_alpha(160),
+    };
+
+    /// The tokens of the look in use on this thread.
     pub fn get() -> Self {
-        Self::of(ACTIVE.with(Cell::get))
+        Self::of_look(ACTIVE.with(Cell::get))
     }
 
-    /// The tokens of `theme`.
+    /// The tokens of egui's `theme`, dark or light.
     pub fn of(theme: Theme) -> Self {
-        match theme {
-            Theme::Dark => Self::DARK,
-            Theme::Light => Self::LIGHT,
+        Self::of_look(theme.into())
+    }
+
+    /// The tokens of `look`.
+    pub fn of_look(look: Look) -> Self {
+        match look {
+            Look::Dark => Self::DARK,
+            Look::Light => Self::LIGHT,
+            Look::HighContrast => Self::HIGH_CONTRAST,
         }
     }
+}
+
+/// The look in use on this thread.
+pub fn look() -> Look {
+    ACTIVE.with(Cell::get)
 }
 
 /// Font sizes (project.md section 14.3).
@@ -218,10 +306,14 @@ pub mod size {
     pub const ROW: f32 = 22.0;
 }
 
-/// Makes `theme` the one [`Tokens::get`] returns and styles `ctx` with it.
-pub fn apply(ctx: &egui::Context, theme: Theme) {
-    ACTIVE.with(|active| active.set(theme));
-    let tk = Tokens::of(theme);
+/// Makes `look` the one [`Tokens::get`] returns and styles `ctx` with it, with the color-blind-safe colors when
+/// `color_safe` is set.
+pub fn apply(ctx: &egui::Context, look: impl Into<Look>, color_safe: bool) {
+    let look = look.into();
+    let theme = look.egui();
+    ACTIVE.with(|active| active.set(look));
+    COLOR_SAFE.with(|safe| safe.set(color_safe));
+    let tk = Tokens::of_look(look);
     let mut visuals = match theme {
         Theme::Dark => Visuals::dark(),
         Theme::Light => Visuals::light(),
@@ -248,6 +340,17 @@ pub fn apply(ctx: &egui::Context, theme: Theme) {
     visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, tk.text_dim);
     visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0, tk.border);
     visuals.widgets.active.fg_stroke = Stroke::new(1.0, tk.accent);
+    // egui draws a widget with keyboard focus in its active style: an accent outline makes focus always visible.
+    visuals.widgets.active.bg_stroke = Stroke::new(1.5, tk.accent);
+    if look == Look::HighContrast {
+        // Every control shows its edge, and focus and hovering are thick and bright.
+        visuals.widgets.inactive.bg_stroke = Stroke::new(1.0, tk.text_faint);
+        visuals.widgets.hovered.bg_stroke = Stroke::new(2.0, tk.accent);
+        visuals.widgets.active.bg_stroke = Stroke::new(2.0, tk.accent);
+        visuals.widgets.open.bg_stroke = Stroke::new(2.0, tk.text);
+        visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, tk.text);
+        visuals.selection.stroke = Stroke::new(2.0, tk.accent);
+    }
     ctx.set_visuals_of(theme, visuals);
     ctx.set_theme(theme);
     ctx.all_styles_mut(|style| {
@@ -264,27 +367,93 @@ pub fn apply(ctx: &egui::Context, theme: Theme) {
         style.spacing.interact_size.y = 20.0;
         style.animation_time = 0.12;
     });
-    palette_for(theme).install(ctx);
+    palette_for(look, color_safe).install(ctx);
 }
 
-/// The Kit widget palette that matches `theme`.
-pub fn palette_for(theme: Theme) -> Palette {
-    let tk = Tokens::of(theme);
-    let base = match theme {
-        Theme::Dark => Palette::dark(),
-        Theme::Light => Palette::light(),
+/// The Kit widget palette that matches `look`, with the color-blind-safe meter gradient when `color_safe` is set.
+pub fn palette_for(look: impl Into<Look>, color_safe: bool) -> Palette {
+    let look = look.into();
+    let tk = Tokens::of_look(look);
+    let base = match look {
+        Look::Light => Palette::light(),
+        Look::Dark => Palette::dark(),
+        Look::HighContrast => Palette {
+            track: hex(0x333333),
+            fill: tk.accent,
+            body: hex(0x1f1f1f),
+            body_hover: hex(0x383838),
+            outline: tk.text_faint,
+            led_off: hex(0x333333),
+            step_off_a: hex(0x262626),
+            step_off_b: hex(0x404040),
+            step_hover: hex(0x5c5c5c),
+            ..Palette::dark()
+        },
     };
-    Palette { accent: tk.accent, text: tk.text, text_dim: tk.text_dim, ..base }
+    let palette = Palette { accent: tk.accent, text: tk.text, text_dim: tk.text_dim, ..base };
+    if !color_safe {
+        return palette;
+    }
+    // Blue to yellow to vermillion: apart in lightness as well as hue, so no step depends on telling red from green.
+    let (low, mid, high) = match look {
+        Look::Light => (hex(0x0072b2), hex(0xe6c200), hex(0xd55e00)),
+        Look::Dark | Look::HighContrast => (hex(0x56b4e9), hex(0xf0e442), hex(0xe86a1a)),
+    };
+    Palette { meter_low: low, meter_mid: mid, meter_high: high, clip: high, led_on: hex(0x56b4e9), ..palette }
 }
+
+/// Whether the color-blind-safe colors are on for this thread.
+pub fn color_safe() -> bool {
+    COLOR_SAFE.with(Cell::get)
+}
+
+/// The colors clips, patterns and channels take with the color-blind-safe option, one for each of the sixteen
+/// standard hues in order: Okabe and Ito's colors and lighter shades of them, laid out so neighbors on the color
+/// wheel stay apart in lightness.
+pub const SAFE_HUES: [Color32; 16] = [
+    hex(0xd55e00),
+    hex(0xe69f00),
+    hex(0xf2c77a),
+    hex(0xf0e442),
+    hex(0xf7ef9a),
+    hex(0x009e73),
+    hex(0x5fc9aa),
+    hex(0xa0d6f3),
+    hex(0x56b4e9),
+    hex(0x5ba3d6),
+    hex(0x0072b2),
+    hex(0xc4c4c4),
+    hex(0xe3aecb),
+    hex(0xcc79a7),
+    hex(0xea9a66),
+    hex(0x999999),
+];
 
 /// `color` at `alpha` (0 to 1), for overlays such as muted items.
 pub fn faded(color: Color32, alpha: f32) -> Color32 {
     color.gamma_multiply(alpha.clamp(0.0, 1.0))
 }
 
-/// A model color as an egui color.
+/// A model color as an egui color: as stored, or with the color-blind-safe option, the safe color standing for the
+/// nearest of the standard hues.
+///
+/// Complexity: O(1); sixteen comparisons with the option on.
 pub fn color(c: bodo_model::Color) -> Color32 {
-    Color32::from_rgb(c.r, c.g, c.b)
+    if color_safe() { safe_color(c) } else { Color32::from_rgb(c.r, c.g, c.b) }
+}
+
+/// The color-blind-safe stand-in for `c`: the safe color of the standard hue nearest to it. Grays stay as they are.
+pub fn safe_color(c: bodo_model::Color) -> Color32 {
+    let (max, min) = (c.r.max(c.g).max(c.b), c.r.min(c.g).min(c.b));
+    if max - min < 24 {
+        return Color32::from_rgb(c.r, c.g, c.b);
+    }
+    let distance = |h: &bodo_model::Color| {
+        let d = |a: u8, b: u8| (i32::from(a) - i32::from(b)).pow(2);
+        d(h.r, c.r) + d(h.g, c.g) + d(h.b, c.b)
+    };
+    let nearest = bodo_engine::palette::HUES.iter().enumerate().min_by_key(|(_, h)| distance(h)).map_or(0, |(i, _)| i);
+    SAFE_HUES[nearest % SAFE_HUES.len()]
 }
 
 /// `color` mixed over the panel at `amount` (0 to 1): the body of a clip or a channel button.
@@ -319,13 +488,52 @@ mod tests {
     }
 
     #[test]
-    fn text_meets_wcag_contrast_in_both_themes() {
-        for tk in [Tokens::DARK, Tokens::LIGHT] {
+    fn text_meets_wcag_contrast_in_every_theme() {
+        for tk in [Tokens::DARK, Tokens::LIGHT, Tokens::HIGH_CONTRAST] {
             for surface in [tk.panel, tk.chrome, tk.popup] {
                 assert!(contrast(tk.text, surface) >= 7.0, "body text on {surface:?}: {:.2}", contrast(tk.text, surface));
                 assert!(contrast(tk.text_dim, surface) >= 4.5, "dim text on {surface:?}: {:.2}", contrast(tk.text_dim, surface));
             }
             assert!(contrast(tk.on_accent, tk.accent) >= 4.5, "text on the accent: {:.2}", contrast(tk.on_accent, tk.accent));
+        }
+    }
+
+    #[test]
+    fn high_contrast_text_reads_at_seven_to_one_everywhere() {
+        let tk = Tokens::HIGH_CONTRAST;
+        let surfaces = [tk.panel, tk.chrome, tk.chrome_dark, tk.popup, tk.field, tk.control, tk.control_hover, tk.select_bg, tk.accent_soft];
+        for surface in surfaces {
+            for (name, text) in [("body", tk.text), ("dim", tk.text_dim), ("faint", tk.text_faint)] {
+                assert!(contrast(text, surface) >= 7.0, "{name} text on {surface:?}: {:.2}", contrast(text, surface));
+            }
+        }
+        assert!(contrast(tk.on_accent, tk.accent) >= 7.0, "text on the accent: {:.2}", contrast(tk.on_accent, tk.accent));
+        for signal in [tk.accent, tk.ok, tk.warn, tk.error, tk.record, tk.marquee, tk.playhead] {
+            assert!(contrast(signal, tk.panel) >= 7.0, "{signal:?} on the panel: {:.2}", contrast(signal, tk.panel));
+        }
+    }
+
+    #[test]
+    fn color_safe_hues_are_all_different_and_stand_for_the_standard_ones() {
+        for (i, a) in SAFE_HUES.iter().enumerate() {
+            for b in &SAFE_HUES[i + 1..] {
+                assert_ne!(a, b);
+            }
+        }
+        for (i, hue) in bodo_engine::palette::HUES.iter().enumerate() {
+            assert_eq!(safe_color(*hue), SAFE_HUES[i]);
+        }
+        let gray = bodo_model::Color::rgb(0x80, 0x80, 0x80);
+        assert_eq!(safe_color(gray), Color32::from_gray(0x80), "grays stay gray");
+    }
+
+    #[test]
+    fn the_color_safe_meter_reads_by_lightness_not_red_and_green() {
+        for look in [Look::Dark, Look::Light, Look::HighContrast] {
+            let p = palette_for(look, true);
+            assert!((luminance(p.meter_low) - luminance(p.meter_mid)).abs() > 0.1, "{look:?}");
+            assert!((luminance(p.meter_mid) - luminance(p.meter_high)).abs() > 0.1, "{look:?}");
+            assert!(p.meter_low.g() < p.meter_low.b(), "{look:?}: the low end is blue, not green");
         }
     }
 }

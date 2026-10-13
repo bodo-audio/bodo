@@ -12,6 +12,8 @@
 
 #![forbid(unsafe_code)]
 
+#[macro_use]
+pub mod i18n;
 pub mod audio;
 mod autosave;
 mod browser;
@@ -88,12 +90,36 @@ pub fn resident_memory() -> Option<u64> {
     memory_stats::memory_stats().map(|m| m.physical_mem as u64)
 }
 
+/// The interface sizes the zoom keys step through, from 75% to 200% (project.md section 14.7).
+pub const UI_SCALES: [f32; 9] = [0.75, 0.9, 1.0, 1.1, 1.25, 1.4, 1.5, 1.75, 2.0];
+
+/// `scale` kept between 75% and 200%; 100% for nonsense.
+fn clamp_scale(scale: f32) -> f32 {
+    if scale.is_finite() { scale.clamp(0.75, 2.0) } else { 1.0 }
+}
+
+/// The next interface size up (`up`) or down from `scale` among [`UI_SCALES`], or `scale` at the end of the range.
+pub fn step_scale(scale: f32, up: bool) -> f32 {
+    let scale = clamp_scale(scale);
+    if up {
+        UI_SCALES.iter().copied().find(|s| *s > scale + 1e-3).unwrap_or(scale)
+    } else {
+        UI_SCALES.iter().rev().copied().find(|s| *s < scale - 1e-3).unwrap_or(scale)
+    }
+}
+
 /// What the user chose, kept between runs. Window layouts belong here, not in projects.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Prefs {
     /// The theme.
     pub theme: ThemePref,
+    /// Color-blind-safe colors for meters, clips, patterns and channels (project.md section 14.7).
+    pub color_safe: bool,
+    /// The interface's size, from 0.75 to 2 (75% to 200%).
+    pub ui_scale: f32,
+    /// The language of the interface.
+    pub language: i18n::LanguagePref,
     /// The window layout.
     pub layout: Layout,
     /// The layouts the user saved, by name, besides the presets.
@@ -120,6 +146,9 @@ impl Default for Prefs {
     fn default() -> Self {
         Self {
             theme: ThemePref::Dark,
+            color_safe: false,
+            ui_scale: 1.0,
+            language: i18n::LanguagePref::default(),
             layout: Layout::default(),
             layouts: Vec::new(),
             layout_name: Some(String::from(Preset::Default.label())),
@@ -262,6 +291,8 @@ pub struct View {
     pub channel_windows: channel_window::ChannelWindows,
     /// The open effect editors.
     pub effect_editors: effect_editor::EffectEditors,
+    /// Set by "Go to the menus" (F10): the first menu takes keyboard focus on the next frame.
+    pub focus_menu: bool,
 }
 
 /// The main window.
@@ -289,7 +320,7 @@ pub struct BodoApp {
     /// Set once the user has confirmed quitting: the window's close requests then go through.
     closing: bool,
     autosave: autosave::Autosave,
-    shown_theme: Option<egui::Theme>,
+    shown_theme: Option<(theme::Look, bool)>,
     status: Option<(String, bool, Instant)>,
     gestures: std::collections::HashMap<egui::Id, u64>,
     next_gesture: u64,
@@ -467,8 +498,49 @@ impl BodoApp {
                     self.prefs.theme = theme;
                     Ok(json!({ "theme": theme.label() }))
                 }
-                None => Err(String::from("theme must be Dark, Light or System")),
+                None => Err(String::from("theme must be Dark, Light, High contrast or System")),
             },
+            "ui.set_color_safe" => {
+                self.prefs.color_safe = params.get("on").and_then(Value::as_bool).unwrap_or(!self.prefs.color_safe);
+                Ok(json!({ "colorSafe": self.prefs.color_safe }))
+            }
+            "ui.set_ui_scale" => {
+                let scale = match params.get("scale") {
+                    Some(Value::Number(n)) => n.as_f64().map(|n| n as f32),
+                    Some(Value::String(s)) => s.trim().trim_end_matches('%').trim().parse::<f32>().ok().map(|p| if p > 3.0 { p / 100.0 } else { p }),
+                    _ => None,
+                };
+                match scale.filter(|s| (0.75..=2.0).contains(s)) {
+                    Some(scale) => {
+                        self.prefs.ui_scale = scale;
+                        Ok(json!({ "scale": scale }))
+                    }
+                    None => Err(String::from("scale must be from 0.75 to 2 (75% to 200%)")),
+                }
+            }
+            "ui.zoom_in" | "ui.zoom_out" | "ui.zoom_reset" => {
+                self.prefs.ui_scale = match id {
+                    "ui.zoom_reset" => 1.0,
+                    _ => step_scale(self.prefs.ui_scale, id == "ui.zoom_in"),
+                };
+                Ok(json!({ "scale": self.prefs.ui_scale }))
+            }
+            "ui.set_language" => match i18n::LanguagePref::from_id(&text("language")) {
+                Some(language) => {
+                    self.prefs.language = language;
+                    i18n::set_language(language.resolve());
+                    Ok(json!({ "language": language.id() }))
+                }
+                None => Err(String::from("language must be system, en or tr")),
+            },
+            "ui.next_window" => {
+                let kind = windows::cycle(self, self.remote.ctx().as_ref());
+                Ok(json!({ "window": kind.map(|k| k.id()) }))
+            }
+            "ui.focus_menu" => {
+                self.view.focus_menu = true;
+                Ok(json!({ "menu": "File" }))
+            }
             "ui.set_tool" => {
                 let target = match params.get("window").and_then(Value::as_str) {
                     Some(window) => WindowKind::from_id(window),
@@ -585,7 +657,19 @@ impl BodoApp {
                 "Set snap",
                 "Sets the editors' snap: {\"snap\": \"None\" | \"1/4 step\" | \"Step\" | \"1/2 beat\" | \"Beat\" | \"Bar\" ...}.",
             ),
-            ("ui.set_theme", "Set theme", "Sets the theme: {\"theme\": \"Dark\" | \"Light\" | \"System\"}."),
+            ("ui.set_theme", "Set theme", "Sets the theme: {\"theme\": \"Dark\" | \"Light\" | \"High contrast\" | \"System\"}."),
+            (
+                "ui.set_color_safe",
+                "Color-blind-safe colors",
+                "Turns the color-blind-safe meter and clip colors on or off: {\"on\": true}, or toggles them.",
+            ),
+            ("ui.set_ui_scale", "Set interface size", "Sets the interface's size: {\"scale\": 1.25} or {\"scale\": \"125%\"}, from 75% to 200%."),
+            ("ui.zoom_in", "Make the interface larger", "Makes the interface one step larger, up to 200%."),
+            ("ui.zoom_out", "Make the interface smaller", "Makes the interface one step smaller, down to 75%."),
+            ("ui.zoom_reset", "Reset the interface size", "Puts the interface back to 100%."),
+            ("ui.set_language", "Set language", "Sets the interface's language: {\"language\": \"en\" | \"tr\" | \"system\"}."),
+            ("ui.next_window", "Next window", "Brings the next open window to the front and moves keyboard focus into it."),
+            ("ui.focus_menu", "Go to the menus", "Moves keyboard focus to the File menu; the arrow keys and Tab move on from there."),
             (
                 "ui.set_tool",
                 "Set tool",
@@ -635,10 +719,23 @@ impl BodoApp {
 
     /// Everything the frame needs before drawing: theme, shortcuts, the control channel, audio and autosave.
     pub fn logic(&mut self, ctx: &egui::Context) {
-        let theme = self.prefs.theme.resolve(ctx.system_theme());
-        if self.shown_theme != Some(theme) {
-            theme::apply(ctx, theme);
-            self.shown_theme = Some(theme);
+        let look = (self.prefs.theme.resolve(ctx.system_theme()), self.prefs.color_safe);
+        if self.shown_theme != Some(look) {
+            theme::apply(ctx, look.0, look.1);
+            self.shown_theme = Some(look);
+        }
+        let language = self.prefs.language.resolve();
+        if i18n::language() != language {
+            i18n::set_language(language);
+        }
+        // The interface's size: the preference, kept between 75% and 200%. egui's own zoom keys are off, since
+        // Bodo's zoom shortcuts can be changed like any other.
+        self.prefs.ui_scale = clamp_scale(self.prefs.ui_scale);
+        if ctx.options(|o| o.zoom_with_keyboard) {
+            ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        }
+        if (ctx.zoom_factor() - self.prefs.ui_scale).abs() > 1e-4 {
+            ctx.set_zoom_factor(self.prefs.ui_scale);
         }
         self.remote.set_ctx(ctx);
         typing::handle(self, ctx);

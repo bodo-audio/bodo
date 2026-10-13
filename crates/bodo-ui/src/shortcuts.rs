@@ -174,12 +174,26 @@ pub fn bindings(app: &BodoApp) -> Vec<Binding> {
     }
     let mut commands: Vec<(String, String, Option<String>)> =
         app.session.registry().iter().map(|c| (c.id.to_owned(), c.title.to_owned(), c.shortcut.map(str::to_owned))).collect();
-    commands.extend(BodoApp::ui_commands().iter().map(|(id, title, _)| ((*id).to_owned(), (*title).to_owned(), None)));
+    commands
+        .extend(BodoApp::ui_commands().iter().map(|(id, title, _)| ((*id).to_owned(), (*title).to_owned(), ui_command_keys(id).map(str::to_owned))));
     commands.sort_by(|a, b| a.0.cmp(&b.0));
     for (id, title, default) in commands {
         push(format!("command:{id}"), title, Group::Commands, Action::Command(id), default);
     }
     out
+}
+
+/// The keys interface command `id` ships with: zooming the interface, and reaching the menus and windows from the
+/// keyboard (project.md section 14.7).
+pub(crate) fn ui_command_keys(id: &str) -> Option<&'static str> {
+    match id {
+        "ui.zoom_in" => Some("Mod+Equals"),
+        "ui.zoom_out" => Some("Mod+Minus"),
+        "ui.zoom_reset" => Some("Mod+0"),
+        "ui.next_window" => Some("Mod+F6"),
+        "ui.focus_menu" => Some("F10"),
+        _ => None,
+    }
 }
 
 fn capitalized(text: &str) -> String {

@@ -116,10 +116,10 @@ fn a_rebound_window_key_works_and_the_old_one_doesnt() {
     h.run_steps(3);
     click(&mut h, "Shortcut window:mixer");
     assert!(h.state().view.dialogs.recording_shortcut(), "the button listens for new keys");
-    h.key_press(Key::F10);
+    h.key_press(Key::F11);
     h.run_steps(3);
     assert!(!h.state().view.dialogs.recording_shortcut());
-    assert_eq!(h.state().prefs.shortcuts.get("window:mixer").map(String::as_str), Some("F10"));
+    assert_eq!(h.state().prefs.shortcuts.get("window:mixer").map(String::as_str), Some("F11"));
     h.state_mut().view.dialogs.shortcuts = false;
     h.run_steps(2);
 
@@ -128,9 +128,9 @@ fn a_rebound_window_key_works_and_the_old_one_doesnt() {
     h.key_press(Key::F9);
     h.run_steps(2);
     assert_eq!(open(&h), before, "F9 does nothing now");
-    h.key_press(Key::F10);
+    h.key_press(Key::F11);
     h.run_steps(2);
-    assert_ne!(open(&h), before, "F10 shows or hides the mixer");
+    assert_ne!(open(&h), before, "F11 shows or hides the mixer");
     assert!(element(&h, "Mixer").is_positive(), "the top bar's button is still there");
 }
 
@@ -256,7 +256,7 @@ fn old_preferences_still_load() {
 fn shortcuts_snapshot(name: &str, theme: Theme) {
     let mut app = common::app(theme);
     app.view.dialogs.shortcuts = true;
-    app.prefs.shortcuts.insert(String::from("window:mixer"), String::from("F10"));
+    app.prefs.shortcuts.insert(String::from("window:mixer"), String::from("F11"));
     let mut h = common::harness(app, theme, true);
     h.run_steps(6);
     h.snapshot_options(name, &common::snapshot_options(name));

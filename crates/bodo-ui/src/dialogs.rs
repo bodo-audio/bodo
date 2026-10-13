@@ -52,6 +52,8 @@ pub struct Dialogs {
     pub(crate) layout_name: Option<LayoutName>,
     /// The about box.
     pub about: bool,
+    /// The interface settings: theme, size, language and color-blind-safe colors.
+    pub interface: bool,
     /// Autosaves found after a crash, offered for recovery.
     pub recovery: Vec<PathBuf>,
     /// The song position shows minutes and seconds instead of bars, steps and ticks.
@@ -311,9 +313,33 @@ fn modal(ctx: &egui::Context, title: &str, add: impl FnOnce(&mut egui::Ui)) {
         .show(ctx, add);
 }
 
-/// Draws whichever dialogs are open.
+/// Draws whichever dialogs are open. Escape closes the one in front, as its Cancel or Close button would, unless a
+/// menu or another popup is open, which Escape closes first.
 pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     poll_export(app, ctx);
+    let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape)) && !egui::Popup::is_any_open(ctx);
+    if escape {
+        let dialogs = &mut app.view.dialogs;
+        if dialogs.unsaved.is_some() {
+            dialogs.unsaved = None;
+        } else if dialogs.about {
+            dialogs.about = false;
+        } else if dialogs.interface {
+            dialogs.interface = false;
+        } else if dialogs.export.is_some() {
+            // The export keeps rendering in the background.
+            dialogs.export = None;
+        } else if dialogs.audio {
+            dialogs.audio = false;
+            dialogs.audio_draft = None;
+            dialogs.midi_ports = None;
+        } else if dialogs.shortcuts && !dialogs.recording_shortcut() && dialogs.shortcut_editor.conflict.is_none() {
+            dialogs.shortcuts = false;
+        }
+    }
+    if app.view.dialogs.interface {
+        interface_settings(app, ctx);
+    }
     if let Some(action) = app.view.dialogs.unsaved.clone() {
         let mut choice = None;
         modal(ctx, "Unsaved changes", |ui| {
@@ -607,6 +633,80 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
     }
     if open {
         app.view.dialogs.export = Some(dialog);
+    }
+}
+
+/// The interface settings (project.md section 14.7): the theme, the interface's size, the language, and the
+/// color-blind-safe colors. Every change applies at once and is kept between runs.
+fn interface_settings(app: &mut BodoApp, ctx: &egui::Context) {
+    use crate::i18n::{LanguagePref, t};
+    let mut open = true;
+    egui::Window::new(RichText::new(t("Interface settings")).size(size::HEADING))
+        .id(egui::Id::new("bodo-interface-settings"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(Align2::CENTER_CENTER, vec2(0.0, -40.0))
+        .order(egui::Order::Foreground)
+        .show(ctx, |ui| {
+            egui::Grid::new("bodo-interface-grid").num_columns(2).spacing(vec2(12.0, 8.0)).show(ui, |ui| {
+                ui.label(t("Theme"));
+                ui.horizontal(|ui| {
+                    for theme in crate::theme::ThemePref::ALL {
+                        let on = app.prefs.theme == theme;
+                        let response = ui.radio(on, crate::i18n::t(theme.label()));
+                        crate::control::record(ui, &response, &format!("Theme {}", theme.label()), "radio", Some(on));
+                        if response.clicked() {
+                            app.prefs.theme = theme;
+                        }
+                    }
+                });
+                ui.end_row();
+
+                ui.label(t("Interface size"));
+                ui.horizontal(|ui| {
+                    let mut percent = (app.prefs.ui_scale * 100.0).round();
+                    let slider = ui.add(egui::Slider::new(&mut percent, 75.0..=200.0).step_by(5.0).suffix("%"));
+                    crate::control::record(ui, &slider, "Interface size", "slider", None);
+                    if slider.changed() {
+                        app.prefs.ui_scale = percent / 100.0;
+                    }
+                    if ui.button(t("Actual size")).clicked() {
+                        app.prefs.ui_scale = 1.0;
+                    }
+                });
+                ui.end_row();
+
+                ui.label(t("Language"));
+                let current = app.prefs.language;
+                let combo = egui::ComboBox::from_id_salt("bodo-language").selected_text(current.label()).show_ui(ui, |ui| {
+                    for language in LanguagePref::ALL {
+                        if ui.selectable_label(current == language, language.label()).clicked() {
+                            let _ = app.run("ui.set_language", json!({ "language": language.id() }));
+                        }
+                    }
+                });
+                crate::control::record(ui, &combo.response, "Language", "combo", None);
+                ui.end_row();
+
+                ui.label(t("Colors"));
+                let mut safe = app.prefs.color_safe;
+                let check = ui.checkbox(&mut safe, t("Color-blind-safe meters and clip colors"));
+                crate::control::record(ui, &check, "Color-blind-safe colors", "checkbox", Some(safe));
+                if check.changed() {
+                    app.prefs.color_safe = safe;
+                }
+                ui.end_row();
+            });
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(t("The interface keys: Cmd or Ctrl with + and - change its size, and 0 resets it."))
+                    .color(Tokens::get().text_dim)
+                    .size(size::SMALL),
+            );
+        });
+    if !open {
+        app.view.dialogs.interface = false;
     }
 }
 

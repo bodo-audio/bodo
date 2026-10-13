@@ -34,12 +34,17 @@ pub(crate) fn show(app: &mut BodoApp, ui: &mut Ui) {
 fn menus(app: &mut BodoApp, ui: &mut Ui) {
     let model = menu::menus(app);
     let mut chosen = None;
-    for top in &model {
-        let opened = ui.menu_button(top.title, |ui| {
+    for (index, top) in model.iter().enumerate() {
+        let opened = ui.menu_button(crate::i18n::t(top.title), |ui| {
             ui.set_min_width(200.0);
             menu_items(ui, &top.items, &mut chosen);
         });
         control::record(ui, &opened.response, &format!("Menu {}", top.title), "menu", None);
+        // F10 (or the key the user gave "Go to the menus") puts keyboard focus on the first menu.
+        if index == 0 && app.view.focus_menu {
+            opened.response.request_focus();
+            app.view.focus_menu = false;
+        }
     }
     if let Some(action) = chosen {
         menu::perform(app, action);

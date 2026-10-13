@@ -270,6 +270,44 @@ pub fn area_id(kind: WindowKind) -> Id {
     Id::new(("bodo-window", kind))
 }
 
+/// Where a window waiting for keyboard focus is noted, until its title bar takes it.
+fn focus_key() -> Id {
+    Id::new("bodo-window-focus")
+}
+
+/// Brings the open window after the one in front to the front, in the order of the top bar's buttons, and moves
+/// keyboard focus to its title bar, from where Tab goes on into it. The playlist and the piano roll become the editor
+/// the tool keys act on. Returns the window, or `None` when none is open.
+///
+/// Complexity: O(w + l) in windows and egui's layers.
+pub fn cycle(app: &mut crate::BodoApp, ctx: Option<&egui::Context>) -> Option<WindowKind> {
+    let open: Vec<WindowKind> = WindowKind::ALL.into_iter().filter(|k| app.prefs.layout.is_open(*k)).collect();
+    if open.is_empty() {
+        return None;
+    }
+    // The window in front: the last of them in egui's layer order, else the editor used last.
+    let front = ctx
+        .and_then(|ctx| ctx.memory(|m| m.layer_ids().filter_map(|layer| open.iter().copied().find(|k| layer.id == area_id(*k))).last()))
+        .unwrap_or(app.view.editor);
+    let next = open.iter().position(|k| *k == front).map_or(open[0], |i| open[(i + 1) % open.len()]);
+    match ctx {
+        Some(ctx) => {
+            app.prefs.layout.open(ctx, next);
+            ctx.data_mut(|d| d.insert_temp(focus_key(), area_id(next)));
+        }
+        None => {
+            let mut state = app.prefs.layout.state(next);
+            state.open = true;
+            state.minimized = false;
+            app.prefs.layout.windows.insert(next, state);
+        }
+    }
+    if matches!(next, WindowKind::Playlist | WindowKind::PianoRoll) {
+        app.view.editor = next;
+    }
+    Some(next)
+}
+
 /// What a window's title bar did this frame.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct WindowEvents {
@@ -378,8 +416,22 @@ pub fn show_frame<T: WindowHost>(
             tk.chrome,
         );
 
-        // Moving: drag the title bar; double-click maximizes.
+        // Moving: drag the title bar; double-click maximizes. The title bar also takes keyboard focus when the window
+        // is brought forward from the keyboard, and shows it.
         let drag = ui.interact(title_rect, id.with("title"), Sense::click_and_drag());
+        drag.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Other, true, title));
+        if ctx.data(|d| d.get_temp::<Id>(focus_key())) == Some(id) {
+            drag.request_focus();
+            ctx.data_mut(|d| d.remove::<Id>(focus_key()));
+        }
+        if drag.has_focus() {
+            painter.rect_stroke(title_rect.shrink(1.0), CornerRadius::same(7), Stroke::new(2.0, tk.accent), StrokeKind::Inside);
+            // Enter maximizes or restores it, as a double-click does.
+            if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                new_state.maximized = !state.maximized;
+                new_state.minimized = false;
+            }
+        }
         if drag.double_clicked() {
             new_state.maximized = !state.maximized;
             new_state.minimized = false;

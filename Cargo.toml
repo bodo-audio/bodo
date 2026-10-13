@@ -65,6 +65,7 @@ image = { version = "0.25.10", default-features = false, features = ["png"] }
 rfd = "0.17.2"
 # The resident memory the top bar's performance readout shows.
 memory-stats = "1.2.0"
+sys-locale = "0.3.2"
 muda = { version = "0.21.2", default-features = false }
 
 # Data, errors and logging

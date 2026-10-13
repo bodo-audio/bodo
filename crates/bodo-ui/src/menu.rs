@@ -52,6 +52,8 @@ pub enum Action {
     Theme(ThemePref),
     /// Opens the audio settings.
     AudioSettings,
+    /// Opens the interface settings: theme, size, language and color-blind-safe colors.
+    InterfaceSettings,
     /// Adds a folder of the user's sounds to the Browser.
     AddSampleFolder,
     /// Sets the minutes between autosaves; 0 turns autosave off.
@@ -339,12 +341,47 @@ fn options(app: &BodoApp) -> Menu {
             checked(item(&format!("options.autosave.{m}"), label, Action::Autosave(*m)), app.prefs.autosave_minutes == *m)
         })
         .collect();
+    let mut sizes: Vec<Item> = crate::UI_SCALES
+        .iter()
+        .map(|scale| {
+            let percent = (scale * 100.0).round();
+            let on = (app.prefs.ui_scale - scale).abs() < 1e-3;
+            checked(
+                item(
+                    &format!("options.size.{percent}"),
+                    format!("{percent}%"),
+                    Action::Run(String::from("ui.set_ui_scale"), json!({ "scale": scale })),
+                ),
+                on,
+            )
+        })
+        .collect();
+    sizes.push(Item::Separator);
+    for (id, label) in [("ui.zoom_in", "Larger"), ("ui.zoom_out", "Smaller"), ("ui.zoom_reset", "Actual size")] {
+        let keys = shortcuts::command_keys(app, id, shortcuts::ui_command_keys(id));
+        sizes.push(with_keys(item(&format!("options.size.{id}"), label, Action::Command(id.to_owned())), keys));
+    }
+    let languages = crate::i18n::LanguagePref::ALL
+        .iter()
+        .map(|l| {
+            let action = Action::Run(String::from("ui.set_language"), json!({ "language": l.id() }));
+            checked(item(&format!("options.language.{}", l.id()), l.label(), action), app.prefs.language == *l)
+        })
+        .collect();
     Menu {
         title: "Options",
         items: vec![
             item("options.audio", "Audio settings...", Action::AudioSettings),
+            item("options.interface", "Interface settings...", Action::InterfaceSettings),
             item("options.sample_folder", "Add sample folder...", Action::AddSampleFolder),
             submenu("options.autosave", "Autosave", autosave),
+            Item::Separator,
+            submenu("options.size", "Interface size", sizes),
+            submenu("options.language", "Language", languages),
+            checked(
+                item("options.color_safe", "Color-blind-safe colors", Action::Run(String::from("ui.set_color_safe"), json!({}))),
+                app.prefs.color_safe,
+            ),
             Item::Separator,
             item("options.shortcuts", "Keyboard shortcuts...", Action::Shortcuts),
         ],
@@ -414,6 +451,7 @@ pub fn perform(app: &mut BodoApp, action: Action) {
             let _ = app.run("ui.set_theme", json!({ "theme": theme.label() }));
         }
         Action::AudioSettings => app.view.dialogs.audio = true,
+        Action::InterfaceSettings => app.view.dialogs.interface = true,
         Action::AddSampleFolder => dialogs::add_sample_folder(app),
         Action::Autosave(minutes) => app.prefs.autosave_minutes = minutes,
         Action::Shortcuts => app.view.dialogs.shortcuts = true,
