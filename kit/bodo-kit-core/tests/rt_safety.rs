@@ -6,7 +6,11 @@
 #![cfg(debug_assertions)]
 #![allow(clippy::unwrap_used, reason = "test helpers outside #[test] functions")]
 
+use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::time::Duration;
+
 use assert_no_alloc::{AllocDisabler, assert_no_alloc, reset_violation_count, violation_count};
+use bodo_kit_core::pool::{Participant, RtJob, RtPool, RtPoolConfig};
 use bodo_kit_core::queue::spsc;
 use bodo_kit_core::tempo::{TempoCurve, TempoMap, TempoPoint};
 use bodo_kit_core::{SampleRate, Seconds, Tick};
@@ -58,4 +62,36 @@ fn queue_push_and_pop_do_not_allocate() {
         }
     });
     assert_eq!(allocations, 0);
+}
+
+/// A job that checks for allocations on every participant's thread.
+struct Checked {
+    next: AtomicUsize,
+    done: AtomicU32,
+    allocations: AtomicU32,
+}
+
+impl RtJob for Checked {
+    fn work(&self, _participant: Participant) {
+        let allocations = allocations_in(|| {
+            while self.next.fetch_add(1, Ordering::Relaxed) < 64 {
+                self.done.fetch_add(1, Ordering::Relaxed);
+            }
+        });
+        self.allocations.fetch_add(allocations, Ordering::Relaxed);
+    }
+}
+
+#[test]
+fn pool_run_does_not_allocate() {
+    for spin in [Duration::ZERO, Duration::from_millis(1)] {
+        let job = Checked { next: AtomicUsize::new(0), done: AtomicU32::new(0), allocations: AtomicU32::new(0) };
+        let mut pool = RtPool::new(RtPoolConfig { spin, ..RtPoolConfig::new(3) }, job).unwrap();
+        for _ in 0..200 {
+            pool.job().next.store(0, Ordering::Relaxed);
+            assert_eq!(allocations_in(|| pool.run()), 0, "run allocated on the calling thread");
+        }
+        assert_eq!(pool.job().done.load(Ordering::Relaxed), 200 * 64);
+        assert_eq!(pool.job().allocations.load(Ordering::Relaxed), 0, "the job allocated on a worker");
+    }
 }
