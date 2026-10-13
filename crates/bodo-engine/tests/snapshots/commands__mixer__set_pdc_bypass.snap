@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 1,
     "mode": "whileRecording"
   },
-  "undo": "Set Insert 1 delay compensation bypass"
+  "undo": "Set Kick delay compensation bypass"
 }

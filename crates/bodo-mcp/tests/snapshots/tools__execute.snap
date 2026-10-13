@@ -3,4 +3,4 @@ source: crates/bodo-mcp/tests/tools.rs
 expression: toggled.text
 ---
 ok pattern.toggle_step: {"channel":"ch_00000000000000000000000415","on":true,"pattern":"pat_0000000000000000000000041G","step":9}
-changed: Add step (revision 26)
+changed: Add step (revision 31)

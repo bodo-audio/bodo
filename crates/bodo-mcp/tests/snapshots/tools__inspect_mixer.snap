@@ -3,8 +3,8 @@ source: crates/bodo-mcp/tests/tools.rs
 expression: "ok(&mut agent, \"inspect_mixer\", json!({})).text"
 ---
 Mixer: master 0.0 dB, 16 inserts
-  insert 1 Insert 1: 0.0 dB, from Kick
-  insert 2 Insert 2: -3.0 dB, from Clap
-  insert 3 Insert 3: 0.0 dB, from HiHat
-  insert 4 Insert 4: 0.0 dB, from Snare
-  insert 5 Insert 5: 0.0 dB, from 808
+  insert 1 Kick: 0.0 dB, from Kick
+  insert 2 Clap: -3.0 dB, from Clap
+  insert 3 HiHat: 0.0 dB, from HiHat
+  insert 4 Snare: 0.0 dB, from Snare
+  insert 5 808: 0.0 dB, from 808

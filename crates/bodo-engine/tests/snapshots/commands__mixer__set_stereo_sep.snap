@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 3,
     "separation": 0.5
   },
-  "undo": "Set Insert 3 stereo separation"
+  "undo": "Set HiHat stereo separation"
 }

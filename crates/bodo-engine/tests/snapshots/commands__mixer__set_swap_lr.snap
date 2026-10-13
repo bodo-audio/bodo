@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 1,
     "swapped": true
   },
-  "undo": "Swap Insert 1 left and right"
+  "undo": "Swap Kick left and right"
 }

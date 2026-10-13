@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 1,
     "name": "Kick"
   },
-  "undo": "Rename insert to Kick"
+  "undo": null
 }

@@ -10,5 +10,5 @@ expression: snapshot
   "result": {
     "insert": 1
   },
-  "undo": "Move Insert 3"
+  "undo": "Move HiHat"
 }

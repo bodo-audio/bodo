@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 1,
     "inverted": true
   },
-  "undo": "Set Insert 1 polarity"
+  "undo": "Set Kick polarity"
 }

@@ -18,5 +18,5 @@ expression: snapshot
     },
     "insert": 1
   },
-  "undo": "Set Insert 1 EQ"
+  "undo": "Set Kick EQ"
 }

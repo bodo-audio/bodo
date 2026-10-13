@@ -8,9 +8,9 @@ expression: snapshot
   },
   "result": {
     "channel": "ch_00000000000000000000000415",
-    "insert": 1,
-    "name": "Kick",
+    "insert": 6,
+    "name": "Kick 2",
     "renamed": true
   },
-  "undo": "Assign Kick to mixer track 1"
+  "undo": "Assign Kick to mixer track 6"
 }

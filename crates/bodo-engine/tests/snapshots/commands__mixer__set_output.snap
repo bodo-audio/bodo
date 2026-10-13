@@ -17,5 +17,5 @@ expression: snapshot
       3
     ]
   },
-  "undo": "Set Insert 3 output"
+  "undo": "Set HiHat output"
 }

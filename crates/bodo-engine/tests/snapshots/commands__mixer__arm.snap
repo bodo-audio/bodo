@@ -11,5 +11,5 @@ expression: snapshot
     "armed": true,
     "insert": 1
   },
-  "undo": "Arm Insert 1"
+  "undo": "Arm Kick"
 }

@@ -11,5 +11,5 @@ expression: snapshot
     "db": -3.0,
     "insert": 1
   },
-  "undo": "Set Insert 1 volume"
+  "undo": "Set Kick volume"
 }

@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 2,
     "pan": -0.20000000298023224
   },
-  "undo": "Set Insert 2 pan"
+  "undo": "Set Clap pan"
 }

@@ -11,5 +11,5 @@ expression: snapshot
     "insert": 2,
     "toMaster": false
   },
-  "undo": "Unroute Insert 2 to the master"
+  "undo": "Unroute Clap to the master"
 }

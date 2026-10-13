@@ -10,5 +10,5 @@ expression: snapshot
     "channel": "ch_00000000000000000000000415",
     "insert": 0
   },
-  "undo": null
+  "undo": "Unassign Kick from its mixer track"
 }

@@ -10,5 +10,5 @@ expression: snapshot
     "insert": 4,
     "muted": true
   },
-  "undo": "Mute Insert 4"
+  "undo": "Mute Snare"
 }

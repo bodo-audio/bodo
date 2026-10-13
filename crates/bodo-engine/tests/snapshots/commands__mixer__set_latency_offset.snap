@@ -12,5 +12,5 @@ expression: snapshot
     "insert": 1,
     "ms": -2.5
   },
-  "undo": "Set Insert 1 track latency"
+  "undo": "Set Kick track latency"
 }

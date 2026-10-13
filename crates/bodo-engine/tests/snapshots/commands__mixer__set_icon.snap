@@ -11,5 +11,5 @@ expression: snapshot
     "icon": "drum",
     "insert": 1
   },
-  "undo": "Set Insert 1 icon"
+  "undo": "Set Kick icon"
 }
