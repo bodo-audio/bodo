@@ -67,7 +67,8 @@ jobs:
       - run: cargo build -p bodo-kit-device --features asio --locked
 
   devices:
-    # Real audio I/O through a virtual sound card: VB-CABLE on Windows, a PulseAudio null sink on Linux.
+    # Real audio I/O through a virtual sound card: VB-CABLE on Windows, a PipeWire null sink on Linux. PipeWire is
+    # what current Linux desktops run; PulseAudio's null sink stalls cpal's ALSA backend, so it is not used here.
     name: Audio devices (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -77,8 +78,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev libasound2-plugins
-      - uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
+        name: Start PipeWire with a virtual output
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev pipewire pipewire-alsa pipewire-pulse wireplumber pulseaudio-utils
+          systemctl --user daemon-reload
+          systemctl --user start pipewire.socket pipewire-pulse.socket wireplumber.service
+          systemctl --user start pipewire.service pipewire-pulse.service
+          sleep 2
+          pactl load-module module-null-sink sink_name=bodo_null
+          pactl set-default-sink bodo_null
+          pactl info
+      - if: runner.os == 'Windows'
+        uses: LABSN/sound-ci-helpers@d08c889a7bba7d9b1b059f8f76dac4672ea3a9cf # v1.0.4
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo test -p bodo-kit-device --release --locked -- --ignored --nocapture --test-threads=1
