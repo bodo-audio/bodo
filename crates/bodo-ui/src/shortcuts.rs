@@ -44,7 +44,9 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
     let shortcuts: Vec<(KeyboardShortcut, &'static str)> =
         app.session.registry().iter().filter_map(|c| c.shortcut.and_then(parse).map(|s| (s, c.id))).collect();
     for (shortcut, id) in shortcuts {
-        if (typing && !shortcut.modifiers.command) || !ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
+        // While a text field has the keyboard, only the file shortcuts work; copy, paste and undo belong to the field.
+        let file_command = id.starts_with("project.");
+        if (typing && !(shortcut.modifiers.command && file_command)) || !ctx.input_mut(|i| i.consume_shortcut(&shortcut)) {
             continue;
         }
         match id {
@@ -69,9 +71,9 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             let _ = app.run("ui.toggle_window", json!({ "window": kind.id() }));
         }
     }
-    for (key, tool) in [(Key::P, "draw"), (Key::D, "delete"), (Key::T, "mute")] {
-        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, key)) {
-            let _ = app.run("ui.set_tool", json!({ "tool": tool }));
+    for tool in crate::playlist::Tool::ALL {
+        if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, tool.key())) {
+            let _ = app.run("ui.set_tool", json!({ "tool": tool.label() }));
         }
     }
     if ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Delete) || i.consume_key(Modifiers::NONE, Key::Backspace)) {

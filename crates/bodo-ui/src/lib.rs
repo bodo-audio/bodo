@@ -101,8 +101,22 @@ impl Default for Prefs {
 pub enum Snap {
     /// Anywhere.
     None,
+    /// A sixth of a step.
+    SixthStep,
+    /// A quarter of a step.
+    QuarterStep,
+    /// A third of a step.
+    ThirdStep,
+    /// Half a step.
+    HalfStep,
     /// A sixteenth note.
     Step,
+    /// A sixth of a beat.
+    SixthBeat,
+    /// A third of a beat.
+    ThirdBeat,
+    /// Half a beat.
+    HalfBeat,
     /// A beat.
     #[default]
     Beat,
@@ -112,13 +126,32 @@ pub enum Snap {
 
 impl Snap {
     /// Every choice, in menu order.
-    pub const ALL: [Self; 4] = [Self::None, Self::Step, Self::Beat, Self::Bar];
+    pub const ALL: [Self; 11] = [
+        Self::None,
+        Self::SixthStep,
+        Self::QuarterStep,
+        Self::ThirdStep,
+        Self::HalfStep,
+        Self::Step,
+        Self::SixthBeat,
+        Self::ThirdBeat,
+        Self::HalfBeat,
+        Self::Beat,
+        Self::Bar,
+    ];
 
     /// Its name in the snap menu.
     pub fn label(self) -> &'static str {
         match self {
             Self::None => "None",
+            Self::SixthStep => "1/6 step",
+            Self::QuarterStep => "1/4 step",
+            Self::ThirdStep => "1/3 step",
+            Self::HalfStep => "1/2 step",
             Self::Step => "Step",
+            Self::SixthBeat => "1/6 beat",
+            Self::ThirdBeat => "1/3 beat",
+            Self::HalfBeat => "1/2 beat",
             Self::Beat => "Beat",
             Self::Bar => "Bar",
         }
@@ -127,10 +160,19 @@ impl Snap {
     /// The grid in ticks, for `project`'s meter; 1 for none.
     pub fn ticks(self, project: &Project) -> i64 {
         let meter = project.meter.signature_at(bodo_kit_core::Tick::ZERO);
+        let step = bodo_engine::params::STEP.0;
+        let beat = meter.beat_ticks();
         match self {
             Self::None => 1,
-            Self::Step => bodo_engine::params::STEP.0,
-            Self::Beat => meter.beat_ticks(),
+            Self::SixthStep => step / 6,
+            Self::QuarterStep => step / 4,
+            Self::ThirdStep => step / 3,
+            Self::HalfStep => step / 2,
+            Self::Step => step,
+            Self::SixthBeat => beat / 6,
+            Self::ThirdBeat => beat / 3,
+            Self::HalfBeat => beat / 2,
+            Self::Beat => beat,
             Self::Bar => meter.bar_ticks(),
         }
     }
@@ -344,7 +386,7 @@ impl BodoApp {
                     self.view.snap = snap;
                     Ok(json!({ "snap": snap.label() }))
                 }
-                None => Err(String::from("snap must be None, Step, Beat or Bar")),
+                None => Err(format!("snap must be one of {}", Snap::ALL.iter().map(|s| s.label()).collect::<Vec<_>>().join(", "))),
             },
             "ui.set_theme" => match ThemePref::ALL.into_iter().find(|t| t.label().eq_ignore_ascii_case(&text("theme"))) {
                 Some(theme) => {
@@ -388,9 +430,13 @@ impl BodoApp {
             ("ui.open_window", "Open a window", "Opens and brings a window to the front: {\"window\": \"playlist\"}."),
             ("ui.toggle_browser", "Show or hide the browser", "Shows or hides the browser on the left."),
             ("ui.set_layout", "Switch layout", "Arranges the windows: {\"layout\": \"Default\" | \"Compose\" | \"Arrange\" | \"Mix\"}."),
-            ("ui.set_snap", "Set snap", "Sets the editors' snap: {\"snap\": \"None\" | \"Step\" | \"Beat\" | \"Bar\"}."),
+            (
+                "ui.set_snap",
+                "Set snap",
+                "Sets the editors' snap: {\"snap\": \"None\" | \"1/4 step\" | \"Step\" | \"1/2 beat\" | \"Beat\" | \"Bar\" ...}.",
+            ),
             ("ui.set_theme", "Set theme", "Sets the theme: {\"theme\": \"Dark\" | \"Light\" | \"System\"}."),
-            ("ui.set_tool", "Set playlist tool", "Sets the playlist's tool: {\"tool\": \"draw\" | \"delete\" | \"mute\"}."),
+            ("ui.set_tool", "Set playlist tool", "Sets the playlist's tool: draw, paint, delete, mute, slip, slice, select, zoom or playback."),
             ("ui.open_piano_roll", "Open piano roll", "Opens the piano roll, optionally for a channel: {\"channel\": \"Kick\"}."),
             ("ui.palette", "Command palette", "Opens the command palette."),
         ]

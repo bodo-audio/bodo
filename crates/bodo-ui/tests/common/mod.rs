@@ -72,3 +72,36 @@ pub fn steps(harness: &mut Harness<'_, BodoApp>, channel: &str, steps: &[u32]) {
         click(harness, &format!("{channel} step {step}"));
     }
 }
+
+/// A press of `button` at `from`, moves along `path` a frame each, and a release at the last point.
+pub fn drag(harness: &mut Harness<'_, BodoApp>, button: PointerButton, from: Pos2, path: &[Pos2], modifiers: Modifiers) {
+    harness.event(Event::PointerMoved(from));
+    harness.step();
+    harness.event_modifiers(Event::PointerButton { pos: from, button, pressed: true, modifiers }, modifiers);
+    harness.step();
+    let mut last = from;
+    for &point in path {
+        harness.event_modifiers(Event::PointerMoved(point), modifiers);
+        harness.step();
+        last = point;
+    }
+    harness.event_modifiers(Event::PointerButton { pos: last, button, pressed: false, modifiers }, modifiers);
+    harness.step();
+    harness.step();
+}
+
+/// `count` points from `from` to `to`, the last one `to`.
+pub fn line(from: Pos2, to: Pos2, count: usize) -> Vec<Pos2> {
+    (1..=count).map(|i| from + (to - from) * (i as f32 / count as f32)).collect()
+}
+
+/// The app with the M2 beat built through commands.
+pub fn beat_app() -> BodoApp {
+    let mut app = app(Theme::Dark);
+    let script: serde_json::Value = serde_json::from_str(include_str!("../../../bodo-engine/tests/fixtures/beat.json")).unwrap();
+    let calls: Vec<bodo_engine::Call> = serde_json::from_value(script["calls"].clone()).unwrap();
+    for call in calls {
+        app.invoke(call).unwrap();
+    }
+    app
+}
