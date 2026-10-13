@@ -127,6 +127,13 @@ fn rejects_files_that_would_not_read_back() {
 }
 
 #[test]
+fn rejects_an_smpte_rate_that_would_overflow_the_reader() {
+    // Format 0, one track, division 0x80 0x10: frame-rate byte -128.
+    let header = [b'M', b'T', b'h', b'd', 0, 0, 0, 6, 0, 0, 0, 1, 0x80, 0x10, b'M', b'T', b'r', b'k', 0, 0, 0, 4, 0, 0xFF, 0x2F, 0];
+    assert!(matches!(Smf::parse(&header), Err(SmfError::Parse(_))));
+}
+
+#[test]
 fn rejects_bytes_that_are_not_midi() {
     assert!(matches!(Smf::parse(b"RIFF\0\0\0\0WAVE"), Err(SmfError::Parse(_))));
     assert!(matches!(Smf::parse(&[]), Err(SmfError::Parse(_))));

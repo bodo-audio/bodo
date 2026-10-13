@@ -218,7 +218,12 @@ impl Smf {
     ///
     /// Complexity: O(n) in the size of the file.
     pub fn parse(bytes: &[u8]) -> Result<Self, SmfError> {
-        let smf = midly::Smf::parse(bytes).map_err(|err| SmfError::Parse(err.to_string()))?;
+        check_header(bytes)?;
+        // MIDI files come from anywhere, and the reader is a third-party crate: a crash inside it on a damaged file
+        // must become an error, never take Bodo down.
+        let smf = std::panic::catch_unwind(|| midly::Smf::parse(bytes))
+            .map_err(|_| SmfError::Parse(String::from("the MIDI reader failed on this file")))?
+            .map_err(|err| SmfError::Parse(err.to_string()))?;
         let format = match smf.header.format {
             midly::Format::SingleTrack => Format::SingleTrack,
             midly::Format::Parallel => Format::Parallel,
@@ -260,6 +265,17 @@ impl Smf {
         smf.write(&mut bytes).map_err(SmfError::Encode)?;
         Ok(bytes)
     }
+}
+
+/// Rejects headers the reader can't handle safely. An SMPTE division whose frame-rate byte is -128 overflows the
+/// negation midly 0.5.3 applies to it.
+fn check_header(bytes: &[u8]) -> Result<(), SmfError> {
+    if let (Some(b"MThd"), Some(&[high, _])) = (bytes.get(0..4), bytes.get(12..14))
+        && high == 0x80
+    {
+        return Err(SmfError::Parse(String::from("invalid SMPTE frame rate")));
+    }
+    Ok(())
 }
 
 fn timing_is_valid(timing: Timing) -> bool {
