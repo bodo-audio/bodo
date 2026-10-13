@@ -197,6 +197,10 @@ impl Audio {
                 Event::Seek(tick) => running.engine.seek(tick),
                 Event::ProjectReplaced => reopen = true,
                 Event::Saved(_) => running.engine.set_sample_roots(session.sample_roots()),
+                // Recording, looping, the metronome and count-in arrive with their engine features in M3; until then
+                // recording only plays.
+                Event::Record => running.engine.play(),
+                Event::Loop(_) | Event::Metronome(_) | Event::CountIn(_) => {}
             }
         }
         if reopen || session.project().settings.sample_rate != running.stream.rate() {

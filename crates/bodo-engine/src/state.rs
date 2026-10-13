@@ -85,6 +85,14 @@ pub struct TransportState {
     pub mode: PlayMode,
     /// The playhead.
     pub position: Tick,
+    /// Whether armed inputs are being recorded while it plays.
+    pub recording: bool,
+    /// Whether the metronome clicks.
+    pub metronome: bool,
+    /// Whether recording starts after a bar of count-in clicks.
+    pub count_in: bool,
+    /// The song's loop region, start and end, when Song mode loops.
+    pub loop_region: Option<(Tick, Tick)>,
 }
 
 /// Something the frontend has to act on after a command. Read them with `Session::take_events`.
@@ -100,4 +108,12 @@ pub enum Event {
     ProjectReplaced,
     /// The project was saved to this file. Relative sample paths now start at its folder.
     Saved(PathBuf),
+    /// Start playing and record the armed inputs; `Stop` ends the recording.
+    Record,
+    /// Loop Song mode over this region, or stop looping.
+    Loop(Option<(Tick, Tick)>),
+    /// Turn the metronome on or off.
+    Metronome(bool),
+    /// Count in a bar before recording, or don't.
+    CountIn(bool),
 }

@@ -1,14 +1,20 @@
 //! The built-in commands, one module per namespace (project.md section 12.2).
 
+mod audio;
+mod automation;
 mod browser;
 mod channel;
 mod clip;
 mod edit;
+mod import;
+mod midi;
 mod mixer;
 mod note;
+mod note_tools;
 mod pattern;
 mod playlist;
 mod project;
+mod record;
 mod transport;
 
 use bodo_kit_core::Tick;
@@ -22,6 +28,12 @@ pub use pattern::step_text as pattern_step_text;
 
 /// Registers every built-in command.
 pub(crate) fn register(registry: &mut Registry) {
+    audio::register(registry);
+    automation::register(registry);
+    import::register(registry);
+    midi::register(registry);
+    note_tools::register(registry);
+    record::register(registry);
     browser::register(registry);
     channel::register(registry);
     clip::register(registry);

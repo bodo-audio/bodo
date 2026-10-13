@@ -72,6 +72,12 @@ pub enum ChannelParam {
     Pan,
     /// Pitch.
     Pitch,
+    /// A MIDI control change, 0 to 127, sent to the channel's instrument.
+    Cc(u8),
+    /// MIDI pitch bend.
+    PitchBend,
+    /// MIDI channel pressure (aftertouch).
+    Pressure,
 }
 
 /// Something automation can control.
