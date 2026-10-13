@@ -65,6 +65,24 @@ pub fn mix_into(target: &mut [f32], source: &[f32], gain: f32) {
     }
 }
 
+/// Adds `source` into `target` with a gain that moves linearly from `from` to `to` across the block, reaching `to`
+/// on the last sample. With equal gains it is [`mix_into`].
+///
+/// RT-safe. Complexity: O(n) in the number of samples.
+#[rt_safe]
+pub fn mix_into_ramped(target: &mut [f32], source: &[f32], from: f32, to: f32) {
+    if from == to {
+        mix_into(target, source, to);
+        return;
+    }
+    let len = target.len().min(source.len());
+    let step = (to - from) / len.max(1) as f32;
+    for (index, (out, input)) in target.iter_mut().zip(source).enumerate() {
+        let gain = if index + 1 == len { to } else { from + step * (index + 1) as f32 };
+        *out += *input * gain;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -93,6 +111,13 @@ mod tests {
         let mut samples = [1.0f32; 4];
         ramp_gain(&mut samples, 1.0, 0.0);
         assert_eq!(samples, [0.75, 0.5, 0.25, 0.0]);
+    }
+
+    #[test]
+    fn mixes_with_a_ramp() {
+        let mut target = [0.0f32; 4];
+        mix_into_ramped(&mut target, &[1.0; 4], 0.0, 1.0);
+        assert_eq!(target, [0.25, 0.5, 0.75, 1.0]);
     }
 
     #[test]
