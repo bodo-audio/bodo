@@ -239,7 +239,7 @@ fn auto_harness(width: f32) -> Harness<'static, BodoApp> {
 
 #[test]
 fn auto_sizes_the_interface_from_the_screens_width() {
-    for (width, scale) in [(1440.0, 1.0), (1920.0, 1.35), (1280.0, 0.9)] {
+    for (width, scale) in [(1440.0, 1.0), (1920.0, 1.1), (1280.0, 0.95), (3360.0, 1.3)] {
         let h = auto_harness(width);
         assert!((h.state().ui_scale() - scale).abs() < 1e-4, "{width} points wide: {}", h.state().ui_scale());
         assert!((h.ctx.zoom_factor() - scale).abs() < 1e-4);

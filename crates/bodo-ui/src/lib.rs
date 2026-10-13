@@ -101,14 +101,19 @@ fn clamp_scale(scale: f32) -> f32 {
 /// The screen width, in points at the system's own scaling, at which Auto sizes the interface at 100%.
 pub const AUTO_BASE_WIDTH: f32 = 1440.0;
 
+/// How strongly Auto follows the screen's width: the size grows as the width's ratio to [`AUTO_BASE_WIDTH`] to this
+/// power. A wider screen shows more, and sits farther from the eyes, so its interface grows, but much less than in
+/// proportion: in proportion, a 3360-point display made everything twice as big, far too big to work with.
+pub const AUTO_GROWTH: f32 = 0.3;
+
 /// The interface size Auto picks for a screen `width` points wide (at the system's own scaling), the way a responsive
-/// web page sizes `rem` from the viewport: 100% at [`AUTO_BASE_WIDTH`], in proportion beyond, kept between 75% and
-/// 200%, in steps of 5% so it never jitters.
+/// web page sizes `rem` from the viewport: 100% at [`AUTO_BASE_WIDTH`], growing gently with the width (see
+/// [`AUTO_GROWTH`]), kept between 75% and 200%, in steps of 5% so it never jitters.
 pub fn auto_scale(width: f32) -> f32 {
     if !width.is_finite() || width <= 0.0 {
         return 1.0;
     }
-    ((width / AUTO_BASE_WIDTH).clamp(0.75, 2.0) * 20.0).round() / 20.0
+    ((width / AUTO_BASE_WIDTH).powf(AUTO_GROWTH).clamp(0.75, 2.0) * 20.0).round() / 20.0
 }
 
 /// The width Auto sizes from: the monitor's, else the window's, in points at the system's own scaling. egui measures
@@ -928,11 +933,12 @@ mod tests {
     #[test]
     fn auto_sizes_the_interface_from_the_screen_width() {
         assert_eq!(auto_scale(1440.0), 1.0, "the base width");
-        assert_eq!(auto_scale(1512.0), 1.05, "a 14-inch laptop");
-        assert_eq!(auto_scale(1920.0), 1.35, "a full HD monitor");
-        assert_eq!(auto_scale(2560.0), 1.8, "a 27-inch monitor");
-        assert_eq!(auto_scale(3840.0), 2.0, "the largest size");
-        assert_eq!(auto_scale(800.0), 0.75, "the smallest size");
+        assert_eq!(auto_scale(1512.0), 1.0, "a 14-inch laptop");
+        assert_eq!(auto_scale(1920.0), 1.1, "a full HD monitor");
+        assert_eq!(auto_scale(2560.0), 1.2, "a 27-inch monitor");
+        assert_eq!(auto_scale(3360.0), 1.3, "a 32-inch 6K display");
+        assert_eq!(auto_scale(3840.0), 1.35, "a 4K monitor at its own size");
+        assert_eq!(auto_scale(800.0), 0.85, "a small window");
         assert_eq!(auto_scale(0.0), 1.0, "no screen size gives 100%");
         for width in [1000.0, 1333.0, 1777.7, 2222.2] {
             let scale = auto_scale(width);
