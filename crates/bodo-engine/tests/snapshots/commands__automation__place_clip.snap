@@ -1,0 +1,19 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Insert 1 volume",
+    "start": "5:1:0",
+    "track": 2
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "clip": "clip_0000000000000000000000041R",
+    "start": "5:1:0",
+    "ticks": 15360,
+    "track": "trk_0000000000000000000000040M"
+  },
+  "undo": "Place Insert 1 volume at 5:1:0"
+}

@@ -195,10 +195,31 @@ fn the_loop_region_goes_to_the_transport_and_the_audio() {
     assert_eq!(session.take_events(), [Event::Loop(None)]);
 }
 
+#[test]
+fn more_clips_of_a_channel_last_to_its_last_point() {
+    let mut session = fixture();
+    run(&mut session, "automation.create_for", json!({ "target": { "insert": 1 }, "name": "Ride", "length": "2 bars" }));
+    let placed = run(&mut session, "automation.place_clip", json!({ "channel": "Ride", "start": "5:1:0", "track": 3 }));
+    assert_eq!(placed["ticks"], 2 * 3840, "up to the last point");
+    let channel = placed["channel"].clone();
+    let clips: Vec<_> =
+        session.project().tracks.values().flat_map(|t| t.clips.iter()).filter(|c| serde_json::to_value(c.id).unwrap() == placed["clip"]).collect();
+    assert_eq!(clips.len(), 1);
+    assert_eq!(serde_json::to_value(clips[0].source).unwrap(), json!({ "type": "automation", "id": channel }));
+    run(&mut session, "automation.set_points", json!({ "channel": "Ride", "points": [{ "at": 0, "value": 0.5 }] }));
+    let placed = run(&mut session, "automation.place_clip", json!({ "channel": "Ride", "start": 0, "track": 4, "length": "1 bar" }));
+    assert_eq!(placed["ticks"], 3840);
+    let placed = run(&mut session, "automation.place_clip", json!({ "channel": "Ride", "start": 0, "track": 5 }));
+    assert_eq!(placed["ticks"], 4 * 3840, "four bars when every point is at the start");
+    assert_eq!(error(&mut session, "automation.place_clip", json!({ "channel": "Kick", "start": 0 })), ErrorCode::Rejected);
+    assert_eq!(error(&mut session, "automation.place_clip", json!({ "channel": "Ride", "start": 0, "length": 0 })), ErrorCode::InvalidParams);
+}
+
 /// One random automation edit.
 #[derive(Clone, Debug)]
 enum Op {
     Create { bar: u32, bars: u32 },
+    Place { bar: u32, track: usize },
     Add { at: i64, value: f32 },
     Remove(usize),
     Curve(usize),
@@ -211,6 +232,7 @@ enum Op {
 fn op() -> impl Strategy<Value = Op> {
     prop_oneof![
         (1..=8u32, 1..=4u32).prop_map(|(bar, bars)| Op::Create { bar, bars }),
+        (1..=8u32, 0..4usize).prop_map(|(bar, track)| Op::Place { bar, track }),
         (0..=8000i64, 0.0..=1.0f32).prop_map(|(at, value)| Op::Add { at, value }),
         (0..4usize).prop_map(Op::Remove),
         (0..4usize).prop_map(Op::Curve),
@@ -226,6 +248,9 @@ fn apply(session: &mut Session, op: &Op) {
     let result = match op {
         Op::Create { bar, bars } => {
             session.execute("automation.create_for", json!({ "target": { "insert": 1 }, "start": bar.to_string(), "length": format!("{bars} bars") }))
+        }
+        Op::Place { bar, track } => {
+            session.execute("automation.place_clip", json!({ "channel": ride, "start": bar.to_string(), "track": track + 1 }))
         }
         Op::Add { at, value } => session.execute("automation.add_point", json!({ "channel": ride, "at": at, "value": value })),
         Op::Remove(index) => session.execute("automation.remove_point", json!({ "channel": ride, "index": index })),

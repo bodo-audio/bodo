@@ -79,6 +79,29 @@ Example:
 }
 ```
 
+### `automation.place_clip`
+
+Places another clip of an automation channel on the playlist; every clip of the channel plays its one lane.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The automation channel. |
+| `length` | Length, optional | How long it lasts; up to the lane's last point by default, or 4 bars when every point is at its start. |
+| `start` | Position | Where the clip starts. |
+| `track` | TrackRef, optional | The track; the selected track (or the first) by default. |
+
+Example:
+
+```json
+{
+  "channel": "Insert 1 volume",
+  "start": "5:1:0",
+  "track": 2
+}
+```
+
 ### `automation.remove_lane`
 
 Removes a pattern's lane for a parameter.

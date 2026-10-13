@@ -180,6 +180,19 @@ struct Clear {
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct PlaceClip {
+    /// The automation channel.
+    channel: ChannelRef,
+    /// Where the clip starts.
+    start: Position,
+    /// How long it lasts; up to the lane's last point by default, or 4 bars when every point is at its start.
+    length: Option<Length>,
+    /// The track; the selected track (or the first) by default.
+    track: Option<TrackRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct SetLane {
     /// The pattern; the current pattern by default.
     pattern: Option<PatternRef>,
@@ -456,6 +469,47 @@ fn create_for(ctx: &mut Ctx<'_>, p: CreateFor) -> Result<Value, CommandError> {
     Ok(json!({ "channel": id, "name": name, "clip": clip, "track": track, "start": format_position(&ctx.project, start), "value": short(value) }))
 }
 
+fn place_clip(ctx: &mut Ctx<'_>, p: PlaceClip) -> Result<Value, CommandError> {
+    let id = ctx.channel(Some(&p.channel))?;
+    let lane = lane_of(ctx, id)?;
+    let start = p.start.resolve(&ctx.project)?;
+    if start < Tick::ZERO {
+        return Err(CommandError::invalid("a clip can't start before the song"));
+    }
+    let length = match (&p.length, lane.points.last().map(|q| q.at).filter(|at| *at > Tick::ZERO)) {
+        (Some(length), _) => length.resolve(&ctx.project, start)?,
+        (None, Some(last)) => last,
+        (None, None) => Length::Text(String::from("4 bars")).resolve(&ctx.project, start)?,
+    };
+    if length <= Tick::ZERO {
+        return Err(CommandError::invalid("a clip needs a length"));
+    }
+    let track = ctx.track(p.track.as_ref())?;
+    if ctx.project.tracks.get(&track).is_some_and(|t| t.locked) {
+        return Err(CommandError::rejected("that track is locked").with_hint("unlock it with playlist.set_track_props"));
+    }
+    let clip = ctx.ids().clip();
+    ctx.edit_track(track, |t| {
+        t.insert_clip(Clip {
+            id: clip,
+            start,
+            len: length,
+            offset: ClipOffset::default(),
+            muted: false,
+            color: None,
+            source: ClipSource::Automation(id),
+            fades: None,
+        });
+        Ok(())
+    })?;
+    ctx.editor.clips = std::collections::BTreeSet::from([clip]);
+    ctx.editor.track = Some(track);
+    let name = ctx.project.channels.get(&id).map(|c| c.name.clone()).unwrap_or_default();
+    let at = format_position(&ctx.project, start);
+    ctx.set_label(format!("Place {name} at {at}"));
+    Ok(json!({ "clip": clip, "track": track, "channel": id, "start": at, "ticks": length.0 }))
+}
+
 fn set_points(ctx: &mut Ctx<'_>, p: SetPoints) -> Result<Value, CommandError> {
     let id = ctx.channel(Some(&p.channel))?;
     let points = points(&ctx.project, &p.points)?;
@@ -575,6 +629,14 @@ pub(super) fn register(r: &mut Registry) {
         create_for,
     )
     .example(json!({ "target": { "insert": 1, "param": "volume" }, "length": "4 bars" }));
+    r.edit(
+        "automation.place_clip",
+        "Place automation clip",
+        "Places another clip of an automation channel on the playlist; every clip of the channel plays its one lane.",
+        Effects::UNDOABLE,
+        place_clip,
+    )
+    .example(json!({ "channel": "Insert 1 volume", "start": "5:1:0", "track": 2 }));
     r.edit(
         "automation.set_points",
         "Edit automation",
