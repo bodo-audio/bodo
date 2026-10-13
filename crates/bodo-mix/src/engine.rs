@@ -111,6 +111,8 @@ pub struct EngineStatus {
     pub counting_in: bool,
     /// Whether live notes are being recorded.
     pub recording: bool,
+    /// How late the master's output is, in frames, as delay compensation decided it for the running plan.
+    pub latency: u32,
 }
 
 /// The control-thread side of the engine.
@@ -587,6 +589,7 @@ impl Engine {
             dropped_events: self.shared.dropped_events.load(Ordering::Relaxed),
             counting_in: self.shared.counting_in.load(Ordering::Relaxed),
             recording: self.shared.recording.load(Ordering::Relaxed),
+            latency: self.total_latency(),
         }
     }
 

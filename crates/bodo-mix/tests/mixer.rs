@@ -372,6 +372,33 @@ fn effects_swap_into_a_running_engine_without_a_recompile() {
     assert!(quiet < loud * 0.01, "{loud} then {quiet}");
 }
 
+#[test]
+fn the_running_engine_reports_latency_per_insert_and_in_total() {
+    let dir = temp_dir("mixer-latency");
+    write_tone(&dir);
+    let mut b = Builder::new();
+    let sample = b.sample("tone.wav");
+    let (one, two) = (b.insert(0), b.insert(1));
+    tone(&mut b, sample, Some(one));
+    load(&mut b, one, 2, "bodo.latency-test", &[(0, 300.0)]);
+    edit(&mut b, two, |i| i.latency_offset = Frames(-50));
+    route(&mut b, RouteSource::Insert(one), two, 1.0, SendTap::PostFader, RouteKind::Audio);
+    let project = b.build();
+    let (mut control, mut audio) = engine(&project, &SampleRoots::new(&dir), EngineConfig { max_frames: 256, ..EngineConfig::default() }).unwrap();
+    let mut output = AudioBuffer::new(2, 256);
+    audio.render(256, &mut output);
+    control.flush();
+    let first = control.insert_latency(one).unwrap();
+    assert_eq!((first.input, first.own, first.output), (0, 300, 300));
+    // Insert 2 waits for insert 1. Its negative track latency delays it 50 frames more, on purpose: compensation
+    // doesn't see it, so nothing else waits for it.
+    let second = control.insert_latency(two).unwrap();
+    assert_eq!((second.input, second.own, second.output), (300, 0, 300));
+    assert_eq!(control.total_latency(), 300);
+    assert_eq!(control.status().latency, 300);
+    assert_eq!(mix_latency(&project, false).unwrap().total, 300, "the same answer without an engine");
+}
+
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(24))]
 
