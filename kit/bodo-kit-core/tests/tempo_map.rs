@@ -151,3 +151,8 @@ proptest! {
         prop_assert!((actual - expected).abs() <= 1e-7 * expected.max(1.0), "closed form {actual}, integrated {expected}");
     }
 }
+
+#[test]
+fn the_default_map_is_a_constant_120_bpm() {
+    assert_eq!(TempoMap::default(), TempoMap::constant(120.0).unwrap());
+}

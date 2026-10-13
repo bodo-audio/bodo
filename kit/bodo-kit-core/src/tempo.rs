@@ -230,6 +230,14 @@ impl TempoMap {
     }
 }
 
+impl Default for TempoMap {
+    /// A constant 120 BPM.
+    fn default() -> Self {
+        let segment = Segment { at: 0.0, start: 0.0, bpm: 120.0, slope: 0.0 };
+        Self { points: vec![TempoPoint::new(Tick::ZERO, 120.0, TempoCurve::Jump)], segments: vec![segment], origin: segment }
+    }
+}
+
 impl TryFrom<Vec<TempoPoint>> for TempoMap {
     type Error = TempoMapError;
 
