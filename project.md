@@ -1213,6 +1213,8 @@ The UI uses egui 0.36 on wgpu with `craft-ui`, the same stack and design languag
 
 ### 14.1 Main window layout
 
+> **Pending change:** the owner will provide a sketch of a new main window layout. It replaces the layout below, so wait for it before building the UI shell in M2.
+
 ```
 +------------------------------------------------------------------------------------------+
 | (o)(o)(o) Bodo  File Edit Add Patterns View Options Tools Help                           |
@@ -1620,6 +1622,8 @@ The basic MCP server ships in M2 on purpose. Once it exists, external agents can
 5. Minimum OS versions (proposed: macOS 13, Windows 10 22H2, glibc 2.31 or later).
 6. Which free grand piano library ships with Bodo SFZ (license review needed).
 7. Whether a video track belongs in 1.x.
+8. **Paid plugins in the marketplace.** The owner may want to sell plugins through the marketplace later. Today the marketplace is free and accepts only open-source plugins ([section 15](#15-marketplace), ADR 0010), so this needs a new ADR first. Bodo Kit's MIT/Apache license already lets anyone, Bodo included, sell plugins built with it.
+9. **AI plugin authoring.** A planned bridge that lets people build their own plugins (VST3, CLAP, AU) with AI agents, on top of Bodo Kit and the MCP server. It builds on M6 (Kit SDK) and M7 (assistant); its scope and milestone are open.
 
 ---
 
