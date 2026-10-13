@@ -356,11 +356,14 @@ impl Audio {
                     if running.engine.set_project(session.project()).is_ok() {
                         self.seen_revision = Some(session.revision());
                     }
+                    // Audio records only from armed inserts; without any, a recording takes only notes.
+                    let mixer = &session.project().mixer;
+                    let armed = mixer.inserts.values().chain(std::iter::once(&mixer.master)).any(|insert| insert.armed);
                     let compensation = Compensation::from_status(&running.stream.status());
-                    self.status = match running.engine.start_recording(session.project(), &recording_folder(session), compensation) {
-                        Ok(0) => String::from("Recording notes"),
-                        Ok(count) => format!("Recording {count} insert{}", if count == 1 { "" } else { "s" }),
-                        Err(error) => format!("Not recording audio: {error}"),
+                    self.status = match armed.then(|| running.engine.start_recording(session.project(), &recording_folder(session), compensation)) {
+                        None => String::from("Recording notes"),
+                        Some(Ok(count)) => format!("Recording {count} insert{}", if count == 1 { "" } else { "s" }),
+                        Some(Err(error)) => format!("Not recording audio: {error}"),
                     };
                     running.take = take_target(session);
                     running.engine.record();
