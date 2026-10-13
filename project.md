@@ -137,8 +137,7 @@ All versions were checked against crates.io and GitHub on 2026-10-13. The worksp
 | MIDI | `midly` | 0.5.3 | Unlicense | Standard MIDI File read and write |
 | MIDI | `midi2` | 0.11.1 | MIT/Apache | MIDI 2.0 / UMP |
 | Real-time | `rtrb` | 0.4.0 | MIT/Apache | Wait-free SPSC queues |
-| Real-time | `basedrop` | 0.1.3 | MIT/Apache | Deferred deallocation off the audio thread |
-| Real-time | `arc-swap` | 1.9.2 | MIT/Apache | Lock-free plan and snapshot swaps |
+| Real-time | `bodo_kit_core::handoff` | in-tree | MIT/Apache | Swapping plans into the audio thread and retiring old ones off it ([ADR 0014](docs/adr/0014-rt-safety-tooling-and-plan-handoff.md)) |
 | Real-time | `triple_buffer` | 9.0.0 | MPL-2.0 | Meters and visualizer data |
 | Real-time | `atomic_float`, `no_denormals` | 1.1.0 / 0.3.0 | MIT/Apache, MIT | Atomic params, flush-to-zero |
 | Real-time | `audio_thread_priority` | 0.38 | MPL-2.0 | RT promotion of worker threads |
@@ -396,7 +395,7 @@ Soundcraft's main alpha blocker was the device layer, so Bodo builds it first.
 ### 6.3 Real-time contract
 
 1. **No allocation** on RT threads. Debug builds check with `assert_no_alloc`; a CI job runs `rtsan`.
-2. **No locks.** Only atomics, `rtrb` queues, `triple_buffer` and `arc-swap` loads.
+2. **No locks.** Only atomics, `rtrb` queues, `triple_buffer` and handoff queues ([ADR 0014](docs/adr/0014-rt-safety-tooling-and-plan-handoff.md)).
 3. **No I/O, syscalls or direct logging.** Log records go into a lock-free ring that a logger thread drains.
 4. **No panics.** Clippy denies `unwrap`, `expect` and `panic`. Third-party plugin crashes are contained by the sandbox ([section 7.3](#73-sandboxing)).
 5. **Denormals are flushed to zero** on every RT thread.
@@ -415,7 +414,7 @@ sequenceDiagram
   E->>E: validate, apply, new project snapshot, push undo entry
   E->>K: ProjectChanged(snapshot, dirty set)
   K->>K: recompile dirty parts only (graph, sequencer indexes)
-  K->>A: publish ExecPlan through arc-swap
+  K->>A: publish ExecPlan through the handoff queue
   A->>A: next block uses the new plan (5 ms crossfade on topology change)
   A-->>K: retired plan returned through rtrb, dropped on the GC thread
   A-->>C: meters and positions through triple buffers and atomics
@@ -802,7 +801,7 @@ The mixer is a directed graph. Its nodes are channel sources, inserts and the Ma
 
 - Kahn's algorithm orders the graph in O(V + E).
 - The result is an `ExecPlan` with buffer reuse, the delay for every edge, and the dependency counters used by the parallel executor ([6.5](#65-graph-execution)).
-- The new plan is published through `arc-swap`. The old one is freed on the GC thread.
+- The new plan is published through the handoff queue. The old one comes back and is freed on the control thread.
 - Plugin instances live outside the plan, so recompiling never re-instantiates a plugin.
 
 **Plugin delay compensation (PDC)** takes one pass in topological order:

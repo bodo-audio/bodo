@@ -64,7 +64,7 @@ Code that runs on the audio thread must never:
 
 Do this instead:
 
-- Use `rtrb` queues, atomics, `triple_buffer`, `arc-swap` loads and `basedrop` handles.
+- Use `rtrb` queues, atomics, `triple_buffer`, and `bodo_kit_core::handoff` to swap in new state and send the old state back.
 - Preallocate in `activate` / `prepare`, never in `process`.
 - Send retired objects to the GC thread.
 - Address parameters, nodes and buffers by integer id, never by string.

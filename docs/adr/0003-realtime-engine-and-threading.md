@@ -1,6 +1,6 @@
 # ADR 0003: Real-time engine and threading model
 
-- **Status:** Accepted
+- **Status:** Accepted; plan publishing refined by ADR 0014
 - **Date:** 2026-10-13
 - **Deciders:** hasan-muzak
 
