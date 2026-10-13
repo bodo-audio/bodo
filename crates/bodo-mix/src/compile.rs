@@ -177,7 +177,7 @@ impl Compiler {
         let inserts: Vec<InsertId> = project.mixer.order.iter().copied().chain(std::iter::once(master)).collect();
         for id in &inserts {
             let fresh = !self.built_strips.contains(id);
-            let processor = fresh.then(|| MixNode::Strip(StripNode::new(self.strips.get(id).cloned().unwrap_or_default())));
+            let processor = fresh.then(|| MixNode::Strip(StripNode::new(keys::insert(*id), self.strips.get(id).cloned().unwrap_or_default())));
             desc.nodes.push(NodeDesc { key: keys::insert(*id), channels: 2, ports: 1, latency: 0, processor });
             let insert = project.mixer.insert(*id);
             if *id != master && insert.is_some_and(|i| i.to_master) {

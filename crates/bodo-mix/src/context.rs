@@ -3,6 +3,7 @@
 
 use bodo_kit_core::{SampleRate, rt_safe};
 
+use crate::automation::ParamValues;
 use crate::segments::Segments;
 
 /// The most note events one block can carry. More are dropped and counted.
@@ -59,6 +60,9 @@ pub struct BlockContext {
     pub dropped_events: u64,
     /// The audio clip segments of the block.
     pub audio: Segments,
+    /// The values automation set, which processors read in place of their live settings. Unlike the events they
+    /// persist from block to block.
+    pub params: ParamValues,
 }
 
 impl BlockContext {
@@ -74,6 +78,7 @@ impl BlockContext {
             directory: Vec::with_capacity(MAX_EVENTS),
             dropped_events: 0,
             audio: Segments::new(),
+            params: ParamValues::new(),
         }
     }
 

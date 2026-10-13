@@ -20,7 +20,6 @@ use bodo_model::meter::MeterMap;
 use bodo_model::{Pattern, PatternId, PlaylistTrack, Project, SampleRoots, TrackId};
 use imbl::{OrdMap, Vector};
 
-use crate::MixError;
 use crate::compile::Compiler;
 use crate::context::{BlockContext, EventKind, NoteEvent};
 use crate::input::{LIVE_CAPACITY, LiveEvent, LiveInput};
@@ -28,6 +27,7 @@ use crate::metronome::{Metronome, count_in_beats};
 use crate::midi_record::{CAPTURE_CAPACITY, Capture, CapturedNote, CapturedTake};
 use crate::nodes::MixNode;
 use crate::sequence::{PlayMode, SongIndex, Transport, all_notes_off, emit, frame_at};
+use crate::{MixError, automation, keys};
 
 /// Marks the voices of live notes, so they never collide with the sequencer's.
 const LIVE_VOICE: u64 = 1 << 63;
@@ -60,6 +60,8 @@ enum Command {
     Stop,
     Seek(i64),
     Mode(PlayMode),
+    /// Loop Song mode between two ticks, or stop looping.
+    Loop(Option<(i64, i64)>),
 }
 
 /// What the audio side reports back.
@@ -117,6 +119,21 @@ struct SongInputs {
     patterns: OrdMap<PatternId, Arc<Pattern>>,
     tracks: OrdMap<TrackId, Arc<PlaylistTrack>>,
     track_order: Vector<TrackId>,
+    /// What the song index reads from channels: each channel's swing and automation lane.
+    channels: Vec<(u64, u32, usize)>,
+}
+
+/// What the song index reads from each channel: its key, its swing, and its automation lane by address.
+///
+/// Complexity: O(c) in channels.
+fn channel_inputs(project: &Project) -> impl Iterator<Item = (u64, u32, usize)> + '_ {
+    project.channels.values().map(|channel| {
+        let lane = match &channel.kind {
+            bodo_model::channel::ChannelKind::Automation(lane) => Arc::as_ptr(lane) as usize,
+            _ => 0,
+        };
+        (keys::channel(channel.id), channel.swing.to_bits(), lane)
+    })
 }
 
 impl SongInputs {
@@ -127,6 +144,7 @@ impl SongInputs {
             patterns: project.patterns.clone(),
             tracks: project.tracks.clone(),
             track_order: project.track_order.clone(),
+            channels: channel_inputs(project).collect(),
         }
     }
 
@@ -137,6 +155,7 @@ impl SongInputs {
             && self.tracks.ptr_eq(&project.tracks)
             // imbl keeps tiny vectors inline, where pointers never match; comparing those by value is cheap.
             && (self.track_order.ptr_eq(&project.track_order) || self.track_order == project.track_order)
+            && self.channels.iter().copied().eq(channel_inputs(project))
     }
 }
 
@@ -156,6 +175,10 @@ pub struct AudioEngine {
     shared: Arc<Shared>,
     rate: SampleRate,
     max_frames: usize,
+    /// The Song mode loop, start and end in ticks.
+    loop_region: Option<(i64, i64)>,
+    /// The playhead jumped back to the loop's start at the end of the last block.
+    wrapped: bool,
     /// Notes played live, and this block's share of them as events. Capacity [`LIVE_CAPACITY`].
     live: LiveInput,
     live_events: Vec<(u64, NoteEvent)>,
@@ -249,6 +272,8 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         capturing: false,
         capture_started: false,
         captures: captures_tx,
+        loop_region: None,
+        wrapped: false,
     };
     Ok((control, audio))
 }
@@ -360,6 +385,13 @@ impl Engine {
         self.command(Command::Mode(mode));
     }
 
+    /// Loops Song mode from `start` to `end`: when the playhead reaches `end` it continues at `start`, to the frame,
+    /// and notes are released as on a jump. `None`, or an empty region, stops looping.
+    pub fn set_loop(&mut self, region: Option<(Tick, Tick)>) {
+        let region = region.filter(|(start, end)| end > start).map(|(start, end)| (start.0, end.0));
+        self.command(Command::Loop(region));
+    }
+
     /// Puts the RT workers in the device's thread group, from `AudioStream::thread_group`, so the OS schedules
     /// them with the audio thread. Call it after opening a device, and with `None` when switching to one without a group.
     pub fn set_thread_group(&self, group: Option<Arc<dyn ThreadGroup>>) {
@@ -430,8 +462,10 @@ impl AudioEngine {
     }
 
     /// Runs one block of at most `max_frames` and advances the transport. A block never spans the end of a count-in.
+    /// In Song mode with a loop, a block ends at the loop's end and the next one starts at the loop's start.
     fn render_block(&mut self, frames: usize) -> usize {
-        let mut jumped = false;
+        // A loop wrap at the end of the last block is a jump for this one.
+        let mut jumped = std::mem::take(&mut self.wrapped);
         while let Some(command) = self.commands.pop() {
             match command {
                 Command::Play => self.transport.playing = true,
@@ -450,11 +484,25 @@ impl AudioEngine {
                     self.transport.mode = mode;
                     jumped = true;
                 }
+                Command::Loop(region) => self.loop_region = region,
             }
         }
         self.songs.update(&mut self.song);
         let counting = self.transport.playing && self.count_in_left > 0;
-        let frames = if counting { frames.min(usize::try_from(self.count_in_left).unwrap_or(frames)) } else { frames };
+        let mut frames = if counting { frames.min(usize::try_from(self.count_in_left).unwrap_or(frames)) } else { frames };
+        let mut wrap_to = None;
+        if let Some((start, end)) = self.loop_frames().filter(|_| !counting) {
+            if self.transport.frame == end {
+                self.transport.frame = start;
+                jumped = true;
+            } else if self.transport.frame < end {
+                let left = usize::try_from(end - self.transport.frame).unwrap_or(usize::MAX);
+                if left <= frames {
+                    frames = left;
+                    wrap_to = Some(start);
+                }
+            }
+        }
         let playing = self.transport.playing && !counting;
         if playing && self.capturing && !self.capture_started && self.captures.push(Capture::Start { frame: self.transport.frame }).is_ok() {
             self.capture_started = true;
@@ -472,12 +520,15 @@ impl AudioEngine {
             context.frames = frames;
             context.playing = playing;
             if jumped {
+                // Back to the project's own values until a lane plays again.
+                context.params.clear();
                 all_notes_off(song, context);
                 for &channel in live_channels {
                     context.push(channel, NoteEvent { frame: 0, kind: EventKind::AllOff, key: 0, velocity: 0.0, voice: 0 });
                 }
             }
             if playing {
+                automation::apply(&song.automation, song.tempo(), &transport, rate, &mut context.params);
                 emit(song, &transport, frames, rate, context);
             }
             for &(channel, event) in live {
@@ -506,6 +557,12 @@ impl AudioEngine {
             self.count_in_left -= rendered as i64;
         } else if playing {
             self.transport.frame += rendered as i64;
+            if let Some(start) = wrap_to
+                && rendered == frames
+            {
+                self.transport.frame = start;
+                self.wrapped = true;
+            }
         }
         self.shared.playing.store(self.transport.playing, Ordering::Relaxed);
         self.shared.frame.store(self.transport.frame, Ordering::Relaxed);
@@ -561,6 +618,18 @@ impl AudioEngine {
             };
             self.live_events.push((channel, event));
         }
+    }
+
+    /// The loop's start and end frames, while Song mode plays a loop.
+    ///
+    /// RT-safe. Complexity: O(log m) in tempo points.
+    fn loop_frames(&self) -> Option<(i64, i64)> {
+        let (start, end) = self.loop_region?;
+        if !self.transport.playing || self.transport.mode != PlayMode::Song {
+            return None;
+        }
+        let (start, end) = (frame_at(&self.song, Tick(start), self.rate).0, frame_at(&self.song, Tick(end), self.rate).0);
+        (end > start).then_some((start, end))
     }
 
     /// How many internal faults the graph has seen; zero unless something is badly wrong.

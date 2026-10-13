@@ -17,6 +17,7 @@ use bodo_model::playlist::ClipSource;
 use bodo_model::{PatternId, Project};
 
 use crate::audio_clips::AudioIndex;
+use crate::automation::AutomationIndex;
 use crate::context::{BlockContext, EventKind, NoteEvent};
 use crate::keys;
 
@@ -72,14 +73,40 @@ pub struct SongIndex {
     channels: Vec<u64>,
     /// The audio clips.
     audio: AudioIndex,
+    /// The automation clips and pattern lanes.
+    pub(crate) automation: AutomationIndex,
+}
+
+/// The length of one step of the step sequencer: a sixteenth note.
+pub const STEP: i64 = bodo_kit_core::PPQ / 4;
+
+/// How long `pattern` loops: its fixed length, or its notes rounded up to whole bars of `bar` ticks.
+pub(crate) fn loop_length(pattern: &bodo_model::Pattern, bar: i64) -> i64 {
+    match pattern.length {
+        PatternLen::Fixed(len) => len.0.max(1),
+        PatternLen::Auto => {
+            let end = pattern.content_end().0;
+            (end.max(1) + bar - 1) / bar * bar
+        }
+    }
+}
+
+/// Swing: how late a note starting at `start` plays on a channel with `swing` (0 to 1). Notes that start on the
+/// second sixteenth of an eighth (an odd step) play up to half a step late; the others play on time.
+pub fn swing_delay(start: i64, swing: f32) -> i64 {
+    if swing <= 0.0 || start.div_euclid(STEP).rem_euclid(2) != 1 {
+        return 0;
+    }
+    (f64::from(swing.min(1.0)) * STEP as f64 / 2.0).round() as i64
 }
 
 impl SongIndex {
-    /// Flattens `project`. Muted tracks and clips are left out; automation clips arrive in M3.
+    /// Flattens `project`. Muted tracks and clips are left out.
     ///
-    /// Allocates. Complexity: O(N log N) in the notes and clips.
+    /// Allocates. Complexity: O(N log N) in the notes, clips and automation points.
     pub fn build(project: &Project) -> Self {
         let bar = project.meter.changes().first().map_or(Tick::from_quarters(4).0, |m| m.bar_ticks());
+        let swing: HashMap<u64, f32> = project.channels.values().filter(|c| c.swing > 0.0).map(|c| (keys::channel(c.id), c.swing)).collect();
         let mut index_of: HashMap<PatternId, u32> = HashMap::new();
         let mut patterns = Vec::with_capacity(project.patterns.len());
         let mut pattern_lookup = Vec::with_capacity(project.patterns.len());
@@ -90,8 +117,9 @@ impl SongIndex {
                 .iter()
                 .flat_map(|(channel, seq)| {
                     let channel = keys::channel(*channel);
+                    let swing = swing.get(&channel).copied().unwrap_or(0.0);
                     seq.notes().iter().filter(|n| !n.muted).map(move |n| IndexedNote {
-                        start: n.start.0,
+                        start: n.start.0 + swing_delay(n.start.0, swing),
                         len: n.len.0,
                         key: n.key,
                         velocity: f32::from(n.velocity) / f32::from(u16::MAX),
@@ -102,13 +130,7 @@ impl SongIndex {
                 .collect();
             notes.sort_by_key(|n| (n.start, n.channel, n.key, n.id));
             channels.extend(notes.iter().map(|n| n.channel));
-            let length = match pattern.length {
-                PatternLen::Fixed(len) => len.0.max(1),
-                PatternLen::Auto => {
-                    let end = pattern.content_end().0;
-                    (end.max(1) + bar - 1) / bar * bar
-                }
-            };
+            let length = loop_length(pattern, bar);
             let max_len = notes.iter().map(|n| n.len).max().unwrap_or(0);
             index_of.insert(*id, patterns.len() as u32);
             pattern_lookup.push((keys::pattern(*id), patterns.len() as u32));
@@ -142,7 +164,17 @@ impl SongIndex {
                 IndexedTrack { clips, max_len }
             })
             .collect();
-        Self { tempo: (*project.tempo).clone(), meter: (*project.meter).clone(), patterns, pattern_lookup, tracks, channels, audio: AudioIndex::build(project) }
+        let automation = AutomationIndex::build(project, |pattern| loop_length(pattern, bar));
+        Self {
+            tempo: (*project.tempo).clone(),
+            meter: (*project.meter).clone(),
+            patterns,
+            pattern_lookup,
+            tracks,
+            channels,
+            audio: AudioIndex::build(project),
+            automation,
+        }
     }
 
     /// The tempo map the index was built with.

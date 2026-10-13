@@ -14,6 +14,7 @@ use bodo_kit_dsp::pan::StereoPan;
 use bodo_kit_dsp::stereo::{invert_polarity, stereo_separation, swap_channels};
 use bodo_kit_graph::NodeIo;
 
+use crate::automation::{Param, param_key};
 use crate::context::BlockContext;
 use crate::live::StripLive;
 
@@ -23,6 +24,8 @@ const MUTE_RAMP_SECONDS: f64 = 0.005;
 /// A mixer strip's processor.
 #[derive(Debug)]
 pub struct StripNode {
+    /// The insert's graph key, which its automated parameters are keyed by.
+    key: u64,
     live: Arc<StripLive>,
     fader: f32,
     mute: f32,
@@ -30,12 +33,12 @@ pub struct StripNode {
 }
 
 impl StripNode {
-    /// A strip that reads its settings from `live`, starting where they are now.
-    pub fn new(live: Arc<StripLive>) -> Self {
+    /// The strip of the insert with graph key `key`, reading its settings from `live`, starting where they are now.
+    pub fn new(key: u64, live: Arc<StripLive>) -> Self {
         let fader = db_to_gain(live.volume_db.get());
         let mute = if live.muted.load(Ordering::Relaxed) { 0.0 } else { 1.0 };
         let pan = live.pan.get();
-        Self { live, fader, mute, pan }
+        Self { key, live, fader, mute, pan }
     }
 
     /// Processes one block.
@@ -56,13 +59,15 @@ impl StripNode {
         if self.live.swap_lr.load(Ordering::Relaxed) {
             swap_channels(left, right);
         }
+        // Automation, where it plays, stands in for the live settings.
+        let automated = |param, live: f32| context.params.get(param_key(self.key, param)).unwrap_or(live);
         // 5-6: stereo separation, then pan.
-        stereo_separation(left, right, self.live.stereo_sep.get());
-        let pan = self.live.pan.get();
+        stereo_separation(left, right, automated(Param::StereoSep, self.live.stereo_sep.get()).clamp(-1.0, 1.0));
+        let pan = automated(Param::Pan, self.live.pan.get()).clamp(-1.0, 1.0);
         apply_pan(left, right, self.pan, pan);
         self.pan = pan;
         // 7-8: the fader and the mute ramp, folded into one gain ramp.
-        let fader = db_to_gain(self.live.volume_db.get());
+        let fader = db_to_gain(automated(Param::Volume, self.live.volume_db.get()));
         let target_mute = if self.live.muted.load(Ordering::Relaxed) { 0.0 } else { 1.0 };
         let mute = step_toward(self.mute, target_mute, io.frames, context.rate);
         ramp_gain(left, self.fader * self.mute, fader * mute);

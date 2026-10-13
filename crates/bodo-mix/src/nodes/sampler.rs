@@ -12,6 +12,7 @@ use bodo_kit_dsp::pan::{PanLaw, StereoPan};
 use bodo_kit_graph::NodeIo;
 use bodo_model::channel::{LoopMode, SamplerParams};
 
+use crate::automation::{Param, param_key};
 use crate::context::{BlockContext, EventKind, NoteEvent};
 use crate::live::ChannelLive;
 
@@ -96,13 +97,13 @@ impl SamplerNode {
             let at = (event.frame as usize).min(frames);
             self.render(io, cursor, at);
             cursor = at;
-            self.apply(event);
+            self.apply(event, context);
         }
         self.render(io, cursor, frames);
-        self.finish(io);
+        self.finish(io, context);
     }
 
-    fn apply(&mut self, event: &NoteEvent) {
+    fn apply(&mut self, event: &NoteEvent, context: &BlockContext) {
         match event.kind {
             EventKind::AllOff => self.voices.iter_mut().for_each(|v| v.envelope.gate_off()),
             // A one-shot plays to the end of its sample; only stopping the transport cuts it.
@@ -112,11 +113,15 @@ impl SamplerNode {
                     voice.envelope.gate_off();
                 }
             }
-            EventKind::On => self.note_on(event),
+            EventKind::On => {
+                let cents = context.params.get(param_key(self.key, Param::Pitch)).unwrap_or_else(|| self.live.pitch_cents.get());
+                self.note_on(event, cents);
+            }
         }
     }
 
-    fn note_on(&mut self, event: &NoteEvent) {
+    /// Starts a voice for `event`, pitched by the channel's `cents`.
+    fn note_on(&mut self, event: &NoteEvent, cents: f32) {
         let Some(sample) = self.sample.as_ref() else { return };
         if !(self.key_range.0..=self.key_range.1).contains(&event.key) {
             return;
@@ -125,7 +130,7 @@ impl SamplerNode {
         if frames < 1.0 {
             return;
         }
-        let semitones = f64::from(event.key) - f64::from(self.root_key) + f64::from(self.live.pitch_cents.get()) / 100.0;
+        let semitones = f64::from(event.key) - f64::from(self.root_key) + f64::from(cents) / 100.0;
         let speed = 2f64.powf(semitones / 12.0);
         let (position, step) =
             if self.reverse { ((frames - 1.0) * f64::from(1.0 - self.start), -speed) } else { (frames * f64::from(self.start), speed) };
@@ -192,10 +197,11 @@ impl SamplerNode {
     }
 
     /// Applies the channel's mute, volume and pan to the block, ramping from the last block's values.
-    fn finish(&mut self, io: &mut NodeIo<'_>) {
+    fn finish(&mut self, io: &mut NodeIo<'_>, context: &BlockContext) {
         let muted = self.live.muted.load(Ordering::Relaxed);
-        let volume = if muted { 0.0 } else { self.live.volume.get() };
-        let pan = self.live.pan.get();
+        let automated = |param, live: f32| context.params.get(param_key(self.key, param)).unwrap_or(live);
+        let volume = if muted { 0.0 } else { automated(Param::Volume, self.live.volume.get()) };
+        let pan = automated(Param::Pan, self.live.pan.get()).clamp(-1.0, 1.0);
         let mono = self.sample.as_ref().is_none_or(|s| s.channel_count() < 2);
         let Some((left, right)) = io.output.stereo_mut() else { return };
         if mono {

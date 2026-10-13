@@ -3,7 +3,8 @@
 //! - [`mod@engine`]: builds the two sides of an engine for a project: [`Engine`] on the control thread and
 //!   [`AudioEngine`] on the audio thread, which any `bodo-kit-device` stream can run.
 //! - [`render_offline`]: the same engine, faster than real time and deterministic, for export.
-//! - [`sequence`]: the sequencer and transport.
+//! - [`sequence`]: the sequencer and transport, with swing and the Song mode loop.
+//! - [`automation`]: automation clips and pattern lanes, played once per block.
 //! - [`nodes`]: the graph's processors: the built-in sampler and the mixer strip.
 //! - [`input`]: notes played live, from MIDI inputs and the computer keyboard; [`midi_record`]: recording them.
 //!
@@ -13,6 +14,7 @@
 #![forbid(unsafe_code)]
 
 pub mod audio_clips;
+pub mod automation;
 mod compile;
 pub mod context;
 pub mod engine;
