@@ -1,0 +1,25 @@
+[package]
+name = "bodo-mix"
+description = "The Bodo render engine: compiles a project into a graph and plays it, in real time or offline."
+license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+bodo-kit-audio.workspace = true
+bodo-kit-core.workspace = true
+bodo-kit-device.workspace = true
+bodo-kit-dsp.workspace = true
+bodo-kit-graph.workspace = true
+bodo-model.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+assert_no_alloc = { workspace = true, features = ["warn_debug"] }
+proptest.workspace = true
+
+[lints]
+workspace = true

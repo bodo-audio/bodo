@@ -23,6 +23,7 @@ bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
 # Bodo DAW
+bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
 
 # Real-time

@@ -265,6 +265,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "bodo-mix"
+version = "0.0.0"
+dependencies = [
+ "assert_no_alloc",
+ "bodo-kit-audio",
+ "bodo-kit-core",
+ "bodo-kit-device",
+ "bodo-kit-dsp",
+ "bodo-kit-graph",
+ "bodo-model",
+ "proptest",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "bodo-model"
 version = "0.0.0"
 dependencies = [
