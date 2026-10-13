@@ -292,6 +292,14 @@ fn waveform(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel
     let rect = canvas(ui, 116.0);
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, tk.field);
+    // A sound dropped from the browser loads into the sampler.
+    let drop = ui.interact(rect, ui.id().with(("sampler-drop", channel.id)), Sense::hover());
+    if let Some(payload) = drop.dnd_release_payload::<crate::browser::SoundPayload>() {
+        let _ = app.run("channel.set_sample", json!({ "channel": channel.id, "sample": payload.0 }));
+    }
+    if drop.dnd_hover_payload::<crate::browser::SoundPayload>().is_some() {
+        painter.rect_stroke(rect.shrink(1.0), 4.0, Stroke::new(2.0, tk.accent), egui::StrokeKind::Inside);
+    }
     let path = params.sample.and_then(|s| project.samples.get(&s)).map(|s| app.session.sample_roots().resolve(&s.path));
     let Some(path) = path else {
         crate::windows::placeholder(ui, rect, "Load a sample, or drop one from the browser");

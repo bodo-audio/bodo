@@ -95,6 +95,20 @@ fn dragging_a_marker_sets_the_played_part_in_one_undo_step() {
 }
 
 #[test]
+fn a_sound_dropped_on_the_waveform_loads_into_the_sampler() {
+    let mut h = kick_window(|_| {});
+    let before = sampler(&h, "Kick").sample;
+    click(&mut h, "Folder Bodo Drums");
+    let crash = element(&h, "Sound Crash").center();
+    let wave = element(&h, "Kick waveform").center();
+    drag(&mut h, PointerButton::Primary, crash, &line(crash, wave, 16), Modifiers::NONE);
+    let after = sampler(&h, "Kick").sample.unwrap();
+    assert_ne!(Some(after), before);
+    let path = &h.state().session.project().samples[&after].path;
+    assert!(path.ends_with("Crash.wav"), "{path}");
+}
+
+#[test]
 fn checkboxes_and_lists_set_the_sampler() {
     let mut h = kick_window(|_| {});
     click(&mut h, "Kick Normalize");
