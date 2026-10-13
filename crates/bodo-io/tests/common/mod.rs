@@ -14,7 +14,7 @@ use bodo_model::channel::{
     SamplerFilter, SamplerParams, SamplerStretch, SamplerStretchMode, SandboxMode, StretchMode,
 };
 use bodo_model::meter::MeterChange;
-use bodo_model::mixer::{EqBand, HwPort, PdcBypass, RecordFormat, RecordTap, Route, RouteKind, SendTap};
+use bodo_model::mixer::{EqBand, HwPort, ParamValue, PdcBypass, RecordFormat, RecordTap, Route, RouteKind, SendTap};
 use bodo_model::pattern::{ExprPoint, NoteExpression, PatternLen};
 use bodo_model::playlist::{ClipOffset, Fades};
 use bodo_model::project::{Marker, MarketRef, Meta, Settings};
@@ -254,11 +254,12 @@ pub fn full() -> (Project, PluginIds) {
     ducked.slots[0].plugin = Some(PluginRef {
         instance: plugin_ids.slot,
         format: PluginFormat::Native,
-        uid: "dev.bodo.comp".into(),
+        uid: "bodo.ducker".into(),
         state: Arc::from(Vec::new()),
         sandbox: SandboxMode::InProcess,
     });
     ducked.slots[0].mix = 0.75;
+    ducked.slots[0].params = vec![ParamValue { id: 0, value: 18.0 }, ParamValue { id: 3, value: 220.0 }];
     ducked.slots[1].enabled = false;
     mixer.inserts.insert(inserts[2], Arc::new(ducked));
     let mut odd = (**mixer.inserts.get(&inserts[3]).unwrap()).clone();
@@ -281,6 +282,7 @@ pub fn full() -> (Project, PluginIds) {
     odd.armed = true;
     odd.record_tap = RecordTap::PreFx;
     odd.record_format = RecordFormat::Flac;
+    odd.icon = Some("microphone".into());
     mixer.inserts.insert(inserts[3], Arc::new(odd));
     let mut master_strip = (*mixer.master).clone();
     master_strip.slots[9].plugin = Some(PluginRef {
@@ -291,6 +293,7 @@ pub fn full() -> (Project, PluginIds) {
         sandbox: SandboxMode::SharedBridge,
     });
     master_strip.volume_db = -0.5;
+    master_strip.record_format = RecordFormat::W64;
     mixer.master = Arc::new(master_strip);
 
     let beat_id = PatternId::from_u128(ids.next());

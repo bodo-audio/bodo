@@ -1129,7 +1129,7 @@
       "output": null,
       "armed": false,
       "recordTap": "postFader",
-      "recordFormat": "float32"
+      "recordFormat": "w64"
     },
     "inserts": {
       "ins_00000000000000000000000002": {
@@ -1339,7 +1339,7 @@
             "plugin": {
               "instance": "plug_00000000000000000000000007",
               "format": "native",
-              "uid": "dev.bodo.comp",
+              "uid": "bodo.ducker",
               "sandbox": "inProcess"
             },
             "enabled": true,
@@ -1347,7 +1347,17 @@
             "sidechain": {
               "type": "insert",
               "id": "ins_00000000000000000000000003"
-            }
+            },
+            "params": [
+              {
+                "id": 0,
+                "value": 18.0
+              },
+              {
+                "id": 3,
+                "value": 220.0
+              }
+            ]
           },
           {
             "plugin": null,
@@ -1441,6 +1451,7 @@
         "id": "ins_00000000000000000000000005",
         "name": "Cue",
         "color": "#60a5fa",
+        "icon": "microphone",
         "slots": [
           {
             "plugin": null,
