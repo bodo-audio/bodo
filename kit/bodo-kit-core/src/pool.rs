@@ -227,7 +227,9 @@ impl<J: RtJob> RtPool<J> {
         shared.epoch.fetch_add(1, Ordering::SeqCst);
         for (handle, parked) in self.handles.iter().zip(shared.parked.iter()) {
             if parked.load(Ordering::SeqCst) {
-                handle.thread().unpark();
+                // Waking a parked worker is a futex wake on Linux, which RealtimeSanitizer flags as a syscall. It
+                // never blocks and is the one kernel call this design needs (ADR 0003), so it is exempted here.
+                crate::rt::permit(|| handle.thread().unpark());
             }
         }
         shared.job.work(Participant::CALLER);
@@ -362,8 +364,12 @@ mod tests {
             if participant != Participant::CALLER {
                 panic!("worker job failed");
             }
-            // Give the workers time to join so the panic path is exercised.
-            std::thread::sleep(Duration::from_millis(2));
+            // Give the workers time to join so the panic path is exercised. Spin rather than sleep: this runs in
+            // the caller's real-time region.
+            let start = Instant::now();
+            while start.elapsed() < Duration::from_millis(2) {
+                std::hint::spin_loop();
+            }
         }
     }
 
