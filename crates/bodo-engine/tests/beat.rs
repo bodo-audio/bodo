@@ -90,3 +90,9 @@ fn unsaved_work_is_never_dropped_silently() {
     run(&mut session, "project.new", json!({ "discardChanges": true }));
     assert!(!session.is_dirty());
 }
+
+#[test]
+fn the_factory_content_is_found_in_a_development_build() {
+    let found = bodo_engine::locate_factory().unwrap();
+    assert_eq!(found, common::factory());
+}

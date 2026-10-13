@@ -37,4 +37,4 @@ pub use history::HistoryLimits;
 pub use registry::{CommandSpec, Effects, Registry};
 pub use session::{BatchError, BatchOutput, Call, CommandOutput, Ctx, Env, Session};
 pub use state::{EditorState, Event, PlayMode, TransportState};
-pub use template::Template;
+pub use template::{Template, locate_factory};

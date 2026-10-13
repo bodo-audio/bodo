@@ -4,7 +4,7 @@
 //! basic template also loads a starter drum kit from the factory content, one channel per insert, so a beat can start
 //! right away.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use bodo_kit_core::TempoMap;
@@ -109,6 +109,22 @@ pub fn new_project(template: Template, ids: &mut IdSource, env: &Env, created: O
 /// Whether `dir` looks like Bodo's factory content.
 pub fn is_factory_dir(dir: &Path) -> bool {
     dir.join(DRUM_KIT).is_dir()
+}
+
+/// The environment variable that points Bodo at its factory content, overriding the usual places.
+pub const FACTORY_ENV: &str = "BODO_FACTORY";
+
+/// Finds Bodo's factory content: the folder named by `BODO_FACTORY`, a `factory` folder next to the executable (or in
+/// `../Resources` inside a macOS app bundle, or `../share/bodo` on Linux), or the repository's `assets/factory` in a
+/// development build.
+///
+/// Does I/O: checks a few folders.
+pub fn locate_factory() -> Option<PathBuf> {
+    let from_env = std::env::var_os(FACTORY_ENV).map(PathBuf::from);
+    let exe_dir = std::env::current_exe().ok().and_then(|exe| exe.parent().map(Path::to_path_buf));
+    let beside_exe = exe_dir.iter().flat_map(|dir| [dir.join("factory"), dir.join("../Resources/factory"), dir.join("../share/bodo/factory")]);
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../assets/factory");
+    from_env.into_iter().chain(beside_exe).chain(std::iter::once(repository)).find(|dir| is_factory_dir(dir)).and_then(|dir| dir.canonicalize().ok())
 }
 
 /// The current time as an RFC 3339 UTC timestamp, such as `2026-10-13T08:30:00Z`.
