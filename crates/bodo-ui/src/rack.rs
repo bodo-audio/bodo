@@ -1,12 +1,13 @@
 //! The Channel Rack (project.md section 10.2): one row per channel with its mute LED, pan and volume knobs, mixer
 //! insert, name button and the step sequencer for the current pattern. Steps paint by dragging, and one stroke is one
-//! undo step. Drop a sound from the browser to add a channel.
+//! undo step. Drop a sound from the browser to add a channel. Audio clip and automation channels play from the
+//! playlist, so their rows have no steps; an automation channel has no knobs either. Right-click a knob to automate it.
 
 use std::sync::Arc;
 
 use bodo_engine::params::STEP;
 use bodo_kit_ui::{Knob, Led, StepRow, icons};
-use bodo_model::{Channel, ChannelId, PatternId, Project};
+use bodo_model::{Channel, ChannelId, ChannelKind, PatternId, Project};
 use egui::{Rect, RichText, Sense, Stroke, StrokeKind, Ui, vec2};
 use serde_json::json;
 
@@ -92,28 +93,26 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
             if led.changed() {
                 let _ = app.run("channel.mute", json!({ "channel": id, "muted": !on }));
             }
-            let mut pan = channel.pan;
-            let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(18.0).label(format!("{name} pan")));
-            control::record(ui, &knob, &format!("{name} pan"), "knob", None);
-            app.hint(&knob, format!("{name} pan: {}", bodo_kit_ui::knob::format_pan(pan)));
-            if knob.changed() {
-                app.run_gesture(&knob, "channel.set_pan", json!({ "channel": id, "pan": pan }));
+            if matches!(channel.kind, ChannelKind::Automation(_)) {
+                // An automation channel plays no sound: room where the knobs and insert would be keeps the rows lined up.
+                for width in [18.0, 18.0, 26.0] {
+                    ui.allocate_exact_size(vec2(width, 18.0), Sense::hover());
+                }
+            } else {
+                knobs(app, ui, channel);
+                insert_picker(app, ui, project, channel);
             }
-            let mut volume = channel.volume;
-            let knob = ui.add(
-                Knob::new(&mut volume, 0.0..=2.0)
-                    .default(1.0)
-                    .diameter(18.0)
-                    .label(format!("{name} volume"))
-                    .format(|v| format!("{:.0}%", v * 100.0)),
-            );
-            control::record(ui, &knob, &format!("{name} volume"), "knob", None);
-            app.hint(&knob, format!("{name} volume: {:.0}%", volume * 100.0));
-            if knob.changed() {
-                app.run_gesture(&knob, "channel.set_volume", json!({ "channel": id, "volume": volume }));
-            }
-            insert_picker(app, ui, project, channel);
             name_button(app, ui, channel);
+            let clip_kind = match channel.kind {
+                ChannelKind::AudioClip { .. } => Some("Audio clip: place it on the playlist"),
+                ChannelKind::Automation(_) => Some("Automation clip: edit it on the playlist"),
+                _ => None,
+            };
+            if let Some(text) = clip_kind {
+                let label = ui.label(RichText::new(text).size(size::SMALL).color(Tokens::get().text_faint));
+                control::record(ui, &label, &format!("{name} kind"), "label", None);
+                return;
+            }
             let on: Vec<bool> = match pattern.and_then(|p| project.patterns.get(&p)) {
                 Some(pattern) => bodo_engine::pattern_step_text(project, pattern, id)
                     .chars()
@@ -146,6 +145,40 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
             }
         });
     });
+}
+
+/// The channel's pan and volume knobs. Right-clicking one offers an automation clip for it.
+fn knobs(app: &mut BodoApp, ui: &mut Ui, channel: &Channel) {
+    let (id, name) = (channel.id, channel.name.as_str());
+    let mut pan = channel.pan;
+    let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(18.0).label(format!("{name} pan")));
+    control::record(ui, &knob, &format!("{name} pan"), "knob", None);
+    app.hint(&knob, format!("{name} pan: {}; right-click to automate it", bodo_kit_ui::knob::format_pan(pan)));
+    if knob.changed() {
+        app.run_gesture(&knob, "channel.set_pan", json!({ "channel": id, "pan": pan }));
+    }
+    knob.context_menu(|ui| automate_menu(app, ui, id, "pan"));
+    let mut volume = channel.volume;
+    let knob = ui
+        .add(Knob::new(&mut volume, 0.0..=2.0).default(1.0).diameter(18.0).label(format!("{name} volume")).format(|v| format!("{:.0}%", v * 100.0)));
+    control::record(ui, &knob, &format!("{name} volume"), "knob", None);
+    app.hint(&knob, format!("{name} volume: {:.0}%; right-click to automate it", volume * 100.0));
+    if knob.changed() {
+        app.run_gesture(&knob, "channel.set_volume", json!({ "channel": id, "volume": volume }));
+    }
+    knob.context_menu(|ui| automate_menu(app, ui, id, "volume"));
+}
+
+/// A knob's menu: an automation clip for `param` of `channel`, which becomes the playlist's clip source.
+fn automate_menu(app: &mut BodoApp, ui: &mut Ui, channel: ChannelId, param: &str) {
+    let button = ui.button("Create automation clip");
+    control::record(ui, &button, "Create automation clip", "menu item", None);
+    if button.clicked()
+        && let Ok(result) = app.run("automation.create_for", json!({ "target": { "channel": channel, "param": param } }))
+        && let Ok(created) = serde_json::from_value::<ChannelId>(result["channel"].clone())
+    {
+        app.view.playlist.source = Some(created);
+    }
 }
 
 /// Turns the painted steps on or off, as one undo step per stroke. Without a current pattern, it makes one first.
@@ -222,9 +255,16 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, channel: &Channel) {
     let galley = painter.layout(channel.name.clone(), egui::FontId::proportional(size::BODY), text_color, rect.width() - 16.0);
     painter.with_clip_rect(rect.shrink(2.0)).galley(egui::pos2(rect.left() + 11.0, rect.center().y - galley.size().y / 2.0), galley, text_color);
     control::record(ui, &response, &channel.name, "channel", Some(selected));
-    app.hint(&response, format!("{}: click to select, double-click for the piano roll, right-click for more", channel.name));
+    // Audio clip and automation channels have no notes: double-clicking one makes it the playlist's clip source.
+    let plays_notes = !matches!(channel.kind, ChannelKind::AudioClip { .. } | ChannelKind::Automation(_));
+    let double = if plays_notes { "double-click for the piano roll" } else { "double-click to draw it on the playlist" };
+    app.hint(&response, format!("{}: click to select, {double}, right-click for more", channel.name));
     if response.double_clicked() {
-        let _ = app.run("ui.open_piano_roll", json!({ "channel": channel.id }));
+        if plays_notes {
+            let _ = app.run("ui.open_piano_roll", json!({ "channel": channel.id }));
+        } else {
+            app.view.playlist.source = Some(channel.id);
+        }
     } else if response.clicked() {
         let add = ui.input(|i| i.modifiers.command || i.modifiers.shift);
         let _ = app.run("edit.select", json!({ "channels": [channel.id], "channel": channel.id, "add": add }));
@@ -233,13 +273,14 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, channel: &Channel) {
         if ui.button("Rename...").clicked() {
             dialogs::rename_channel(app, channel.id);
         }
-        if ui.button("Open in piano roll").clicked() {
+        if plays_notes && ui.button("Open in piano roll").clicked() {
             let _ = app.run("ui.open_piano_roll", json!({ "channel": channel.id }));
         }
         if ui.button("Duplicate").clicked() {
             let _ = app.run("channel.duplicate", json!({ "channel": channel.id }));
         }
-        if ui.button("Load sample...").clicked()
+        if plays_notes
+            && ui.button("Load sample...").clicked()
             && let Some(file) = app.services.pick_samples.as_ref().map(|pick| pick()).and_then(|files| files.into_iter().next())
         {
             let _ = app.run("channel.set_sample", json!({ "channel": channel.id, "sample": file.display().to_string() }));
