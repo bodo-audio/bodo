@@ -26,9 +26,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      # cpal's ALSA backend needs the ALSA headers on Linux.
+      # cpal's ALSA backend needs the ALSA headers on Linux. The interface snapshots need a GPU adapter: lavapipe
+      # (software Vulkan) on Linux; Windows has WARP built in and macOS runners have Metal.
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev mesa-vulkan-drivers
       # Installs the toolchain pinned in rust-toolchain.toml.
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
@@ -36,6 +37,17 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo xtask ci
+      # Snapshot tests that fail leave their pictures next to the baselines: keep them to see the difference, or to
+      # add a baseline for this platform in tests/snapshots/<os>/.
+      - name: Upload failing snapshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failing-snapshots-${{ matrix.os }}
+          path: |
+            **/tests/snapshots/**/*.new.png
+            **/tests/snapshots/**/*.diff.png
+          if-no-files-found: ignore
 
   rtsan:
     # RealtimeSanitizer aborts on any allocation, lock or blocking call inside #[rt_safe] code (ADR 0014).
@@ -49,9 +61,9 @@ jobs:
       RTSAN_ENABLE: "1"
     steps:
       - uses: actions/checkout@v7
-      # cpal's ALSA backend needs the ALSA headers on Linux.
+      # cpal's ALSA backend needs the ALSA headers on Linux, and the interface snapshots need lavapipe.
       - if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev mesa-vulkan-drivers
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features --locked
