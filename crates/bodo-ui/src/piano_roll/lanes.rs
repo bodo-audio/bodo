@@ -5,6 +5,9 @@
 //! channel's notes are selected, strokes change only those. A right-click puts the notes under the pointer back to
 //! the default value.
 //!
+//! **Expression lanes** (MPE pitch, pressure and timbre) draw each note's own curve across its length. A brush stroke
+//! sets points along every note it crosses, and a right-drag erases them.
+//!
 //! **Controller lanes** (pitch bend, channel pressure and any CC) are the pattern's own automation lanes for the
 //! channel, drawn as a curve. A brush stroke draws a point on every snap step it crosses, and a right-drag erases the
 //! points under it. Either kind of stroke is one undo step.
@@ -13,6 +16,7 @@ use std::collections::BTreeMap;
 
 use bodo_kit_core::Tick;
 use bodo_model::automation::{ChannelParam, ParamTarget};
+use bodo_model::pattern::ExprPoint;
 use bodo_model::{ChannelId, Note, NoteId, Pattern, Project};
 use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
@@ -40,6 +44,12 @@ pub enum Lane {
     ModX,
     /// Mod Y, mapped to a parameter by the instrument.
     ModY,
+    /// Each note's own pitch curve, in semitones (MPE).
+    NotePitch,
+    /// Each note's own pressure curve (MPE).
+    NotePressure,
+    /// Each note's own timbre curve (MPE).
+    NoteTimbre,
     /// MIDI pitch bend, a lane of the pattern.
     PitchBend,
     /// MIDI channel pressure, a lane of the pattern.
@@ -51,6 +61,9 @@ pub enum Lane {
 impl Lane {
     /// The lanes of note values, in the menu's order.
     pub const NOTES: [Self; 6] = [Self::Velocity, Self::Release, Self::FinePitch, Self::Pan, Self::ModX, Self::ModY];
+
+    /// The per-note expression lanes.
+    pub const EXPRESSION: [Self; 3] = [Self::NotePitch, Self::NotePressure, Self::NoteTimbre];
 
     /// The controller lanes the menu offers directly; any other CC is a number away.
     pub const CONTROLLERS: [Self; 8] =
@@ -65,6 +78,9 @@ impl Lane {
             Self::Pan => String::from("Pan"),
             Self::ModX => String::from("Mod X"),
             Self::ModY => String::from("Mod Y"),
+            Self::NotePitch => String::from("Note pitch (MPE)"),
+            Self::NotePressure => String::from("Note pressure (MPE)"),
+            Self::NoteTimbre => String::from("Note timbre (MPE)"),
             Self::PitchBend => String::from("Pitch bend"),
             Self::Pressure => String::from("Channel pressure"),
             Self::Cc(n) => match n {
@@ -88,6 +104,9 @@ impl Lane {
             Self::Pan => String::from("Pan"),
             Self::ModX => String::from("Mod X"),
             Self::ModY => String::from("Mod Y"),
+            Self::NotePitch => String::from("N.Pitch"),
+            Self::NotePressure => String::from("N.Press"),
+            Self::NoteTimbre => String::from("N.Timb"),
             Self::PitchBend => String::from("Bend"),
             Self::Pressure => String::from("Press"),
             Self::Cc(n) => format!("CC {n}"),
@@ -101,6 +120,53 @@ impl Lane {
             Self::Pressure => Some(ChannelParam::Pressure),
             Self::Cc(n) => Some(ChannelParam::Cc(n)),
             _ => None,
+        }
+    }
+
+    /// The `note.set_expression` curve an expression lane edits; `None` for other lanes.
+    fn expression(self) -> Option<&'static str> {
+        match self {
+            Self::NotePitch => Some("pitch"),
+            Self::NotePressure => Some("pressure"),
+            Self::NoteTimbre => Some("timbre"),
+            _ => None,
+        }
+    }
+
+    /// An expression lane's height, 0 to 1, for curve value `v`: pitch spans an octave either way.
+    fn curve_height(self, v: f32) -> f32 {
+        match self {
+            Self::NotePitch => (v + 12.0) / 24.0,
+            _ => v,
+        }
+        .clamp(0.0, 1.0)
+    }
+
+    /// An expression lane's curve value for height `h`.
+    fn curve_value(self, h: f32) -> f32 {
+        let h = h.clamp(0.0, 1.0);
+        match self {
+            Self::NotePitch => ((h * 24.0 - 12.0) * 100.0).round() / 100.0,
+            _ => (h * 1000.0).round() / 1000.0,
+        }
+    }
+
+    /// The value an expression curve has where it has no points.
+    fn curve_rest(self) -> f32 {
+        match self {
+            Self::NoteTimbre => 0.5,
+            _ => 0.0,
+        }
+    }
+
+    /// `note`'s curve for an expression lane.
+    fn curve(self, note: &Note) -> Vec<ExprPoint> {
+        let Some(expr) = note.expr.as_ref() else { return Vec::new() };
+        match self {
+            Self::NotePitch => expr.pitch.clone(),
+            Self::NotePressure => expr.pressure.clone(),
+            Self::NoteTimbre => expr.timbre.clone(),
+            _ => Vec::new(),
         }
     }
 
@@ -118,7 +184,7 @@ impl Lane {
 
     /// Whether its values have a center line: fine pitch, pan and pitch bend.
     fn centered(self) -> bool {
-        matches!(self, Self::FinePitch | Self::Pan | Self::PitchBend)
+        matches!(self, Self::FinePitch | Self::Pan | Self::PitchBend | Self::NotePitch)
     }
 
     /// `note`'s value, from 0 at the bottom of the lane to 1 at the top.
@@ -241,6 +307,15 @@ pub(super) fn show(
                 app.view.piano.brush = Some(Brush { gesture: app.new_gesture(), last: p.at, erase: p.secondary });
             }
             controller(app, ui, project, area, grid, channel, pattern, param, pointer.as_ref());
+        }
+        None if lane.expression().is_some() => {
+            app.hint(&response, "Drag along notes to draw their curves; right-drag erases points");
+            if let Some(p) = starts
+                && (p.primary || p.secondary)
+            {
+                app.view.piano.brush = Some(Brush { gesture: app.new_gesture(), last: p.at, erase: p.secondary });
+            }
+            expression(app, ui, project, area, grid, channel, notes, pointer.as_ref());
         }
         None => {
             app.hint(&response, "Drag across the stems to set each note's value; right-click resets the notes under the pointer");
@@ -440,6 +515,95 @@ fn controller(
     app.view.piano.brush = Some(Brush { last: pointer.at, ..brush });
 }
 
+/// An expression lane: each note's curve across its length, drawn and erased by strokes. A stroke sets a point every
+/// sixteenth of a beat or every snap step, whichever is finer, inside each note it crosses.
+#[allow(clippy::too_many_arguments, reason = "the body's layout, kept apart for reading")]
+fn expression(app: &mut BodoApp, ui: &Ui, project: &Project, area: Rect, grid: &Grid, channel: ChannelId, notes: &[Note], pointer: Option<&Pointer>) {
+    let tk = Tokens::get();
+    let lane = app.view.piano.lane;
+    let Some(key) = lane.expression() else { return };
+    let selected = app.session.editor().notes.clone();
+    let color = project.channels.get(&channel).map_or(tk.accent, |c| theme::color(c.color));
+    let y_of = |v: f32| area.bottom() - lane.curve_height(v) * area.height();
+    let painter = ui.painter().with_clip_rect(area.expand2(vec2(0.0, 4.0)));
+    for note in notes {
+        let (x0, x1) = (grid.x(note.start.0 as f64), grid.x(note.end().0 as f64));
+        if x1 < area.left() || x0 > area.right() {
+            continue;
+        }
+        let curve = lane.curve(note);
+        let stroke_color = if selected.contains(&note.id) { tk.accent } else { color };
+        let rest = curve.first().map_or(lane.curve_rest(), |p| p.value);
+        let mut line = vec![pos2(x0, y_of(rest))];
+        for point in &curve {
+            line.push(pos2(grid.x((note.start.0 + point.at.0) as f64), y_of(point.value)));
+        }
+        if let Some(last) = line.last().copied() {
+            line.push(pos2(x1, last.y));
+        }
+        let width = if curve.is_empty() { 1.0 } else { 1.8 };
+        painter.add(egui::Shape::line(line, Stroke::new(width, if curve.is_empty() { theme::faded(stroke_color, 0.4) } else { stroke_color })));
+        control::record_rect(
+            ui,
+            ui.id().with(("expression", note.id)),
+            Rect::from_min_max(pos2(x0, area.top()), pos2(x1.max(x0 + 2.0), area.bottom())),
+            &format!("{} of {} at {}: {} points", lane.label(), bodo_engine::params::key_name(note.key), note.start.0, curve.len()),
+            "lane-curve",
+            Some(selected.contains(&note.id)),
+            false,
+        );
+    }
+
+    let (Some(brush), Some(pointer)) = (app.view.piano.brush, pointer) else { return };
+    if !pointer.down {
+        app.view.piano.brush = None;
+        return;
+    }
+    let (from, to) = if brush.last.x <= pointer.at.x { (brush.last, pointer.at) } else { (pointer.at, brush.last) };
+    let step = app.view.snap.ticks(project).clamp(15, 60);
+    let mut calls = Vec::new();
+    for note in editable(app, notes) {
+        let (x0, x1) = (grid.x(note.start.0 as f64), grid.x(note.end().0 as f64));
+        if x1 < from.x - REACH || x0 > to.x + REACH {
+            continue;
+        }
+        let before: BTreeMap<i64, f32> = lane.curve(note).iter().map(|p| (p.at.0, p.value)).collect();
+        let mut after = before.clone();
+        if brush.erase {
+            after.retain(|at, _| {
+                let x = grid.x((note.start.0 + at) as f64);
+                x < from.x - REACH || x > to.x + REACH
+            });
+        } else {
+            let height_at = |x: f32| {
+                let t = if to.x - from.x > 0.5 { ((x - from.x) / (to.x - from.x)).clamp(0.0, 1.0) } else { 1.0 };
+                (area.bottom() - (from.y + (to.y - from.y) * t)) / area.height()
+            };
+            // Ticks from the note's start that the stroke covered this frame, on the step grid.
+            let (lo, hi) = (grid.tick(from.x.max(x0)) - note.start.0 as f64, grid.tick(to.x.min(x1)) - note.start.0 as f64);
+            let mut at = ((lo.max(0.0) / step as f64).ceil() as i64) * step;
+            let mut placed = false;
+            while (at as f64) <= hi && at <= note.len.0 {
+                after.insert(at, lane.curve_value(height_at(grid.x((note.start.0 + at) as f64))));
+                placed = true;
+                at += step;
+            }
+            if !placed {
+                let at = (((lo + hi) / 2.0 / step as f64).round() as i64 * step).clamp(0, note.len.0);
+                after.insert(at, lane.curve_value(height_at(grid.x((note.start.0 + at) as f64))));
+            }
+        }
+        if after != before {
+            let points: Vec<Value> = after.iter().map(|(at, value)| json!({ "at": at, "value": value })).collect();
+            calls.push(bodo_engine::Call::new("note.set_expression", json!({ "note": note.id.0, key: points })).in_gesture(brush.gesture));
+        }
+    }
+    for call in calls {
+        let _ = app.invoke(call);
+    }
+    app.view.piano.brush = Some(Brush { last: pointer.at, ..brush });
+}
+
 impl Lane {
     /// The controller lane for `param`.
     fn from_param(param: ChannelParam) -> Self {
@@ -461,8 +625,8 @@ fn lane_menu(app: &mut BodoApp, ui: &mut Ui, label: Rect) {
     app.hint(&response, "Click to choose what the lane edits");
     ui.painter().text(label.center_top() + vec2(0.0, 10.0), Align2::CENTER_CENTER, lane.short(), FontId::proportional(size::SMALL), tk.text_dim);
     egui::Popup::menu(&response).show(|ui| {
-        for choice in Lane::NOTES.into_iter().chain(Lane::CONTROLLERS) {
-            if choice == Lane::PitchBend {
+        for choice in Lane::NOTES.into_iter().chain(Lane::EXPRESSION).chain(Lane::CONTROLLERS) {
+            if choice == Lane::NotePitch || choice == Lane::PitchBend {
                 ui.separator();
             }
             if ui.selectable_label(choice == lane, choice.label()).clicked() {

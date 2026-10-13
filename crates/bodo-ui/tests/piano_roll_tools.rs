@@ -356,3 +356,30 @@ fn the_tools_menu_articulates_and_randomizes() {
     assert!(!added.is_empty(), "randomize adds notes on the beat grid, a beat long");
     assert!(added.iter().all(|n| [0, 2, 4, 5, 7, 9, 11].contains(&(n.key % 12))), "in C major");
 }
+
+#[test]
+fn an_expression_lane_draws_each_notes_curve_and_right_drag_erases() {
+    let (mut h, canvas) = setup("draw");
+    add(&mut h, &[(60, 0, 960), (64, 1920, 480)]);
+    h.state_mut().view.piano.lane = bodo_ui::Lane::NotePitch;
+    h.run_steps(2);
+    let lane = element(&h, "Piano roll lane");
+    let pitch = |h: &Harness<'_, BodoApp>, key: u8| -> Vec<(i64, f32)> {
+        let note = kick(h).into_iter().find(|n| n.key == key).unwrap();
+        note.expr.map(|e| e.pitch.iter().map(|p| (p.at.0, p.value)).collect()).unwrap_or_default()
+    };
+    let before = steps(&h);
+    // Three quarters up the lane is +6 semitones; the stroke covers the first note only.
+    let y = lane.bottom() - 0.75 * lane.height();
+    let (from, to) = (pos2(canvas.left() + 1.0, y), pos2(canvas.left() + BEAT + 1.0, y));
+    drag(&mut h, PointerButton::Primary, from, &line(from, to, 8), Modifiers::NONE);
+    let drawn = pitch(&h, 60);
+    assert_eq!(drawn.iter().map(|(at, _)| *at).collect::<Vec<_>>(), (0..=960).step_by(60).collect::<Vec<_>>(), "a point every 60 ticks");
+    assert!(drawn.iter().all(|(_, v)| (v - 6.0).abs() < 0.5), "{drawn:?}");
+    assert!(pitch(&h, 64).is_empty(), "the stroke didn't reach the second note");
+    assert_eq!(steps(&h), before + 1, "a stroke is one undo step");
+    // Erasing the second half of the curve.
+    let half = pos2(canvas.left() + BEAT / 2.0, y);
+    drag(&mut h, PointerButton::Secondary, half, &line(half, to + egui::vec2(4.0, 0.0), 4), Modifiers::NONE);
+    assert!(pitch(&h, 60).iter().all(|(at, _)| *at < 480), "{:?}", pitch(&h, 60));
+}
