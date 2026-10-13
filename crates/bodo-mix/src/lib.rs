@@ -25,6 +25,7 @@ mod metronome;
 pub mod midi_record;
 pub mod nodes;
 pub mod offline;
+pub mod preview;
 pub mod record;
 pub mod sample;
 pub mod segments;
@@ -35,6 +36,7 @@ pub use engine::{AudioEngine, Engine, EngineConfig, EngineStatus, engine};
 pub use input::{LiveInput, MidiRouter};
 pub use midi_record::{CapturedTake, RecordedNote, TakeTarget};
 pub use offline::{OfflineOptions, render_offline};
+pub use preview::{Preview, PreviewPlayer, preview};
 pub use record::{Compensation, RecordError, Take};
 pub use sequence::PlayMode;
 
