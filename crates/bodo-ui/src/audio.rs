@@ -103,6 +103,8 @@ struct Running {
     take: Option<TakeTarget>,
     /// How many input channels the armed inserts took when the stream opened, whether or not the device had them.
     wanted_inputs: usize,
+    /// Sends MIDI Out channels' notes to their ports.
+    _midi_out: crate::midi_out::MidiOutSender,
 }
 
 /// Opens the MIDI inputs in `prefs`, or every input, each playing through `router`. Inputs that fail to open are
@@ -269,7 +271,8 @@ impl Audio {
                         (None, n) => format!(", {n} inputs"),
                     };
                     self.status = format!("{} kHz, {} frames{inputs_note}", f64::from(rate.hz()) / 1000.0, prefs.buffer_frames.unwrap_or(256));
-                    self.running = Some(Running { stream, engine, preview, live, router, midi, routed, take: None, wanted_inputs });
+                    let midi_out = crate::midi_out::MidiOutSender::start(engine.midi_out());
+                    self.running = Some(Running { stream, engine, preview, live, router, midi, routed, take: None, wanted_inputs, _midi_out: midi_out });
                     return;
                 }
                 Err(error) if inputs > 0 => {

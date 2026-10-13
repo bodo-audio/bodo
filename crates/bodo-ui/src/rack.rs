@@ -649,6 +649,10 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chan
     } else if response.clicked() {
         let add = ui.input(|i| i.modifiers.command || i.modifiers.shift);
         let _ = app.run("edit.select", json!({ "channels": [channel.id], "channel": channel.id, "add": add }));
+        // A plain click also opens the channel's window, such as the Sampler.
+        if !add {
+            let _ = app.run("ui.open_channel_window", json!({ "channel": channel.id }));
+        }
     }
     response.context_menu(|ui| channel_menu(app, ui, project, channel));
 }

@@ -915,6 +915,7 @@ dependencies = [
  "bodo-kit-audio",
  "bodo-kit-core",
  "bodo-kit-device",
+ "bodo-kit-dsp",
  "bodo-kit-music",
  "bodo-kit-ui",
  "bodo-mix",

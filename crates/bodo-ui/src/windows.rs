@@ -285,10 +285,32 @@ pub fn show<T>(
     if !state.open {
         return WindowEvents::default();
     }
+    let (new_state, events) = show_frame(ctx, area_id(kind), kind.icon(), state, workspace, title, state_of, header, body);
+    if new_state != state {
+        layout.windows.insert(kind, new_state);
+    }
+    events
+}
+
+/// Shows a free window with egui id `id`, its title bar showing `icon` and `title`, at `state` inside `workspace`.
+/// `header` draws extra controls into the title bar; `body` draws the contents. Returns the window's state after
+/// this frame's moves, resizes and button clicks, and what happened. Windows that come and go, such as channel
+/// windows, keep their own state; the main windows keep theirs in the [`Layout`].
+#[allow(clippy::too_many_arguments, reason = "a window needs its place, title, state and both parts")]
+pub fn show_frame<T>(
+    ctx: &egui::Context,
+    id: Id,
+    icon: Icon,
+    state: WindowState,
+    workspace: Rect,
+    title: &str,
+    state_of: &mut T,
+    header: impl FnOnce(&mut T, &mut Ui),
+    body: impl FnOnce(&mut T, &mut Ui),
+) -> (WindowState, WindowEvents) {
     let tk = Tokens::get();
     let full = if state.maximized { workspace } else { frame_rect(state.frame, workspace) };
     let rect = if state.minimized { Rect::from_min_size(full.min, vec2(full.width().min(300.0), size::TITLE_BAR)) } else { full };
-    let id = area_id(kind);
     // A window that wasn't showing comes to the front when it appears, however it was opened.
     let layer = egui::LayerId::new(Order::Middle, id);
     if !ctx.memory(|m| m.areas().visible_last_frame(&layer)) {
@@ -322,7 +344,7 @@ pub fn show<T>(
 
         let mut bar =
             ui.new_child(UiBuilder::new().max_rect(title_rect.shrink2(vec2(6.0, 3.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
-        kind.icon().paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(0.0, 3.0), vec2(14.0, 14.0)), tk.text_dim);
+        icon.paint(bar.painter(), Rect::from_min_size(bar.cursor().min + vec2(0.0, 3.0), vec2(14.0, 14.0)), tk.text_dim);
         bar.add_space(18.0);
         bar.label(egui::RichText::new(title).color(tk.text).size(size::BODY));
         bar.add_space(10.0);
@@ -353,10 +375,7 @@ pub fn show<T>(
             }
         }
     });
-    if new_state != state {
-        layout.windows.insert(kind, new_state);
-    }
-    events
+    (new_state, events)
 }
 
 /// The edges and corner that resize a window.

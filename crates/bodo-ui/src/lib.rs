@@ -15,9 +15,11 @@
 pub mod audio;
 mod autosave;
 mod browser;
+pub mod channel_window;
 pub mod control;
 mod dialogs;
 pub mod library;
+mod midi_out;
 mod mixer;
 mod palette;
 mod piano_roll;
@@ -241,6 +243,8 @@ pub struct View {
     pub rack: rack::RackView,
     /// Whether the playlist and the piano roll follow the playhead while it plays.
     pub auto_scroll: bool,
+    /// The open channel windows, such as the Sampler.
+    pub channel_windows: channel_window::ChannelWindows,
 }
 
 /// The main window.
@@ -457,6 +461,22 @@ impl BodoApp {
                 self.view.editor = WindowKind::PianoRoll;
                 Ok(json!({ "channel": self.session.editor().channel }))
             }
+            "ui.open_channel_window" => {
+                // Selecting the channel resolves the reference the way every command does.
+                if let Some(channel) = params.get("channel").filter(|c| !c.is_null())
+                    && let Err(e) = self.session.execute("edit.select", json!({ "channel": channel }))
+                {
+                    return Some(Err(e.to_string()));
+                }
+                match self.session.editor().channel {
+                    Some(channel) => {
+                        let ctx = self.remote.ctx();
+                        channel_window::open(self, ctx.as_ref(), channel);
+                        Ok(json!({ "channel": channel, "open": true }))
+                    }
+                    None => Err(String::from("there is no channel to open")),
+                }
+            }
             "ui.palette" => {
                 self.view.palette = Some(palette::PaletteState::default());
                 Ok(json!({ "palette": true }))
@@ -488,6 +508,11 @@ impl BodoApp {
                 "Sets the tool of the editor used last, or of {\"window\": \"playlist\" or \"pianoRoll\"}: draw, paint, delete, mute, slip (playlist only), slice, select, zoom or playback.",
             ),
             ("ui.open_piano_roll", "Open piano roll", "Opens the piano roll, optionally for a channel: {\"channel\": \"Kick\"}."),
+            (
+                "ui.open_channel_window",
+                "Open channel window",
+                "Opens a channel's window, such as the Sampler, for the selected channel or {\"channel\": \"Kick\"}.",
+            ),
             ("ui.palette", "Command palette", "Opens the command palette."),
         ]
     }
@@ -575,6 +600,7 @@ impl BodoApp {
             mixer::window(self, ui.ctx(), workspace, &project);
             rack::window(self, ui.ctx(), workspace, &project);
             piano_roll::window(self, ui.ctx(), workspace, &project);
+            channel_window::show_all(self, ui.ctx(), workspace, &project);
             // A press on the playlist or the piano roll makes it the editor the tool keys act on.
             let ctx = ui.ctx();
             let pressed = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });
