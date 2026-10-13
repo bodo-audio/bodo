@@ -400,8 +400,7 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "sample": "factory:Packs/Bodo Drums/Kick.wav", "name": "Kick" }))
         .menu("Add/Channel");
     r.edit("channel.remove", "Remove channels", "Removes channels with their notes, clips and routes.", Effects::UNDOABLE, remove)
-        .example(json!({ "channels": ["Clap"] }))
-        .shortcut("Delete");
+        .example(json!({ "channels": ["Clap"] }));
     r.edit(
         "channel.duplicate",
         "Duplicate channel",

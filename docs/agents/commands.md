@@ -97,7 +97,6 @@ Example:
 Removes channels with their notes, clips and routes.
 
 - Effects: undoable
-- Shortcut: Delete
 
 | Param | Type | Description |
 |---|---|---|

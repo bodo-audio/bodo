@@ -632,6 +632,11 @@ impl Session {
         self.events.push(Event::ProjectReplaced);
     }
 
+    /// Makes `project` current as an unsaved project with no file, for example one recovered from an autosave.
+    pub fn recover(&mut self, project: Project) {
+        self.replace(project, None, false);
+    }
+
     /// Starts a new project from `template`, replacing the current one.
     pub fn new_project(&mut self, template: Template) {
         let created = (!self.ids.is_counting()).then(crate::template::now_rfc3339);
