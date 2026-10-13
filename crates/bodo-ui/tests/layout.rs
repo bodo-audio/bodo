@@ -27,8 +27,8 @@ fn with_beat(app: &mut BodoApp) {
     app.run("ui.open_piano_roll", serde_json::json!({ "channel": "808" })).unwrap();
 }
 
-/// The beat with the piano roll filling the workspace: A minor highlighted, a slide note, and a selected A minor
-/// chord, which the readout names.
+/// The beat with the piano roll filling the workspace: A minor highlighted, a slide note in another color group, and
+/// a selected A minor chord, which the readout names.
 fn with_piano(app: &mut BodoApp) {
     with_beat(app);
     let mut state = app.prefs.layout.state(WindowKind::PianoRoll);
@@ -37,7 +37,7 @@ fn with_piano(app: &mut BodoApp) {
     app.view.piano.scale = Some(Scale::new(PitchClass::new(9), ScaleKind::Minor));
     app.view.piano.top_key = 72.0;
     app.run("note.add_many", json!({ "channel": "808", "notes": [{ "key": 55, "start": 2880, "length": 480 }] })).unwrap();
-    app.run("note.set_props", json!({ "slide": true, "velocity": 0.5 })).unwrap();
+    app.run("note.set_props", json!({ "slide": true, "velocity": 0.5, "color": 3 })).unwrap();
     let chord = [57, 60, 64].map(|key| json!({ "key": key, "start": 1920, "length": 720 }));
     app.run("note.add_many", json!({ "channel": "808", "notes": chord })).unwrap();
 }

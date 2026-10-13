@@ -62,6 +62,13 @@ pub(crate) fn handle(app: &mut BodoApp, ctx: &egui::Context) {
             }
             "project.new" => crate::dialogs::guard_unsaved(app, crate::dialogs::Pending::New),
             "project.open" => crate::dialogs::guard_unsaved(app, crate::dialogs::Pending::Open(None)),
+            // With a time selection on the playlist in front, copy and cut take every track's clips in it.
+            "edit.copy" | "edit.cut"
+                if app.view.editor == WindowKind::Playlist
+                    && let Some((start, end)) = app.view.playlist.time_selection =>
+            {
+                let _ = app.run(id, json!({ "start": start, "end": end }));
+            }
             _ => {
                 let _ = app.run(id, json!({}));
             }

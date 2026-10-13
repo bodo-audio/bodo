@@ -218,3 +218,17 @@ fn a_clips_menu_opens_from_its_name_strip_and_makes_it_unique() {
     assert_eq!((after.id, after.start), (verse.id, verse.start), "the right-click didn't delete the clip");
     assert_ne!(after.source, verse.source, "the clip plays a copy of its pattern now");
 }
+
+#[test]
+fn cmd_x_cuts_the_time_selection_on_every_track() {
+    let (mut h, _) = setup("draw");
+    h.state_mut().view.playlist.time_selection = Some((7680, 15_360));
+    h.state_mut().view.editor = bodo_ui::windows::WindowKind::Playlist;
+    h.run_steps(2);
+    h.key_press_modifiers(Modifiers::COMMAND, egui::Key::X);
+    h.run_steps(2);
+    let starts: Vec<i64> = clips(&h, 1).iter().map(|c| c.start.0).collect();
+    assert!(starts.iter().all(|s| !(7680..15_360).contains(s)), "nothing starts inside the cut: {starts:?}");
+    assert!(starts.contains(&15_360), "the Verse goes on after the cut: {starts:?}");
+    assert!(h.state().session.editor().clipboard.is_some(), "the cut clips are on the clipboard");
+}

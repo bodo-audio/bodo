@@ -517,6 +517,11 @@ fn follow_playhead(app: &mut BodoApp, canvas: Rect) {
 
 fn draw_note(ui: &Ui, painter: &egui::Painter, project: &Project, note: &Note, rect: Rect, color: egui::Color32, selected: bool) {
     let tk = Tokens::get();
+    // A note in a color group other than the first takes that group's hue instead of the channel's.
+    let color = match usize::from(note.color) {
+        0 => color,
+        group => bodo_engine::palette::HUES.get(group).map_or(color, |hue| theme::color(*hue)),
+    };
     let velocity = f32::from(note.velocity) / f32::from(u16::MAX);
     let fill = theme::faded(theme::tint(color, 0.45 + 0.55 * velocity), if note.muted { 0.35 } else { 1.0 });
     painter.rect_filled(rect, 2.0, fill);

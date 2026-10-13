@@ -206,14 +206,6 @@ fn kick_notes(h: &Harness<'_, BodoApp>) -> Vec<Note> {
     pattern.notes.get(&channel(h, "Kick")).map(|seq| seq.notes().iter().cloned().collect()).unwrap_or_default()
 }
 
-fn options(name: &str) -> egui_kittest::SnapshotOptions {
-    let os_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(std::env::consts::OS);
-    let options = egui_kittest::SnapshotOptions::new()
-        .threshold(egui_kittest::OsThreshold::new(1.5).windows(2.0))
-        .max_failed_pixels(egui_kittest::OsThreshold::new(400).windows(2000));
-    if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
-}
-
 /// The rack filtered to a Drums group with swing and the graph editor open, in `theme`.
 fn snapshot(name: &str, theme: Theme) {
     let mut app = common::app(theme);
@@ -225,7 +217,7 @@ fn snapshot(name: &str, theme: Theme) {
     app.view.rack.graph = true;
     let mut harness = common::harness(app, theme, true);
     harness.run_steps(6);
-    harness.snapshot_options(name, &options(name));
+    harness.snapshot_options(name, &common::snapshot_options(name));
 }
 
 #[test]

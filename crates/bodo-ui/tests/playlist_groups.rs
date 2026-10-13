@@ -229,14 +229,6 @@ fn auto_scrolling_follows_the_playhead_while_the_song_plays() {
     h.state_mut().run("transport.stop", json!({})).unwrap();
 }
 
-fn options(name: &str) -> egui_kittest::SnapshotOptions {
-    let os_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/snapshots").join(std::env::consts::OS);
-    let options = egui_kittest::SnapshotOptions::new()
-        .threshold(egui_kittest::OsThreshold::new(1.5).windows(2.0))
-        .max_failed_pixels(egui_kittest::OsThreshold::new(400).windows(2000));
-    if os_dir.join(format!("{name}.png")).exists() { options.output_path(os_dir) } else { options }
-}
-
 /// The beat with its first two tracks in a soloed group and bars 3 to 5 selected, in `theme`.
 fn snapshot(name: &str, theme: Theme) {
     let mut app = common::beat_app();
@@ -247,7 +239,7 @@ fn snapshot(name: &str, theme: Theme) {
     app.view.playlist.time_selection = Some((7680, 15_360));
     let mut harness = common::harness(app, theme, true);
     harness.run_steps(6);
-    harness.snapshot_options(name, &options(name));
+    harness.snapshot_options(name, &common::snapshot_options(name));
 }
 
 #[test]
