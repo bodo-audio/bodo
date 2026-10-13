@@ -48,6 +48,7 @@ cargo xtask unsafe-audit  # unsafe-code boundary only
 cargo xtask text          # text style only
 cargo xtask deny          # license and advisory policy (needs `cargo install cargo-deny --locked`)
 cargo test -p <crate>     # one crate
+RTSAN_ENABLE=1 cargo test -p <crate>   # with RealtimeSanitizer (Linux and macOS)
 cargo xtask kit new <name> --kind effect|instrument   # scaffold a Bodo Kit plugin (M6)
 ```
 
@@ -70,7 +71,7 @@ Do this instead:
 - Address parameters, nodes and buffers by integer id, never by string.
 - Mark RT functions with `#[rt_safe]` and document them with `/// RT-safe`.
 
-Debug builds catch allocations through `assert_no_alloc`, and a CI job runs `rtsan`.
+Debug builds catch allocations through `assert_no_alloc`, and a CI job runs the tests under RealtimeSanitizer, which also catches locks and blocking calls inside `#[rt_safe]` code.
 
 ## 5. Code policy
 

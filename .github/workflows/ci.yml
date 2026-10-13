@@ -33,3 +33,19 @@ jobs:
         with:
           tool: cargo-deny
       - run: cargo xtask ci
+
+  rtsan:
+    # RealtimeSanitizer aborts on any allocation, lock or blocking call inside #[rt_safe] code (ADR 0014).
+    name: RealtimeSanitizer (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      RTSAN_ENABLE: "1"
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace --all-features --locked
