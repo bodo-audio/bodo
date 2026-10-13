@@ -23,6 +23,7 @@ bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
 # Bodo DAW
+bodo-control = { path = "crates/bodo-control" }
 bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
 
@@ -55,6 +56,10 @@ serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 thiserror = "2.0.21"
 ulid = "3.0.0"
 tracing = { version = "0.1.41", default-features = false, features = ["std"] }
+
+# Platform services
+directories = "6.0.0"
+getrandom = "0.4.3"
 
 # Tooling (xtask only)
 anyhow = "1.0.104"
