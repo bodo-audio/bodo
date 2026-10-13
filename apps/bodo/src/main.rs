@@ -14,6 +14,9 @@ use std::process::ExitCode;
 use bodo_engine::{Env, Session, locate_factory};
 use bodo_ui::{BodoApp, PREFS_KEY, Prefs, Services};
 
+#[cfg(target_os = "macos")]
+mod native_menu;
+
 const USAGE: &str = "\
 usage: bodo [options] [project.bodo]
 
@@ -46,11 +49,18 @@ struct App {
     app: BodoApp,
     title: String,
     save_prefs: bool,
+    /// The native menu bar, on macOS.
+    #[cfg(target_os = "macos")]
+    menu: Option<native_menu::NativeMenu>,
 }
 
 impl eframe::App for App {
     fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.app.logic(ctx);
+        #[cfg(target_os = "macos")]
+        if let Some(menu) = &mut self.menu {
+            menu.update(&mut self.app);
+        }
         if ctx.input(|i| i.viewport().close_requested()) && !self.app.quit_requested && self.app.session.is_dirty() && !self.app.quit_after_shot {
             ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
             self.app.request_quit();
@@ -268,7 +278,16 @@ fn run(args: Args) -> anyhow::Result<()> {
                 app.shots.request(path.clone());
                 app.quit_after_shot = true;
             }
-            Ok(Box::new(App { app, title: String::new(), save_prefs: !args.fresh }))
+            // The native menu bar replaces winit's default one; a screenshot run needs none.
+            #[cfg(target_os = "macos")]
+            let menu = (!screenshot).then(|| native_menu::NativeMenu::new(&cc.egui_ctx));
+            Ok(Box::new(App {
+                app,
+                title: String::new(),
+                save_prefs: !args.fresh,
+                #[cfg(target_os = "macos")]
+                menu,
+            }))
         }),
     )
     .map_err(|e| anyhow::anyhow!("{e}"))
