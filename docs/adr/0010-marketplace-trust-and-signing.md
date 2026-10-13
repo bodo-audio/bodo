@@ -1,6 +1,6 @@
 # ADR 0010: Marketplace trust model and signing
 
-- **Status:** Accepted
+- **Status:** Accepted; partly superseded by ADR 0013 (paid items and closed-source plugins)
 - **Date:** 2026-10-13
 - **Deciders:** hasan-muzak
 
