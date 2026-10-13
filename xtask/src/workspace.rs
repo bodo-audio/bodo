@@ -1,6 +1,7 @@
 //! Shared helpers: workspace metadata, running cargo, and reporting findings.
 
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package};
@@ -26,6 +27,25 @@ pub fn relative_dir(metadata: &Metadata, package: &Package) -> String {
     let dir = package.manifest_path.parent().unwrap_or(&package.manifest_path);
     let relative = dir.strip_prefix(&metadata.workspace_root).unwrap_or(dir);
     relative.as_str().replace('\\', "/")
+}
+
+/// Whether `relative_dir` belongs to Bodo Kit.
+pub fn is_kit(relative_dir: &str) -> bool {
+    relative_dir.starts_with("kit/")
+}
+
+/// A `cargo` command, using the same cargo that started the xtask.
+pub fn cargo() -> Command {
+    Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+}
+
+/// Runs `command` with inherited output and fails if it exits unsuccessfully.
+pub fn run(command: &mut Command) -> Result<()> {
+    let status = command.status().with_context(|| format!("could not run {command:?}"))?;
+    if !status.success() {
+        bail!("{command:?} exited with {status}");
+    }
+    Ok(())
 }
 
 /// Prints `findings` and fails when there are any.

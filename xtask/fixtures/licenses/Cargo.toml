@@ -1,0 +1,13 @@
+# Fixture for `cargo xtask deny`. bodo-kit-core, a Kit crate, depends on a GPL crate on purpose, which the Kit
+# license policy must reject. bodo-model, a DAW crate, depends on the same crate, which the DAW policy allows.
+# The crate under vendor/ stands in for an external crate.
+
+[workspace]
+resolver = "3"
+members = ["kit/*", "crates/*"]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+publish = false

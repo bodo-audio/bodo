@@ -1,0 +1,55 @@
+# Dependency policy for the whole workspace, run by `cargo xtask deny`.
+#
+# The licenses below are the DAW policy: permissive, MPL-2.0 and GPL-3.0-compatible licenses. Bodo Kit crates
+# get a stricter, permissive-only license check from kit/deny.toml (project.md section 3.1, ADR 0002).
+
+[graph]
+all-features = true
+
+[advisories]
+ignore = []
+
+[licenses]
+confidence-threshold = 0.93
+# The allow lists are policy, so a license nobody uses yet is not worth a warning.
+unused-allowed-license = "allow"
+allow = [
+    # Permissive
+    "0BSD",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+    # File-level copyleft
+    "MPL-2.0",
+    # GPL-3.0-compatible copyleft, for DAW crates only
+    "GPL-3.0-only",
+    "GPL-3.0-or-later",
+    "LGPL-2.1-or-later",
+    "LGPL-3.0-only",
+    "LGPL-3.0-or-later",
+]
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+# VST2 can't be licensed (ADR 0004).
+deny = [
+    { crate = "vst", reason = "VST2 is not supported: no license is available" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

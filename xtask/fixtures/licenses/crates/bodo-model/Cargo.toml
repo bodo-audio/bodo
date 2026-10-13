@@ -1,0 +1,10 @@
+[package]
+name = "bodo-model"
+license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+bodo-kit-midi = { path = "../../kit/bodo-kit-midi" }
+gpl-thing = { version = "1.0.0", path = "../../vendor/gpl-thing" }
