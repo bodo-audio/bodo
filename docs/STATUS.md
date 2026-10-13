@@ -36,6 +36,32 @@ Progress per milestone ([project.md section 20](../project.md#20-roadmap)). Upda
 
 Started 2026-10-13.
 
+| Item | State | Where |
+|---|---|---|
+| RT-safety tooling | Done | `#[rt_safe]` (`bodo-kit-macros`), RealtimeSanitizer CI job, denormal flushing ([ADR 0014](adr/0014-rt-safety-tooling-and-plan-handoff.md)) |
+| Plan handoff | Done | `bodo_kit_core::handoff` |
+| `bodo-kit-dsp` basics | Done | gain, pan laws, stereo, smoothing, delay lines, biquads and SVF, ADSR, interpolation, buffers |
+| `bodo-kit-graph` | Done | incremental cycle checks, Kahn ordering, delay compensation, parallel executor ([ADR 0015](adr/0015-graph-executor.md)) |
+| `bodo-kit-audio` | Done | decoding, WAV writing, resampling, peaks, disk streaming ([ADR 0016](adr/0016-disk-streaming-in-kit-audio.md)) |
+| `bodo-kit-device` | Done, Windows low latency to come | device lists, streams, latency, dropout counting, hot-plug detection, virtual device; ASIO builds in CI |
+| `bodo-model` v1 | Done | the project document and `Project::validate()` |
+| `bodo-mix` | Done | realtime and offline engine, built-in sampler, sequencer, insert strips |
+| WASAPI exclusive mode | Next | low latency on Windows without an ASIO audio interface, like FL Studio ASIO |
+| macOS audio workgroup | Next | RT workers join the device's `os_workgroup` |
+
+### Exit criteria
+
+| Criterion | State |
+|---|---|
+| 64 frames at 48 kHz without dropouts for 100 sampler voices | Met on an Apple Silicon Mac: 10 s, 7,503 callbacks, 0 dropouts, peak load 9% with 7 workers and 18% with none (`crates/bodo-mix/tests/stress.rs`, run by hand in release) |
+| Zero allocations under rtsan | Met: every RT test suite runs under RealtimeSanitizer in CI, and the stress scenario ran clean under it locally |
+| Offline renders bit-identical across runs | Met: `renders_are_bit_identical_for_any_workers_and_block_size` |
+
+### Deferred to M4
+
+- The 5 ms crossfade on graph changes, buffer reuse across nodes, and CPU time per node ([ADR 0015](adr/0015-graph-executor.md)).
+- FX slots, strip EQ, send taps other than post-fader, sidechains, solo and negative track latency in the mixer strip.
+
 ## M2 to M9
 
 Not started.

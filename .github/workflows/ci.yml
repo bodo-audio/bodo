@@ -55,3 +55,13 @@ jobs:
       - run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --workspace --all-features --locked
+
+  asio:
+    # ASIO support for audio interfaces on Windows. asio-sys downloads Steinberg's ASIO SDK during the build.
+    name: ASIO build (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo build -p bodo-kit-device --features asio --locked
