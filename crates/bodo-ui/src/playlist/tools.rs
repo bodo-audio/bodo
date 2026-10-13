@@ -3,14 +3,20 @@
 //! A press on the canvas starts a gesture for the current tool, moves update it, and the release finishes it. Every
 //! change a gesture makes runs as commands of one gesture, so it is one undo step. Selection, zoom and scrubbing
 //! never enter the history.
+//!
+//! The draw tool also works the handles on audio and automation clips: dragging a fade handle sets the fade, dragging
+//! an automation point moves it, a double-click on an automation clip adds a point and a right-click on a point
+//! removes it. A sound dropped from the browser becomes an audio clip where it lands.
 
 use bodo_engine::{Call, PlayMode};
 use bodo_model::playlist::ClipSource;
-use bodo_model::{ClipId, Project, TrackId};
+use bodo_model::{ChannelId, ClipId, Project, TrackId};
 use egui::{Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2};
 use serde_json::json;
 
-use super::{Canvas, Shown, Tool, Zone};
+use super::media::{self, Handle};
+use super::{Canvas, Shown, Source, Tool, Zone, content_rect, current_source, source_length};
+use crate::browser::SoundPayload;
 use crate::theme::{self, Tokens};
 use crate::{BodoApp, Snap, control};
 
@@ -20,12 +26,17 @@ const PAINT_PER_FRAME: usize = 32;
 /// A gesture in progress on the canvas.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Drag {
-    /// The draw tool's new clip, placed on release.
-    Place { track: TrackId, start: i64 },
+    /// The draw tool's new clip of `source`, placed on release.
+    Place { track: TrackId, start: i64, source: Source },
     /// A clip being moved; `grab` is where it was held, in ticks from its start.
     Move { clip: ClipId, grab: f64, gesture: u64 },
     /// A clip's right edge being dragged.
     Resize { clip: ClipId, start: i64, gesture: u64 },
+    /// An audio clip's fade being dragged: the clip's start and end, and whether it is the fade-out.
+    Fade { clip: ClipId, start: i64, end: i64, out: bool, gesture: u64 },
+    /// A point of automation channel `channel` being dragged: its index, the tick its lane counts from, and the
+    /// clip's content area, which maps heights to values.
+    Point { channel: ChannelId, index: usize, origin: i64, content: Rect, gesture: u64 },
     /// Copies being painted; `next` is where the next one goes on its track.
     Paint { gesture: u64, next: Option<(TrackId, i64)> },
     /// Clips being deleted along the path.
@@ -50,6 +61,7 @@ struct Pointer {
     at: Pos2,
     primary_pressed: bool,
     secondary_pressed: bool,
+    double_clicked: bool,
     down: bool,
     shift: bool,
     alt: bool,
@@ -59,6 +71,7 @@ struct Pointer {
 pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &Canvas) {
     let response = ui.interact(canvas.rect, ui.id().with("playlist-canvas"), Sense::click_and_drag());
     control::record(ui, &response, "Playlist canvas", "canvas", None);
+    drop_sound(app, ui, project, canvas, &response);
     let tool = app.view.playlist.tool;
     if response.hovered() {
         app.view.hint = Some(tool.hint().to_owned());
@@ -68,6 +81,7 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
             at,
             primary_pressed: i.pointer.primary_pressed(),
             secondary_pressed: i.pointer.secondary_pressed(),
+            double_clicked: i.pointer.button_double_clicked(egui::PointerButton::Primary),
             down: i.pointer.any_down(),
             shift: i.modifiers.shift,
             alt: i.modifiers.alt,
@@ -81,6 +95,8 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
     let pressed_here = response.is_pointer_button_down_on() || response.hovered();
     if app.view.playlist.drag.is_none() && pressed_here && canvas.rect.contains(pointer.at) {
         if pointer.primary_pressed {
+            let presses = &mut app.view.playlist.presses;
+            *presses = [presses[1], canvas.clip_at(pointer.at).map(|(clip, _)| clip.id)];
             begin(app, project, canvas, tool, pointer);
         } else if pointer.secondary_pressed {
             begin_secondary(app, project, canvas, tool, pointer);
@@ -93,13 +109,49 @@ pub(super) fn input(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: &
             finish(app, project, canvas, pointer);
         }
     }
-    overlay(app, ui, project, canvas, pointer);
+    if pointer.double_clicked && tool == Tool::Draw && canvas.rect.contains(pointer.at) {
+        add_point(app, project, canvas, pointer);
+    }
+    let ghost = match app.view.playlist.drag {
+        Some(Drag::Place { track, start, source }) => {
+            let length = source_length(app, ui.ctx(), project, source, start);
+            canvas.rows.iter().find(|r| r.id == track).map(|row| {
+                let rect = Rect::from_min_max(
+                    pos2(canvas.scale.x(start as f64), row.top + 1.0),
+                    pos2(canvas.scale.x((start + length) as f64), row.top + row.height - 1.0),
+                );
+                (rect, source.look(project).map(|(_, color)| color))
+            })
+        }
+        _ => None,
+    };
+    overlay(app, ui, canvas, pointer, ghost);
     // Cursors that say what a press would do.
-    if response.hovered()
-        && tool == Tool::Draw
-        && let Some((_, Zone::Edge)) = canvas.clip_at(pointer.at)
-    {
-        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    if response.hovered() && tool == Tool::Draw {
+        match canvas.clip_at(pointer.at) {
+            Some((_, Zone::Edge | Zone::Handle(Handle::FadeIn | Handle::FadeOut))) => ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal),
+            Some((_, Zone::Handle(Handle::Point(_)))) => ui.ctx().set_cursor_icon(egui::CursorIcon::Grab),
+            _ => {}
+        }
+    }
+}
+
+/// A sound dragged from the browser and dropped on a track becomes an audio clip there, and the clip source.
+fn drop_sound(app: &mut BodoApp, ui: &Ui, project: &Project, canvas: &Canvas, response: &egui::Response) {
+    let Some(at) = ui.input(|i| i.pointer.latest_pos()) else { return };
+    let (Some(row), true) = (canvas.row_at(at.y), canvas.rect.contains(at)) else { return };
+    let start = app.view.snap.floor(project, canvas.scale.tick(at.x)).max(0);
+    if response.dnd_hover_payload::<SoundPayload>().is_some() {
+        let tk = Tokens::get();
+        let band = Rect::from_min_max(pos2(canvas.scale.x(start as f64), row.top + 1.0), pos2(canvas.rect.right(), row.top + row.height - 1.0));
+        let painter = ui.painter().with_clip_rect(canvas.rect);
+        painter.rect(band, 3.0, theme::faded(tk.accent, 0.12), Stroke::new(1.0, tk.accent), StrokeKind::Inside);
+    }
+    if let Some(payload) = response.dnd_release_payload::<SoundPayload>() {
+        let placed = app.run("clip.place_sound", json!({ "track": row.id, "sample": payload.0, "start": start }));
+        if let Some(channel) = placed.ok().and_then(|r| serde_json::from_value::<ChannelId>(r["channel"].clone()).ok()) {
+            app.view.playlist.source = Some(channel);
+        }
     }
 }
 
@@ -107,9 +159,26 @@ fn snap(app: &BodoApp, pointer: Pointer) -> Snap {
     if pointer.alt { Snap::None } else { app.view.snap }
 }
 
-/// The pattern clips of `track` hold `pattern` at `start` already.
+/// The clips of `track` hold a clip at `start` already.
 fn occupied(canvas: &Canvas, track: TrackId, start: i64) -> bool {
     canvas.shown.iter().any(|c| c.track == track && c.start == start)
+}
+
+/// The length of the first clip starting at `start` on `track`.
+///
+/// Complexity: O(log n) in the track's clips.
+fn clip_length_at(project: &Project, track: TrackId, start: i64) -> Option<i64> {
+    let clips = &project.tracks.get(&track)?.clips;
+    clips.get(super::first_starting_after(clips, start as f64)).filter(|c| c.start.0 == start).map(|c| c.len.0)
+}
+
+/// The clip `shown` stands for, found by binary search on its track's starts.
+///
+/// Complexity: O(log n + k) in the track's clips and clips starting at the same tick.
+fn clip_of<'p>(project: &'p Project, shown: &Shown) -> Option<&'p bodo_model::Clip> {
+    let clips = &project.tracks.get(&shown.track)?.clips;
+    let from = super::first_starting_after(clips, shown.start as f64);
+    clips.iter().skip(from).take_while(|c| c.start.0 == shown.start).find(|c| c.id == shown.id)
 }
 
 fn begin(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, pointer: Pointer) {
@@ -117,13 +186,14 @@ fn begin(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, poin
     let hit = canvas.clip_at(pointer.at);
     let drag = match tool {
         Tool::Draw => match hit {
+            Some((clip, Zone::Handle(handle))) => begin_handle(app, project, &clip, handle),
             Some((clip, Zone::Edge)) => Some(Drag::Resize { clip: clip.id, start: clip.start, gesture: app.new_gesture() }),
             Some((clip, _)) => {
                 select_clip(app, &clip);
                 Some(Drag::Move { clip: clip.id, grab: at - clip.start as f64, gesture: app.new_gesture() })
             }
-            None => match (canvas.row_at(pointer.at.y), app.session.editor().pattern) {
-                (Some(row), Some(_)) => Some(Drag::Place { track: row.id, start: snap(app, pointer).floor(project, at).max(0) }),
+            None => match (canvas.row_at(pointer.at.y), current_source(app, project)) {
+                (Some(row), Some(source)) => Some(Drag::Place { track: row.id, start: snap(app, pointer).floor(project, at).max(0), source }),
                 _ => None,
             },
         },
@@ -153,6 +223,24 @@ fn begin(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, poin
     }
 }
 
+/// Starts dragging a fade or automation point handle of `shown`.
+fn begin_handle(app: &mut BodoApp, project: &Project, shown: &Shown, handle: Handle) -> Option<Drag> {
+    let clip = clip_of(project, shown)?;
+    let gesture = app.new_gesture();
+    match (handle, clip.source) {
+        (Handle::FadeIn | Handle::FadeOut, _) => {
+            Some(Drag::Fade { clip: clip.id, start: clip.start.0, end: clip.end().0, out: handle == Handle::FadeOut, gesture })
+        }
+        (Handle::Point(index), ClipSource::Automation(channel)) => {
+            let header =
+                Rect::from_min_max(shown.rect.min, pos2(shown.rect.right(), (shown.rect.top() + super::HEADER_STRIP).min(shown.rect.bottom())));
+            let content = content_rect(shown.rect, header);
+            Some(Drag::Point { channel, index, origin: media::lane_origin(clip), content, gesture })
+        }
+        (Handle::Point(_), _) => None,
+    }
+}
+
 fn begin_secondary(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: Tool, pointer: Pointer) {
     let hit = canvas.clip_at(pointer.at);
     if let Some((clip, Zone::Header)) = hit
@@ -162,11 +250,18 @@ fn begin_secondary(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: 
         return;
     }
     match tool {
-        Tool::Draw => {
-            if let Some((clip, _)) = hit {
+        Tool::Draw => match hit {
+            // Right-clicking an automation point removes it, not its clip.
+            Some((clip, Zone::Handle(Handle::Point(index)))) => {
+                if let ClipSource::Automation(channel) = clip.source {
+                    let _ = app.run("automation.remove_point", json!({ "channel": channel, "index": index }));
+                }
+            }
+            Some((clip, _)) => {
                 let _ = app.run("clip.remove", json!({ "clips": [clip.id] }));
             }
-        }
+            None => {}
+        },
         Tool::Paint | Tool::Delete => {
             app.view.playlist.drag = Some(Drag::Erase { gesture: app.new_gesture() });
             update(app, project, canvas, pointer);
@@ -179,18 +274,40 @@ fn begin_secondary(app: &mut BodoApp, project: &Project, canvas: &Canvas, tool: 
     }
 }
 
-/// Selects `clip` and makes its pattern current, as clicking a clip does in FL.
+/// Selects `clip` and makes its source current, as clicking a clip does in FL.
 fn select_clip(app: &mut BodoApp, clip: &Shown) {
     let _ = app.run("edit.select", json!({ "clips": [clip.id], "track": clip.track }));
-    if let ClipSource::Pattern(pattern) = clip.source
-        && app.session.editor().pattern != Some(pattern)
-    {
-        let _ = app.run("ui.select_pattern", json!({ "pattern": pattern }));
+    match clip.source {
+        ClipSource::Pattern(pattern) => {
+            app.view.playlist.source = None;
+            if app.session.editor().pattern != Some(pattern) {
+                let _ = app.run("ui.select_pattern", json!({ "pattern": pattern }));
+            }
+        }
+        ClipSource::Audio(channel) | ClipSource::Automation(channel) => app.view.playlist.source = Some(channel),
     }
 }
 
-fn run_in(app: &mut BodoApp, gesture: u64, id: &str, params: serde_json::Value) {
-    let _ = app.invoke(Call::new(id, params).in_gesture(gesture));
+/// A double-click on an automation clip, off its points, adds a point there. Both presses must land on the clip, so a
+/// double-click that first placed the clip doesn't also add a point to it.
+fn add_point(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer) {
+    let Some((shown, Zone::Body | Zone::Header)) = canvas.clip_at(pointer.at) else { return };
+    if app.view.playlist.presses != [Some(shown.id); 2] {
+        return;
+    }
+    let (ClipSource::Automation(channel), Some(clip)) = (shown.source, clip_of(project, &shown)) else { return };
+    let header = Rect::from_min_max(shown.rect.min, pos2(shown.rect.right(), (shown.rect.top() + super::HEADER_STRIP).min(shown.rect.bottom())));
+    let content = content_rect(shown.rect, header);
+    if !content.contains(pointer.at) {
+        return;
+    }
+    let tick = snap(app, pointer).round(project, canvas.scale.tick(pointer.at.x)).clamp(clip.start.0, clip.end().0);
+    let at = (tick - media::lane_origin(clip)).max(0);
+    let _ = app.run("automation.add_point", json!({ "channel": channel, "at": at, "value": media::y_value(content, pointer.at.y) }));
+}
+
+fn run_in(app: &mut BodoApp, gesture: u64, id: &str, params: serde_json::Value) -> Result<serde_json::Value, String> {
+    app.invoke(Call::new(id, params).in_gesture(gesture))
 }
 
 fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer) {
@@ -199,8 +316,8 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
     let snap = snap(app, pointer);
     let hit = canvas.clip_at(pointer.at);
     let next = match drag {
-        Drag::Place { .. } => match canvas.row_at(pointer.at.y) {
-            Some(row) => Drag::Place { track: row.id, start: snap.floor(project, at).max(0) },
+        Drag::Place { source, .. } => match canvas.row_at(pointer.at.y) {
+            Some(row) => Drag::Place { track: row.id, start: snap.floor(project, at).max(0), source },
             None => drag,
         },
         Drag::Move { clip, grab, gesture } => {
@@ -209,19 +326,29 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
             let current = canvas.shown.iter().find(|c| c.id == clip);
             let moved = current.is_none_or(|c| c.start != start || track.is_some_and(|t| t != c.track));
             if moved {
-                run_in(app, gesture, "clip.move", json!({ "clips": [clip], "start": start, "track": track }));
+                let _ = run_in(app, gesture, "clip.move", json!({ "clips": [clip], "start": start, "track": track }));
             }
             drag
         }
         Drag::Resize { clip, start, gesture } => {
             let end = snap.round(project, at).max(start + snap.ticks(project).max(1));
-            run_in(app, gesture, "clip.resize", json!({ "clips": [clip], "length": end - start }));
+            let _ = run_in(app, gesture, "clip.resize", json!({ "clips": [clip], "length": end - start }));
+            drag
+        }
+        Drag::Fade { clip, start, end, out, gesture } => {
+            let tick = snap.round(project, at).clamp(start, end);
+            let params = if out { json!({ "clips": [clip], "fadeOut": end - tick }) } else { json!({ "clips": [clip], "fadeIn": tick - start }) };
+            let _ = run_in(app, gesture, "clip.set_fades", params);
+            drag
+        }
+        Drag::Point { channel, index, origin, content, gesture } => {
+            move_point(app, project, pointer, snap.round(project, at) - origin, (channel, index, content, gesture));
             drag
         }
         Drag::Paint { gesture, next } => paint(app, project, canvas, pointer, gesture, next),
         Drag::Erase { gesture } => {
             if let Some((clip, _)) = hit {
-                run_in(app, gesture, "clip.remove", json!({ "clips": [clip.id] }));
+                let _ = run_in(app, gesture, "clip.remove", json!({ "clips": [clip.id] }));
             }
             drag
         }
@@ -229,7 +356,7 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
             if let Some((clip, _)) = hit
                 && !done.contains(&clip.id)
             {
-                run_in(app, gesture, "clip.mute", json!({ "clips": [clip.id] }));
+                let _ = run_in(app, gesture, "clip.mute", json!({ "clips": [clip.id] }));
                 done.push(clip.id);
             }
             Drag::Mute { gesture, done }
@@ -238,7 +365,7 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
             let grid = snap.ticks(project).max(1) as f64;
             let by = ((at - last) / grid).trunc() * grid;
             if by != 0.0 {
-                run_in(app, gesture, "clip.slip", json!({ "clips": [clip], "by": by as i64 }));
+                let _ = run_in(app, gesture, "clip.slip", json!({ "clips": [clip], "by": by as i64 }));
                 Drag::Slip { clip, gesture, last: last + by }
             } else {
                 drag
@@ -256,11 +383,32 @@ fn update(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
     app.view.playlist.drag = Some(next);
 }
 
-/// Lays down copies of the current pattern along the drag: a copy where the pointer is when it enters a track, then
-/// one after another, each at the pattern's length, as the pointer moves on.
+/// Moves point `index` of an automation lane to `local` ticks from the lane's start, kept between its neighbors, and to
+/// the value at the pointer's height in the clip's content area.
+fn move_point(app: &mut BodoApp, project: &Project, pointer: Pointer, local: i64, (channel, index, content, gesture): (ChannelId, usize, Rect, u64)) {
+    let Some(lane) = media::lane(project, channel) else { return };
+    let low = index.checked_sub(1).and_then(|i| lane.points.get(i)).map_or(0, |p| p.at.0);
+    let high = lane.points.get(index + 1).map_or(i64::MAX, |p| p.at.0);
+    let (at, value) = (local.clamp(low, high.max(low)), media::y_value(content, pointer.at.y));
+    if lane.points.get(index).is_none_or(|p| p.at.0 == at && p.value == value) {
+        return;
+    }
+    let points: Vec<serde_json::Value> = lane
+        .points
+        .iter()
+        .enumerate()
+        .map(|(i, p)| {
+            let (at, value) = if i == index { (at, value) } else { (p.at.0, p.value) };
+            json!({ "at": at, "value": value, "curve": media::curve_json(p.curve) })
+        })
+        .collect();
+    let _ = run_in(app, gesture, "automation.set_points", json!({ "channel": channel, "points": points }));
+}
+
+/// Lays down copies of the current clip source along the drag: a copy where the pointer is when it enters a track,
+/// then one after another, each as long as the copy before, as the pointer moves on.
 fn paint(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer, gesture: u64, next: Option<(TrackId, i64)>) -> Drag {
-    let (Some(row), Some(pattern)) = (canvas.row_at(pointer.at.y), app.session.editor().pattern) else { return Drag::Paint { gesture, next } };
-    let length = bodo_engine::pattern_length(project, pattern).0.max(1);
+    let (Some(row), Some(source)) = (canvas.row_at(pointer.at.y), current_source(app, project)) else { return Drag::Paint { gesture, next } };
     let at = canvas.scale.tick(pointer.at.x).max(0.0);
     let mut slot = match next {
         Some((track, slot)) if track == row.id => slot,
@@ -268,8 +416,27 @@ fn paint(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer
     };
     let mut placed = 0;
     while (slot as f64) <= at && placed < PAINT_PER_FRAME {
-        if !occupied(canvas, row.id, slot) {
-            run_in(app, gesture, "clip.place", json!({ "track": row.id, "start": slot }));
+        let mut length = match source {
+            Source::Pattern(pattern) => bodo_engine::pattern_length(project, pattern).0.max(1),
+            Source::Automation(channel) => media::automation_length(project, channel),
+            Source::Audio(_) => 0,
+        };
+        if occupied(canvas, row.id, slot) {
+            // A clip already there sets the step to the next copy when the source's own length isn't known.
+            if length == 0 {
+                length = clip_length_at(project, row.id, slot).unwrap_or(0);
+            }
+        } else {
+            let (id, params) = source.place(row.id, slot);
+            // An audio clip is as long as its sample; the command says how long that is.
+            if let Ok(result) = run_in(app, gesture, id, params)
+                && length == 0
+            {
+                length = result["ticks"].as_i64().unwrap_or(0);
+            }
+        }
+        if length <= 0 {
+            break;
         }
         slot += length;
         placed += 1;
@@ -280,8 +447,9 @@ fn paint(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer
 fn finish(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointer) {
     let Some(drag) = app.view.playlist.drag.take() else { return };
     match drag {
-        Drag::Place { track, start } => {
-            let _ = app.run("clip.place", json!({ "track": track, "start": start }));
+        Drag::Place { track, start, source } => {
+            let (id, params) = source.place(track, start);
+            let _ = app.run(id, params);
         }
         Drag::Slice { from } => {
             let gesture = app.new_gesture();
@@ -300,7 +468,7 @@ fn finish(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
                     .iter()
                     .any(|c| c.track == row.id && c.rect.left() < canvas.scale.x(at as f64) && c.rect.right() > canvas.scale.x(at as f64));
                 if crosses {
-                    run_in(app, gesture, "clip.slice", json!({ "at": at, "tracks": [row.id] }));
+                    let _ = run_in(app, gesture, "clip.slice", json!({ "at": at, "tracks": [row.id] }));
                 }
             }
         }
@@ -327,7 +495,14 @@ fn finish(app: &mut BodoApp, project: &Project, canvas: &Canvas, pointer: Pointe
         Drag::Scrub { .. } => {
             let _ = app.run("transport.stop", json!({}));
         }
-        Drag::Move { .. } | Drag::Resize { .. } | Drag::Paint { .. } | Drag::Erase { .. } | Drag::Mute { .. } | Drag::Slip { .. } => {}
+        Drag::Move { .. }
+        | Drag::Resize { .. }
+        | Drag::Fade { .. }
+        | Drag::Point { .. }
+        | Drag::Paint { .. }
+        | Drag::Erase { .. }
+        | Drag::Mute { .. }
+        | Drag::Slip { .. } => {}
     }
 }
 
@@ -339,20 +514,17 @@ fn zoom_around(app: &mut BodoApp, canvas: &Canvas, x: f32, factor: f32) {
     view.scroll = (anchor - f64::from((x - canvas.rect.left()) / view.zoom)).max(0.0);
 }
 
-/// Draws the gesture in progress: the new clip, the cutting line, the selection or zoom box.
-fn overlay(app: &BodoApp, ui: &Ui, project: &Project, canvas: &Canvas, pointer: Pointer) {
+/// Draws the gesture in progress: the new clip (`ghost`, with its source's color), the cutting line, the selection or
+/// zoom box.
+fn overlay(app: &BodoApp, ui: &Ui, canvas: &Canvas, pointer: Pointer, ghost: Option<(Rect, Option<egui::Color32>)>) {
     let tk = Tokens::get();
     let painter = ui.painter().with_clip_rect(canvas.rect);
     match &app.view.playlist.drag {
-        Some(Drag::Place { track, start }) => {
-            let (Some(row), Some(pattern)) = (canvas.rows.iter().find(|r| r.id == *track), app.session.editor().pattern) else { return };
-            let length = bodo_engine::pattern_length(project, pattern).0;
-            let color = project.patterns.get(&pattern).map_or(tk.accent, |p| theme::color(p.color));
-            let rect = Rect::from_min_max(
-                pos2(canvas.scale.x(*start as f64), row.top + 1.0),
-                pos2(canvas.scale.x((start + length) as f64), row.top + row.height - 1.0),
-            );
-            painter.rect(rect, 3.0, theme::faded(color, 0.35), Stroke::new(1.0, color), StrokeKind::Inside);
+        Some(Drag::Place { .. }) => {
+            if let Some((rect, color)) = ghost {
+                let color = color.unwrap_or(tk.accent);
+                painter.rect(rect, 3.0, theme::faded(color, 0.35), Stroke::new(1.0, color), StrokeKind::Inside);
+            }
         }
         Some(Drag::Slice { from }) => {
             let to = if pointer.shift { pointer.at } else { pos2(from.x, pointer.at.y) };

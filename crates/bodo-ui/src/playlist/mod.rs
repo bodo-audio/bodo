@@ -8,7 +8,15 @@
 //!
 //! Drawing is culled: only visible tracks are visited, and each track's clips are found by binary search on their
 //! sorted starts, widened by the track's longest clip, which is cached per track snapshot.
+//!
+//! Any track holds any kind of clip. The list on the left picks what Draw and Paint place: a pattern, or an audio or
+//! automation clip channel. Audio clips show their sample's waveform ([`media`], from peaks read once by [`peaks`]) and
+//! a handle for each fade; automation clips show their curve, with a handle for each point: drag one to move it,
+//! double-click the clip to add one, right-click one to remove it. A sound dropped from the browser becomes an audio
+//! clip where it lands.
 
+mod media;
+mod peaks;
 mod tools;
 
 use std::collections::HashMap;
@@ -17,8 +25,9 @@ use std::sync::Arc;
 use bodo_engine::PlayMode;
 use bodo_kit_core::Tick;
 use bodo_kit_ui::{Icon, Led, icons};
+use bodo_model::channel::ChannelKind;
 use bodo_model::playlist::ClipSource;
-use bodo_model::{ClipId, PlaylistTrack, Project, TrackId};
+use bodo_model::{ChannelId, ClipId, PatternId, PlaylistTrack, Project, SampleRoots, TrackId};
 use egui::{Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
@@ -112,8 +121,8 @@ impl Tool {
 
     fn hint(self) -> &'static str {
         match self {
-            Self::Draw => "Draw (P): click to place the current pattern, drag to move or resize, right-click to delete; Alt turns snap off",
-            Self::Paint => "Paint (B): drag to lay down copies of the current pattern; right-drag deletes",
+            Self::Draw => "Draw (P): click to place the current clip, drag to move or resize, right-click to delete; Alt turns snap off",
+            Self::Paint => "Paint (B): drag to lay down copies of the current clip; right-drag deletes",
             Self::Delete => "Delete (D): click or drag over clips to delete them",
             Self::Mute => "Mute (T): click or drag over clips to mute or unmute them",
             Self::Slip => "Slip (S): drag a clip sideways to slide what plays inside it",
@@ -155,6 +164,12 @@ pub struct PlaylistView {
     height_drag: Option<(TrackId, u64)>,
     /// The vertical zoom: track heights are drawn this many times their size.
     pub row_scale: f32,
+    /// The audio or automation clip channel Draw and Paint place, in place of the current pattern.
+    pub source: Option<ChannelId>,
+    /// The waveforms of the samples audio clips play.
+    peaks: peaks::PeaksCache,
+    /// The clips under the last two presses, older first, so a double-click acts only when both landed on one clip.
+    presses: [Option<ClipId>; 2],
 }
 
 impl Default for PlaylistView {
@@ -170,11 +185,21 @@ impl Default for PlaylistView {
             ruler_drag: None,
             height_drag: None,
             row_scale: 1.0,
+            source: None,
+            peaks: peaks::PeaksCache::default(),
+            presses: [None; 2],
         }
     }
 }
 
 impl PlaylistView {
+    /// How many samples' waveforms are still being read.
+    ///
+    /// Complexity: O(s) in samples shown so far.
+    pub fn waveforms_loading(&mut self) -> usize {
+        self.peaks.pending()
+    }
+
     /// The longest clip on `track`, measured again only when the track changed.
     fn longest(&mut self, track: &Arc<PlaylistTrack>) -> i64 {
         let key = Arc::as_ptr(track) as usize;
@@ -189,11 +214,80 @@ impl PlaylistView {
     }
 }
 
+/// What Draw and Paint place.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// A pattern.
+    Pattern(PatternId),
+    /// An audio clip channel's sample.
+    Audio(ChannelId),
+    /// An automation clip channel's lane.
+    Automation(ChannelId),
+}
+
+impl Source {
+    /// The command that places a clip of this source on `track` at `start`.
+    fn place(self, track: TrackId, start: i64) -> (&'static str, Value) {
+        match self {
+            Self::Pattern(pattern) => ("clip.place", json!({ "track": track, "pattern": pattern, "start": start })),
+            Self::Audio(channel) => ("clip.place_audio", json!({ "track": track, "channel": channel, "start": start })),
+            Self::Automation(channel) => ("automation.place_clip", json!({ "track": track, "channel": channel, "start": start })),
+        }
+    }
+
+    /// Its name and color.
+    fn look(self, project: &Project) -> Option<(String, Color32)> {
+        match self {
+            Self::Pattern(pattern) => project.patterns.get(&pattern).map(|p| (p.name.clone(), theme::color(p.color))),
+            Self::Audio(channel) | Self::Automation(channel) => project.channels.get(&channel).map(|c| (c.name.clone(), theme::color(c.color))),
+        }
+    }
+}
+
+/// What Draw and Paint place now: the chosen audio or automation channel while it exists, or else the current pattern.
+pub(crate) fn current_source(app: &BodoApp, project: &Project) -> Option<Source> {
+    let chosen = app.view.playlist.source.and_then(|id| match project.channels.get(&id).map(|c| &c.kind) {
+        Some(ChannelKind::AudioClip { .. }) => Some(Source::Audio(id)),
+        Some(ChannelKind::Automation(_)) => Some(Source::Automation(id)),
+        _ => None,
+    });
+    chosen.or_else(|| app.session.editor().pattern.filter(|p| project.patterns.contains_key(p)).map(Source::Pattern))
+}
+
+/// How long a clip of `source` placed at `start` lasts, as the commands place it. An audio clip's length is known once
+/// its waveform is read; until then it is taken as a bar.
+fn source_length(app: &mut BodoApp, ctx: &egui::Context, project: &Project, source: Source, start: i64) -> i64 {
+    match source {
+        Source::Pattern(pattern) => bodo_engine::pattern_length(project, pattern).0.max(1),
+        Source::Automation(channel) => media::automation_length(project, channel),
+        Source::Audio(channel) => {
+            let roots = app.session.sample_roots();
+            match audio_waveform(&mut app.view.playlist, ctx, project, &roots, channel) {
+                Some(waveform) => media::audio_length(project, channel, start, &waveform),
+                None => project.meter.signature_at(Tick(start)).bar_ticks(),
+            }
+        }
+    }
+}
+
+/// The waveform of audio clip channel `channel`'s sample, once it is read.
+fn audio_waveform(
+    view: &mut PlaylistView,
+    ctx: &egui::Context,
+    project: &Project,
+    roots: &SampleRoots,
+    channel: ChannelId,
+) -> Option<Arc<peaks::Waveform>> {
+    let ChannelKind::AudioClip { sample, .. } = &project.channels.get(&channel)?.kind else { return None };
+    let reference = project.samples.get(sample)?;
+    view.peaks.get(ctx, *sample, &roots.resolve(&reference.path))
+}
+
 /// Draws the Playlist window.
 pub(crate) fn window(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, project: &Arc<Project>) {
     let mut layout = std::mem::take(&mut app.prefs.layout);
-    let pattern = app.session.editor().pattern.and_then(|p| project.patterns.get(&p)).map(|p| p.name.clone());
-    let title = format!("Playlist - Arrangement{}", pattern.map(|p| format!(" > {p}")).unwrap_or_default());
+    let source = current_source(app, project).and_then(|s| s.look(project)).map(|(name, _)| name);
+    let title = format!("Playlist - Arrangement{}", source.map(|p| format!(" > {p}")).unwrap_or_default());
     windows::show(ctx, &mut layout, WindowKind::Playlist, workspace, &title, app, header, |app, ui| body(app, ui, project));
     app.prefs.layout = layout;
 }
@@ -253,14 +347,17 @@ pub(crate) enum Zone {
     Body,
     /// A clip's right edge, which resizes it.
     Edge,
+    /// A fade or automation point handle.
+    Handle(media::Handle),
 }
 
-/// The canvas as the tools see it: its place, scale, rows and the clips drawn this frame.
+/// The canvas as the tools see it: its place, scale, rows, and the clips and handles drawn this frame.
 pub(crate) struct Canvas {
     rect: Rect,
     scale: Scale,
     rows: Vec<Row>,
     shown: Vec<Shown>,
+    handles: Vec<media::ShownHandle>,
 }
 
 impl Canvas {
@@ -270,8 +367,14 @@ impl Canvas {
         index.checked_sub(1).and_then(|i| self.rows.get(i)).filter(|r| y < r.top + r.height).copied()
     }
 
-    /// The topmost clip under `p`, and which part of it.
+    /// The topmost clip under `p`, and which part of it. Handles come first: they sit on top of their clips.
     fn clip_at(&self, p: Pos2) -> Option<(Shown, Zone)> {
+        let handle = self.handles.iter().rev().find(|h| (h.at - p).length() <= media::HANDLE + 2.0);
+        if let Some(handle) = handle
+            && let Some(clip) = self.shown.iter().find(|c| c.id == handle.clip)
+        {
+            return Some((*clip, Zone::Handle(handle.handle)));
+        }
         self.shown.iter().rev().find(|c| c.rect.contains(p)).map(|c| {
             let zone = if p.x >= c.rect.right() - EDGE {
                 Zone::Edge
@@ -305,8 +408,8 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
     loop_region(app, ui, canvas.union(ruler), scale);
     let rows = track_rows(project, canvas.top() - app.view.playlist.scroll_y, app.view.playlist.row_scale);
     track_headers(app, ui, project, headers, &rows);
-    let shown = clips(app, ui, project, canvas, scale, &rows);
-    let canvas = Canvas { rect: canvas, scale, rows, shown };
+    let (shown, handles) = clips(app, ui, project, canvas, scale, &rows);
+    let canvas = Canvas { rect: canvas, scale, rows, shown, handles };
     tools::input(app, ui, project, &canvas);
     clip_menu(app, ui.ctx(), project);
     ruler_input(app, ui, project, ruler, scale);
@@ -330,41 +433,76 @@ fn track_rows(project: &Project, top: f32, scale: f32) -> Vec<Row> {
         .collect()
 }
 
+/// One row of the clip source list: a color mark, an icon for channels, and the name.
+fn source_row(ui: &mut Ui, name: &str, color: Color32, icon: Option<Icon>, current: bool) -> egui::Response {
+    let tk = Tokens::get();
+    let (row, response) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click());
+    let fill = if current {
+        tk.accent_soft
+    } else if response.hovered() {
+        tk.control_hover
+    } else {
+        Color32::TRANSPARENT
+    };
+    ui.painter().rect_filled(row, 4.0, fill);
+    ui.painter().rect_filled(Rect::from_min_size(row.min + vec2(3.0, 5.0), vec2(4.0, 10.0)), 1.0, color);
+    let mut text_left = row.left() + 12.0;
+    if let Some(icon) = icon {
+        icon.paint(ui.painter(), Rect::from_min_size(pos2(text_left, row.center().y - 5.5), vec2(11.0, 11.0)), tk.text_faint);
+        text_left += 15.0;
+    }
+    ui.painter().with_clip_rect(row).text(
+        pos2(text_left, row.center().y),
+        Align2::LEFT_CENTER,
+        name,
+        FontId::proportional(size::SMALL),
+        if current { tk.accent } else { tk.text },
+    );
+    response
+}
+
+/// The clip sources: every pattern, then the audio and automation clip channels. Clicking one makes it what Draw and
+/// Paint place.
 fn pattern_list(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect) {
     let tk = Tokens::get();
+    let current = current_source(app, project);
     let mut list = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(4.0, 4.0))).layout(egui::Layout::top_down(egui::Align::Min)));
     list.set_clip_rect(rect);
     egui::ScrollArea::vertical().id_salt("bodo-pattern-list").auto_shrink([false, false]).show(&mut list, |ui| {
         ui.spacing_mut().item_spacing.y = 2.0;
         for pattern in project.patterns.values() {
-            let current = app.session.editor().pattern == Some(pattern.id);
-            let (row, response) = ui.allocate_exact_size(vec2(ui.available_width(), 20.0), Sense::click());
-            let fill = if current {
-                tk.accent_soft
-            } else if response.hovered() {
-                tk.control_hover
-            } else {
-                Color32::TRANSPARENT
-            };
-            ui.painter().rect_filled(row, 4.0, fill);
-            ui.painter().rect_filled(Rect::from_min_size(row.min + vec2(3.0, 5.0), vec2(4.0, 10.0)), 1.0, theme::color(pattern.color));
-            let color = if current { tk.accent } else { tk.text };
-            ui.painter().with_clip_rect(row).text(
-                row.left_center() + vec2(12.0, 0.0),
-                Align2::LEFT_CENTER,
-                &pattern.name,
-                FontId::proportional(size::SMALL),
-                color,
-            );
-            control::record(ui, &response, &format!("Pattern {}", pattern.name), "pattern", Some(current));
+            let chosen = current == Some(Source::Pattern(pattern.id));
+            let response = source_row(ui, &pattern.name, theme::color(pattern.color), None, chosen);
+            control::record(ui, &response, &format!("Pattern {}", pattern.name), "pattern", Some(chosen));
             app.hint(&response, format!("{}: click to make it current; the draw tool places it", pattern.name));
             if response.clicked() {
+                app.view.playlist.source = None;
                 let _ = app.run("ui.select_pattern", json!({ "pattern": pattern.id }));
             }
         }
         let add = icon_button(ui, icons::PLUS, "New pattern", false);
         if add.clicked() {
             let _ = app.run("pattern.new", json!({}));
+        }
+        let mut heading = false;
+        for channel in project.rack_order.iter().filter_map(|id| project.channels.get(id)) {
+            let (source, icon, kind) = match channel.kind {
+                ChannelKind::AudioClip { .. } => (Source::Audio(channel.id), icons::WAVE_SINE, "audio clip"),
+                ChannelKind::Automation(_) => (Source::Automation(channel.id), icons::ADJUSTMENTS_HORIZONTAL, "automation clip"),
+                _ => continue,
+            };
+            if !heading {
+                ui.add_space(6.0);
+                ui.label(egui::RichText::new("Audio and automation").size(size::SMALL).color(tk.text_faint));
+                heading = true;
+            }
+            let chosen = current == Some(source);
+            let response = source_row(ui, &channel.name, theme::color(channel.color), Some(icon), chosen);
+            control::record(ui, &response, &format!("Clip source {}", channel.name), "source", Some(chosen));
+            app.hint(&response, format!("{}, an {kind}: click to make it current; the draw tool places it", channel.name));
+            if response.clicked() {
+                app.view.playlist.source = Some(channel.id);
+            }
         }
     });
 }
@@ -520,13 +658,21 @@ fn first_starting_after(clips: &imbl::Vector<bodo_model::Clip>, tick: f64) -> us
     clips.binary_search_by(|c| if (c.start.0 as f64) < tick { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }).unwrap_or_else(|i| i)
 }
 
-/// Draws the visible clips and returns them for hit testing.
-fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale: Scale, rows: &[Row]) -> Vec<Shown> {
+/// The part of clip `rect` below its name strip `header`, where its content shows.
+fn content_rect(rect: Rect, header: Rect) -> Rect {
+    Rect::from_min_max(pos2(rect.left(), header.bottom() + 2.0), rect.max - vec2(0.0, 2.0))
+}
+
+/// Draws the visible clips and returns them, and the handles drawn on them, for hit testing.
+fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale: Scale, rows: &[Row]) -> (Vec<Shown>, Vec<media::ShownHandle>) {
     let tk = Tokens::get();
     let painter = ui.painter().with_clip_rect(canvas);
     let (view_start, view_end) = (scale.tick(canvas.left()), scale.tick(canvas.right()));
     let selected = app.session.editor().clips.clone();
+    let roots = app.session.sample_roots();
+    let ctx = ui.ctx().clone();
     let mut shown = Vec::new();
+    let mut handles = Vec::new();
     for row in rows {
         if row.top > canvas.bottom() || row.top + row.height < canvas.top() {
             continue;
@@ -561,22 +707,44 @@ fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale:
                 FontId::proportional(10.5),
                 theme::text_on(color),
             );
-            if let Some(pattern) = pattern {
-                let offset = match clip.offset {
-                    bodo_model::playlist::ClipOffset::Ticks(t) => t.0,
-                    bodo_model::playlist::ClipOffset::Frames(_) => 0,
+            let content = content_rect(rect, header);
+            let ink = theme::faded(tk.text, 0.75 * alpha);
+            let first_handle = handles.len();
+            match clip.source {
+                ClipSource::Pattern(_) => {
+                    if let Some(pattern) = pattern {
+                        let offset = match clip.offset {
+                            bodo_model::playlist::ClipOffset::Ticks(t) => t.0,
+                            bodo_model::playlist::ClipOffset::Frames(_) => 0,
+                        };
+                        preview(&painter, project, pattern, clip.start.0, clip.len.0, offset, content, scale, alpha);
+                    }
+                }
+                ClipSource::Audio(channel) => {
+                    if let Some(timing) = media::AudioTiming::of(project, clip)
+                        && let Some(waveform) = audio_waveform(&mut app.view.playlist, &ctx, project, &roots, channel)
+                    {
+                        media::waveform(&painter, project, clip, timing, &waveform, content, canvas, scale, ink);
+                    }
+                    if content.width() > 6.0 * media::HANDLE && content.height() > 3.0 * media::HANDLE {
+                        handles.extend(media::fades(&painter, clip, content, scale, ink));
+                    }
+                }
+                ClipSource::Automation(channel) => {
+                    if let Some(lane) = media::lane(project, channel) {
+                        let fill = theme::faded(color, 0.3 * alpha);
+                        handles.extend(media::curve(&painter, lane, clip, content, canvas, scale, ink, fill));
+                    }
+                }
+            }
+            for handle in &handles[first_handle..] {
+                let label = match handle.handle {
+                    media::Handle::FadeIn => format!("Fade in {name}"),
+                    media::Handle::FadeOut => format!("Fade out {name}"),
+                    media::Handle::Point(index) => format!("Point {} {name}", index + 1),
                 };
-                preview(
-                    &painter,
-                    project,
-                    pattern,
-                    clip.start.0,
-                    clip.len.0,
-                    offset,
-                    Rect::from_min_max(pos2(rect.left(), header.bottom() + 2.0), rect.max - vec2(0.0, 2.0)),
-                    scale,
-                    alpha,
-                );
+                let area = Rect::from_center_size(handle.at, vec2(2.0 * media::HANDLE, 2.0 * media::HANDLE));
+                control::record_rect(ui, ui.id().with(("handle", clip.id, label.as_str())), area, &label, "handle", None, true);
             }
             if selected.contains(&clip.id) {
                 painter.rect_stroke(rect, 3.0, Stroke::new(1.5, tk.accent), StrokeKind::Inside);
@@ -593,7 +761,7 @@ fn clips(app: &mut BodoApp, ui: &mut Ui, project: &Project, canvas: Rect, scale:
             shown.push(Shown { id: clip.id, track: row.id, rect, start: clip.start.0, source: clip.source });
         }
     }
-    shown
+    (shown, handles)
 }
 
 /// A clip's picture of its pattern: a short line per note, repeated across the clip from its offset, keys scaled to

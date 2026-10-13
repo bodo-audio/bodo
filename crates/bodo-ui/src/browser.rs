@@ -1,6 +1,6 @@
 //! The Browser, the left side panel (project.md section 14.1): the sounds of the current project, the factory packs,
 //! the user's sample folders and recent projects, with search at the bottom. Drag a sound onto the channel rack to
-//! make a channel of it, or double-click it.
+//! make a channel of it, or double-click it; drag it onto a playlist track to place it there as an audio clip.
 //!
 //! Folder listings are read once when a folder opens and cached, so drawing never touches the disk.
 
@@ -16,7 +16,7 @@ use crate::theme::{Tokens, size};
 use crate::windows::icon_button;
 use crate::{BodoApp, control, dialogs};
 
-/// A sound being dragged: the path to give `channel.add`.
+/// A sound being dragged: the path to give `channel.add` or `clip.place_sound`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SoundPayload(pub String);
 
@@ -61,7 +61,7 @@ fn sound_path(app: &BodoApp, file: &Path) -> String {
     bodo_engine::samples::stored_path(file, None, app.session.env().factory.as_deref())
 }
 
-/// One sound row: drag it to the channel rack, double-click to add it as a channel.
+/// One sound row: drag it to the channel rack or the playlist, double-click to add it as a channel.
 fn sound_row(app: &mut BodoApp, ui: &mut Ui, name: &str, path: String, depth: usize) {
     let tk = Tokens::get();
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), size::ROW - 4.0), Sense::click_and_drag());
@@ -87,7 +87,7 @@ fn sound_row(app: &mut BodoApp, ui: &mut Ui, name: &str, path: String, depth: us
     }
     let response = response.on_hover_text(&path);
     control::record(ui, &response, &format!("Sound {name}"), "sound", None);
-    app.hint(&response, format!("{name}: drag it onto the channel rack, or double-click to add a channel"));
+    app.hint(&response, format!("{name}: drag it onto the channel rack or a playlist track, or double-click to add a channel"));
     if response.double_clicked() {
         let _ = app.run("channel.add", json!({ "sample": path }));
     }

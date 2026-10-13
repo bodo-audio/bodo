@@ -10,6 +10,7 @@ publish.workspace = true
 [dependencies]
 bodo-engine.workspace = true
 bodo-io.workspace = true
+bodo-kit-audio.workspace = true
 bodo-kit-core.workspace = true
 bodo-kit-device.workspace = true
 bodo-kit-music.workspace = true
