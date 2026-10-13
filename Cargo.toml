@@ -29,7 +29,7 @@ midly = { version = "0.5.3", default-features = false, features = ["std"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 thiserror = "2.0.21"
-tracing = "0.1.41"
+tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 
 # Tooling (xtask only)
 anyhow = "1.0.104"
