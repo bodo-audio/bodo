@@ -2,7 +2,7 @@
 
 These are the rules for anyone, human or coding agent, who changes code in this repository. The full specification is in [`project.md`](project.md), and decisions are recorded in [`docs/adr/`](docs/adr/).
 
-> **Current state:** milestones M0 (foundations) and M1 (audio core) of [project.md section 20](project.md#20-roadmap) are done; M2 (the shell) is next. [`docs/STATUS.md`](docs/STATUS.md) tracks progress. Commands below marked with a later milestone don't work yet.
+> **Current state:** milestones M0 (foundations), M1 (audio core) and M2 (the shell) of [project.md section 20](project.md#20-roadmap) are done; M3 (editing depth) is next. [`docs/STATUS.md`](docs/STATUS.md) tracks progress. Commands below marked with a later milestone don't work yet.
 
 ## 1. Repository map
 

@@ -2,11 +2,21 @@
 
 A free, open-source, AI-native digital audio workstation written entirely in Rust.
 
-Bodo is at the very start: milestone M0, the foundations, is in progress. [`docs/STATUS.md`](docs/STATUS.md) tracks what exists.
+Bodo is early: the audio core and the first version of the interface work, and you can make a beat with the step sequencer, arrange it and save it. [`docs/STATUS.md`](docs/STATUS.md) tracks what exists.
 
 - [`project.md`](project.md): the specification.
 - [`AGENTS.md`](AGENTS.md): the rules for anyone, human or coding agent, who changes code here.
 - [`docs/adr/`](docs/adr/): architecture decisions.
+- [`docs/agents/`](docs/agents/): connecting an agent through MCP, and every command.
+
+## Running
+
+```sh
+cargo run -p bodo --release            # the app
+cargo run -p bodo-cli -- --help        # the command-line tool: MCP server, render, inspect, pack
+```
+
+Agents can drive Bodo through its MCP server; [`docs/agents/`](docs/agents/) explains how to connect one.
 
 ## Building
 

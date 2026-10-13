@@ -71,6 +71,42 @@ No Windows or Linux machine is available for testing yet, so CI installs a virtu
 - The 5 ms crossfade on graph changes, buffer reuse across nodes, and CPU time per node ([ADR 0015](adr/0015-graph-executor.md)).
 - FX slots, strip EQ, send taps other than post-fader, sidechains, solo and negative track latency in the mixer strip.
 
-## M2 to M9
+## M2: Shell (done on macOS, 2026-10-13)
+
+Started and finished 2026-10-13. Every check passes on macOS; CI on Linux and Windows runs once these commits are pushed.
+
+| Item | State | Where |
+|---|---|---|
+| `bodo-engine` | Done | command registry, editing session, undo with gestures, templates, inspection ([ADR 0018](adr/0018-the-editing-session.md)); 67 commands in [`agents/commands.md`](agents/commands.md) |
+| `.bodo` save and load | Done | `bodo-io`: zip and `.bodoproj` folders, versions and migrations, atomic saves, 10 rotating backups, sample path rebasing ([format](formats/bodo.md)) |
+| Autosave and recovery | Done | every 5 minutes (Options > Autosave), offered back after a crash |
+| `bodo-ui` | Done | the owner's layout: top bar, Browser, Channel Rack, Playlist, Piano Roll and Mixer as free windows, layouts, dark and light themes, command palette |
+| Transport | Done | play, stop, Pattern and Song modes, song position, tempo, master volume and level |
+| Basic MCP server | Done | `bodo-mcp` and `bodo-cli mcp` with generic and inspect tools; `--connect` drives the running app ([ADR 0019](adr/0019-agents-reach-the-app-through-the-control-channel.md)) |
+| Control channel | Done | `bodo-control`: token-protected loopback channel, on by default |
+| Factory content | Done | the Bodo Drums kit, generated and CC0, and one-shot samplers ([ADR 0020](adr/0020-factory-content-and-one-shot-samplers.md)) |
+| `bodo-kit-ui` | Done | knob, fader, LED, step row, meter, line icons |
+| `bodo-cli` | Done | `mcp`, `render`, `inspect`, `commands`, `pack`, `unpack` |
+
+### Exit criteria
+
+| Criterion | State |
+|---|---|
+| Build a 4-pattern beat with the step sequencer and sampler, arrange it, save and reopen it identically | Met. By clicking: `crates/bodo-ui/tests/beat.rs`; through commands: `crates/bodo-engine/tests/beat.rs`; it renders to audio where the steps are: `apps/bodo-cli/tests/render.rs` |
+| An external MCP client can build the same beat | Met. `crates/bodo-mcp/tests/server.rs` drives the real MCP server through an MCP client only, saves, reopens and compares |
+
+### Deferred
+
+- **Detaching windows** into their own OS windows (ADR 0012), and the native macOS menu.
+- **Sample preview** in the browser, and drag and drop onto the playlist.
+- **Swing** is stored but not yet played; the sequencer applies it in M3.
+- **Editing depth (M3):** the playlist's paint, slip, slice, select and zoom tools, piano-roll lanes and velocity, custom layouts, editable shortcuts.
+- **The full mixer (M4):** the insert panel with FX slots, meters on every insert, solo.
+- **MCP:** tool profiles, the streamable HTTP transport and limits on where agents may read and write files come with the assistant (M7).
+- **The missing-file resolver** that finds a moved sample by its hash.
+- **Opening a project in the running app** from the Hub or a second launch.
+- **Headroom:** the master has no limiter yet, so stacking many hits can still go over 0 dBFS.
+
+## M3 to M9
 
 Not started.
