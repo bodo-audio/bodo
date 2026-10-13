@@ -1,0 +1,18 @@
+[package]
+name = "bodo-kit-ui"
+description = "egui widgets for Bodo Kit: knobs, faders, LEDs, step rows, meters and line icons."
+license = "MIT OR Apache-2.0"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui.workspace = true
+
+[dev-dependencies]
+egui = { workspace = true, features = ["default_fonts"] }
+egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
+
+[lints]
+workspace = true

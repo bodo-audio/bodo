@@ -38,7 +38,10 @@ allow = [
     "LGPL-3.0-only",
     "LGPL-3.0-or-later",
 ]
-exceptions = []
+exceptions = [
+    # egui's bundled fonts (Ubuntu Light, Noto Emoji). Font licenses cover the font data, not code that uses it.
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+]
 
 [bans]
 multiple-versions = "warn"

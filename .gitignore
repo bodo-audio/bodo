@@ -8,6 +8,11 @@
 *.bodo.tmp
 /.bodo-cache
 
+# UI snapshot tests leave these next to a baseline that no longer matches
+**/tests/snapshots/**/*.new.png
+**/tests/snapshots/**/*.diff.png
+**/tests/snapshots/**/*.old.png
+
 # OS
 .DS_Store
 Thumbs.db

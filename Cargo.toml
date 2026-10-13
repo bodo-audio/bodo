@@ -21,6 +21,7 @@ bodo-kit-dsp = { path = "kit/bodo-kit-dsp" }
 bodo-kit-graph = { path = "kit/bodo-kit-graph" }
 bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
+bodo-kit-ui = { path = "kit/bodo-kit-ui" }
 
 # Bodo DAW
 bodo-control = { path = "crates/bodo-control" }
@@ -51,6 +52,9 @@ symphonia = { version = "0.6.1", features = ["aac", "aiff", "alac", "isomp4", "m
 # MIDI
 midly = { version = "0.5.3", default-features = false, features = ["std"] }
 
+# GUI. No default features: libraries draw with the fonts the app installs; apps and tests turn on `default_fonts`.
+egui = { version = "0.36.2", default-features = false }
+
 # Data, errors and logging
 blake3 = "1.8.7"
 imbl = { version = "7.0.2", features = ["serde"] }
@@ -75,6 +79,7 @@ syn = { version = "3.0.9", features = ["full", "visit", "parsing"] }
 toml = "1.1.8"
 
 # Testing
+egui_kittest = "0.36.2"
 insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 

@@ -30,4 +30,8 @@ allow = [
     # File-level copyleft
     "MPL-2.0",
 ]
-exceptions = []
+exceptions = [
+    # egui's bundled fonts (Ubuntu Light, Noto Emoji), which Kit uses only in tests: bodo-kit-ui builds egui
+    # without them. Font licenses cover the font data, not code that uses it.
+    { crate = "epaint_default_fonts", allow = ["OFL-1.1", "Ubuntu-font-1.0"] },
+]
