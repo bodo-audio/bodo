@@ -1,7 +1,7 @@
 //! The per-block context every graph node can read: rate, transport, the device's input, the note events of the
 //! block, and the audio clip segments it plays.
 
-use bodo_kit_core::{SampleRate, rt_safe};
+use bodo_kit_core::{PPQ, SampleRate, Seconds, TempoMap, Tick, rt_safe};
 use bodo_kit_dsp::AudioBuffer;
 
 use crate::automation::ParamValues;
@@ -58,6 +58,10 @@ pub struct BlockContext {
     pub playing: bool,
     /// The transport's frame at the start of the block.
     pub frame: i64,
+    /// The song position at the start of the block, in ticks.
+    pub tick: f64,
+    /// How many ticks a frame lasts at the tempo there; zero until the engine sets a position.
+    pub ticks_per_frame: f64,
     /// The device's input for the block, [`MAX_INPUTS`] channels; `input_channels` of them are real.
     input: AudioBuffer,
     /// How many of `input`'s channels the device filled this block.
@@ -85,6 +89,8 @@ impl BlockContext {
             frames: 0,
             playing: false,
             frame: 0,
+            tick: 0.0,
+            ticks_per_frame: 0.0,
             input: AudioBuffer::for_blocks(MAX_INPUTS),
             input_channels: 0,
             events: Vec::with_capacity(MAX_EVENTS),
@@ -108,6 +114,18 @@ impl BlockContext {
             channel[..available].copy_from_slice(&from[offset..offset + available]);
             channel[available..].fill(0.0);
         }
+    }
+
+    /// Sets the song position of the block to the transport's `frame` on `tempo`: its tick and the ticks per frame.
+    ///
+    /// RT-safe. Complexity: O(log m) in tempo points.
+    #[rt_safe]
+    pub fn set_position(&mut self, tempo: &TempoMap, frame: i64) {
+        let hz = f64::from(self.rate.hz());
+        let tick = tempo.ticks_at(Seconds(frame as f64 / hz));
+        let bpm = tempo.bpm_at(Tick(tick.floor() as i64));
+        self.tick = tick;
+        self.ticks_per_frame = bpm / 60.0 * PPQ as f64 / hz;
     }
 
     /// Device input channel `index` for the block, or an empty slice when the device has no such input.

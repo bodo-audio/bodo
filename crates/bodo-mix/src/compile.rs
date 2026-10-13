@@ -20,26 +20,28 @@ use crate::MixError;
 use crate::audio_clips::stretch_keys;
 use crate::keys;
 use crate::live::{ChannelLive, StripLive};
+use crate::midi_out::{MidiOutNode, MidiOutTap};
 use crate::nodes::{AudioClipNode, MixNode, SamplerNode, StripNode};
 use crate::record::CaptureLinks;
 use crate::sample::SampleCache;
+use crate::sampler_source::{DerivedCache, SamplerData};
 use crate::stretch::StretchCache;
 
 /// What a sampler node was built from, to tell whether it must be rebuilt.
 #[derive(Clone, Debug)]
 struct SamplerSource {
     params: Arc<SamplerParams>,
-    sample: Option<Arc<AudioData>>,
+    data: SamplerData,
 }
 
 impl SamplerSource {
     fn same_as(&self, other: &SamplerSource) -> bool {
-        let same_sample = match (&self.sample, &other.sample) {
+        let same_sample = match (&self.data.sample, &other.data.sample) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
             (None, None) => true,
             _ => false,
         };
-        (Arc::ptr_eq(&self.params, &other.params) || self.params == other.params) && same_sample
+        (Arc::ptr_eq(&self.params, &other.params) || self.params == other.params) && same_sample && self.data.zones == other.data.zones
     }
 }
 
@@ -73,6 +75,12 @@ pub(crate) struct Compiler {
     samplers: HashMap<ChannelId, SamplerSource>,
     audio: HashMap<ChannelId, AudioSource>,
     stretch: StretchCache,
+    /// Samples with the samplers' precomputed effects rendered in.
+    derived: DerivedCache,
+    /// The MIDI Out channels the running plan has nodes for: each one's port and MIDI channel.
+    midi_out: HashMap<ChannelId, (String, u8)>,
+    /// The control side's ends of the MIDI Out channels' queues.
+    midi_tap: MidiOutTap,
     channels: HashMap<ChannelId, Arc<ChannelLive>>,
     strips: HashMap<InsertId, Arc<StripLive>>,
     /// Inserts the running plan has processors for.
@@ -95,6 +103,9 @@ impl Compiler {
             samplers: HashMap::new(),
             audio: HashMap::new(),
             stretch: StretchCache::default(),
+            derived: DerivedCache::default(),
+            midi_out: HashMap::new(),
+            midi_tap: MidiOutTap::default(),
             channels: HashMap::new(),
             strips: HashMap::new(),
             built_strips: HashSet::new(),
@@ -121,6 +132,11 @@ impl Compiler {
         &self.latency
     }
 
+    /// The control side's ends of the MIDI Out channels' queues.
+    pub(crate) fn midi_out(&self) -> MidiOutTap {
+        self.midi_tap.clone()
+    }
+
     /// Brings everything up to date with `project`. Returns a new plan when the graph changed.
     ///
     /// Allocates and may load samples. Complexity: O(V + E) plus sample loading and, on a recompile, the plan's
@@ -129,7 +145,9 @@ impl Compiler {
         self.update_live(project);
         let sources = self.sampler_sources(project);
         let audio = self.audio_sources(project);
-        let signature = signature(project, &sources, &audio);
+        let midi_out = midi_out_channels(project);
+        let mut signature = signature(project, &sources, &audio);
+        signature.extend(midi_out_signature(project, &midi_out));
         if signature == self.signature
             && let Some(gains) = &self.gains
         {
@@ -149,14 +167,7 @@ impl Compiler {
             let processor = if let Some(source) = sources.get(id) {
                 let fresh = self.samplers.get(id).is_none_or(|old| !old.same_as(source));
                 fresh.then(|| {
-                    MixNode::Sampler(Box::new(SamplerNode::new(
-                        keys::channel(*id),
-                        source.sample.clone(),
-                        &source.params,
-                        live(),
-                        pan_law,
-                        self.rate,
-                    )))
+                    MixNode::Sampler(Box::new(SamplerNode::new(keys::channel(*id), source.data.clone(), &source.params, live(), pan_law, self.rate)))
                 })
             } else if let Some(source) = audio.get(id) {
                 let fresh = self.audio.get(id).is_none_or(|old| !old.same_as(source));
@@ -169,6 +180,10 @@ impl Compiler {
                         pan_law,
                     )))
                 })
+            } else if let Some(port) = midi_out.get(id) {
+                // A silent node whose notes go to a MIDI port; a new port or MIDI channel opens a new queue.
+                let fresh = self.midi_out.get(id) != Some(port);
+                fresh.then(|| MixNode::MidiOut(Box::new(MidiOutNode::new(keys::channel(*id), port.1, self.midi_tap.open(*id, &port.0)))))
             } else {
                 continue;
             };
@@ -229,10 +244,13 @@ impl Compiler {
         self.latency = compiled.latency;
         self.samplers = sources;
         self.audio = audio;
+        self.midi_tap.retain(|id| midi_out.contains_key(id));
+        self.midi_out = midi_out;
         self.built_strips = inserts.into_iter().collect();
         self.captures.retain(|id| self.built_strips.contains(id));
         self.signature = signature;
         self.stretch.trim();
+        self.derived.trim();
         self.cache.trim();
         Ok(Some(compiled.plan))
     }
@@ -261,13 +279,35 @@ impl Compiler {
         self.strips.retain(|id, _| project.mixer.insert(*id).is_some());
     }
 
-    /// The sampler channels and what each one plays, loading samples on first use.
+    /// The sampler channels and what each one plays, loading samples and rendering their precomputed effects on first
+    /// use.
     fn sampler_sources(&mut self, project: &Project) -> HashMap<ChannelId, SamplerSource> {
         let mut sources = HashMap::new();
+        let bpm = project.tempo.bpm_at(bodo_kit_core::Tick::ZERO);
         for (id, channel) in &project.channels {
             if let ChannelKind::Sampler(params) = &channel.kind {
-                let sample = params.sample.and_then(|sample| self.cache.get(project, sample, &self.roots));
-                sources.insert(*id, SamplerSource { params: Arc::clone(params), sample });
+                let data = match params.sample {
+                    Some(sample) => {
+                        let base = if params.resample {
+                            self.cache.get(project, sample, &self.roots)
+                        } else {
+                            self.cache.get_raw(project, sample, &self.roots)
+                        };
+                        match base {
+                            Some(base) => {
+                                let markers = if params.load_regions || params.load_slices {
+                                    self.cache.markers(project, sample, &self.roots, base.rate)
+                                } else {
+                                    Default::default()
+                                };
+                                self.derived.get(&base, &markers, params, bpm)
+                            }
+                            None => SamplerData::default(),
+                        }
+                    }
+                    None => SamplerData::default(),
+                };
+                sources.insert(*id, SamplerSource { params: Arc::clone(params), data });
             }
         }
         sources
@@ -294,6 +334,27 @@ impl Compiler {
     }
 }
 
+/// The MIDI Out channels of `project`: each one's port and MIDI channel.
+fn midi_out_channels(project: &Project) -> HashMap<ChannelId, (String, u8)> {
+    project
+        .channels
+        .values()
+        .filter_map(|c| match &c.kind {
+            ChannelKind::MidiOut { port, channel } => Some((c.id, (port.clone(), *channel))),
+            _ => None,
+        })
+        .collect()
+}
+
+/// What decides the MIDI Out nodes, flattened in rack order, for the graph's signature.
+fn midi_out_signature<'a>(project: &'a Project, midi_out: &'a HashMap<ChannelId, (String, u8)>) -> impl Iterator<Item = u64> + 'a {
+    project.rack_order.iter().filter_map(move |id| {
+        let (port, channel) = midi_out.get(id)?;
+        let port = port.bytes().fold(0xCBF2_9CE4_8422_2325u64, |hash, byte| (hash ^ u64::from(byte)).wrapping_mul(0x0100_0000_01B3));
+        Some(keys::channel(*id) ^ port ^ (u64::from(*channel) << 56) ^ project.channels.get(id).and_then(|c| c.target).map_or(0, keys::insert))
+    })
+}
+
 /// The key of the edge an audio route compiles to.
 fn route_key(from: RouteSource, to: InsertId) -> u64 {
     let from = match from {
@@ -312,7 +373,7 @@ fn signature(project: &Project, sources: &HashMap<ChannelId, SamplerSource>, aud
         if let Some(source) = sources.get(id) {
             out.push(keys::channel(*id));
             out.push(Arc::as_ptr(&source.params) as usize as u64);
-            out.push(source.sample.as_ref().map_or(0, |s| Arc::as_ptr(s) as usize as u64));
+            out.push(source.data.sample.as_ref().map_or(0, |s| Arc::as_ptr(s) as usize as u64));
             out.push(project.channels.get(id).and_then(|c| c.target).map_or(0, keys::insert));
         }
         if let Some(source) = audio.get(id) {

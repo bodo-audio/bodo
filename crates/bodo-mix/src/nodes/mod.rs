@@ -5,6 +5,7 @@ use bodo_kit_graph::{NodeIo, Processor};
 
 use crate::context::BlockContext;
 
+pub mod arp;
 pub mod audio_clip;
 pub mod sampler;
 pub mod strip;
@@ -22,6 +23,8 @@ pub enum MixNode {
     AudioClip(Box<AudioClipNode>),
     /// A mixer insert or the master.
     Strip(StripNode),
+    /// A MIDI Out channel.
+    MidiOut(Box<crate::midi_out::MidiOutNode>),
 }
 
 impl Processor<BlockContext> for MixNode {
@@ -34,6 +37,7 @@ impl Processor<BlockContext> for MixNode {
             MixNode::Sampler(node) => node.process(io, context),
             MixNode::AudioClip(node) => node.process(io, context),
             MixNode::Strip(node) => node.process(io, context),
+            MixNode::MidiOut(node) => node.process(io, context),
         }
     }
 }

@@ -75,6 +75,8 @@ pub struct SongIndex {
     audio: AudioIndex,
     /// The automation clips and pattern lanes.
     pub(crate) automation: AutomationIndex,
+    /// Layer channels and the channels they play, for notes played live on a layer.
+    pub(crate) layers: Vec<(u64, Vec<u64>)>,
 }
 
 /// The length of one step of the step sequencer: a sixteenth note.
@@ -111,20 +113,25 @@ impl SongIndex {
         let mut patterns = Vec::with_capacity(project.patterns.len());
         let mut pattern_lookup = Vec::with_capacity(project.patterns.len());
         let mut channels = Vec::new();
+        let layers = crate::layers::layer_table(project);
         for (id, pattern) in &project.patterns {
             let mut notes: Vec<IndexedNote> = pattern
                 .notes
                 .iter()
                 .flat_map(|(channel, seq)| {
-                    let channel = keys::channel(*channel);
-                    let swing = swing.get(&channel).copied().unwrap_or(0.0);
-                    seq.notes().iter().filter(|n| !n.muted).map(move |n| IndexedNote {
-                        start: n.start.0 + swing_delay(n.start.0, swing),
-                        len: n.len.0,
-                        key: n.key,
-                        velocity: f32::from(n.velocity) / f32::from(u16::MAX),
-                        channel,
-                        id: n.id.0,
+                    let source = keys::channel(*channel);
+                    let swing = swing.get(&source).copied().unwrap_or(0.0);
+                    // A layer's notes play its children.
+                    let targets = crate::layers::targets(&layers, source);
+                    seq.notes().iter().filter(|n| !n.muted).flat_map(move |n| {
+                        targets.keys().to_vec().into_iter().map(move |channel| IndexedNote {
+                            start: n.start.0 + swing_delay(n.start.0, swing),
+                            len: n.len.0,
+                            key: n.key,
+                            velocity: f32::from(n.velocity) / f32::from(u16::MAX),
+                            channel,
+                            id: n.id.0,
+                        })
                     })
                 })
                 .collect();
@@ -175,6 +182,7 @@ impl SongIndex {
             channels,
             audio: AudioIndex::build(project),
             automation,
+            layers,
         }
     }
 

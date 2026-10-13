@@ -13,6 +13,13 @@ use crate::audio_clips::key_ratio;
 ///
 /// Allocates. Complexity: O(n log n) in the sample's frames.
 pub fn stretch(data: &AudioData, ratio: f64) -> AudioData {
+    stretch_and_shift(data, ratio, 0.0)
+}
+
+/// `data` played `ratio` times as fast and `semitones` higher, each without changing the other.
+///
+/// Allocates. Complexity: O(n log n) in the sample's frames.
+pub fn stretch_and_shift(data: &AudioData, ratio: f64, semitones: f32) -> AudioData {
     let channels = data.channel_count().max(1);
     let frames = data.frames();
     let ratio = ratio.clamp(0.01, 100.0);
@@ -30,6 +37,9 @@ pub fn stretch(data: &AudioData, ratio: f64) -> AudioData {
     }
     let mut output = vec![0.0f32; out_frames * channels];
     let mut stretcher = Stretch::preset_default(channels as u32, data.rate.hz());
+    if semitones != 0.0 {
+        stretcher.set_transpose_factor_semitones(semitones, None);
+    }
     stretcher.exact(&input, &mut output);
     let channels_out = (0..data.channels.len()).map(|c| output.iter().skip(c).step_by(channels).copied().collect()).collect();
     AudioData { rate: data.rate, channels: channels_out }

@@ -133,6 +133,10 @@ fn channel_inputs(project: &Project) -> impl Iterator<Item = (u64, u32, usize)> 
     project.channels.values().map(|channel| {
         let lane = match &channel.kind {
             bodo_model::channel::ChannelKind::Automation(lane) => Arc::as_ptr(lane) as usize,
+            // A layer's children decide where its notes play.
+            bodo_model::channel::ChannelKind::Layer { children } => {
+                children.iter().fold(0x9E37_79B9usize, |hash, child| hash.rotate_left(7) ^ keys::channel(*child) as usize) | 1
+            }
             _ => 0,
         };
         (keys::channel(channel.id), channel.swing.to_bits(), lane)
@@ -446,6 +450,11 @@ impl Engine {
         self.recorder.is_active()
     }
 
+    /// The MIDI Out channels' messages, for a thread that sends them to their ports.
+    pub fn midi_out(&self) -> crate::midi_out::MidiOutTap {
+        self.compiler.midi_out()
+    }
+
     /// What delay compensation decided for the current graph.
     pub fn latency(&self) -> &LatencyReport {
         self.compiler.latency()
@@ -561,6 +570,7 @@ impl AudioEngine {
             context.frames = frames;
             context.playing = playing;
             context.frame = transport.frame;
+            context.set_position(song.tempo(), transport.frame);
             context.set_input(input, offset, frames);
             if jumped {
                 // Back to the project's own values until a lane plays again.
@@ -659,7 +669,12 @@ impl AudioEngine {
                 }
                 LiveEvent::AllOff { channel } => (channel, NoteEvent { frame: 0, kind: EventKind::AllOff, key: 0, velocity: 0.0, voice: 0 }),
             };
-            self.live_events.push((channel, event));
+            // A layer plays its children.
+            for &target in crate::layers::targets(&self.song.layers, channel).keys() {
+                if self.live_events.len() < self.live_events.capacity() {
+                    self.live_events.push((target, event));
+                }
+            }
         }
     }
 
