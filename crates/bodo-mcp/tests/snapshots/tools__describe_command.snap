@@ -1,0 +1,25 @@
+---
+source: crates/bodo-mcp/tests/tools.rs
+expression: described.text
+---
+### `pattern.set_steps`
+
+Sets a channel's step sequence in a pattern from a string such as x...x...x...x....
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef | The channel whose steps to set. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+| `steps` | string | One character per step (a sixteenth note) from the pattern's start: `x` on, `.` off. Spaces and `\|` are ignored, so `"x... x... x... x..."` is four on the beat. Steps after the string are left as they are. |
+| `velocity` | number, optional | The velocity of steps that turn on, from 0 to 1; 0.8 by default. |
+
+Example:
+
+```json
+{
+  "channel": "Kick",
+  "steps": "x... x... x... x..."
+}
+```

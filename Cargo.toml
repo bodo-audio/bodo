@@ -27,6 +27,7 @@ bodo-kit-ui = { path = "kit/bodo-kit-ui" }
 bodo-control = { path = "crates/bodo-control" }
 bodo-engine = { path = "crates/bodo-engine" }
 bodo-io = { path = "crates/bodo-io" }
+bodo-mcp = { path = "crates/bodo-mcp" }
 bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
 
@@ -66,7 +67,12 @@ ulid = "3.0.0"
 zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 
+# Async and agents: L8 crates and apps only
+rmcp = { version = "3.5.1", default-features = false }
+tokio = { version = "1.53.2", default-features = false }
+
 # Platform services
+base64 = "0.23.1"
 directories = "6.0.0"
 getrandom = "0.4.3"
 

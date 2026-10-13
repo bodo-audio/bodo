@@ -1,0 +1,37 @@
+---
+source: crates/bodo-mcp/tests/tools.rs
+expression: "ok(&mut agent, \"inspect_project\", json!({})).text"
+---
+Project "First Beat": 96 BPM, 4/4, 48000 Hz; file: none (unsaved changes)
+Transport: stopped at 1:1:0, song mode; current pattern: Outro
+Channels (5):
+  1 Kick: sampler factory:Packs/Bodo Drums/Kick.wav -> insert 1, volume 1.00, pan +0.00
+  2 Clap: sampler factory:Packs/Bodo Drums/Clap.wav -> insert 2, volume 1.00, pan +0.00
+  3 HiHat: sampler factory:Packs/Bodo Drums/HiHat.wav -> insert 3, volume 1.00, pan +0.20
+  4 Snare: sampler factory:Packs/Bodo Drums/Snare.wav -> insert 4, volume 1.00, pan +0.00
+  5 808: sampler factory:Packs/Bodo Drums/808 Bass.wav -> insert 5, volume 1.00, pan +0.00
+Patterns (4):
+  1 Intro: 1 bar, 6 notes
+      Kick         x.......x.......
+      HiHat        ..x...x...x...x.
+  2 Verse: 1 bar, 17 notes
+      Kick         x...x...x...x...
+      Clap         ....x.......x...
+      HiHat        x.x.x.x.x.x.x.x.
+      808          x.....x...x.....
+  3 Fill: 1 bar, 10 notes
+      Kick         x.......x.x.....
+      Snare        ....x...x.x.xxxx
+  4 Outro (current): 1 bar, 2 notes
+      Kick         x...............
+      808          x...............
+Playlist (16 tracks, song length 8 bars):
+  1 Drums: Intro at 1:1:0 (2 bars), Verse at 3:1:0 (4 bars), Fill at 7:1:0 (1 bar), Outro at 8:1:0 (1 bar)
+  2 Track 2: Fill at 6:1:0 (1 bar)
+  (14 empty tracks)
+Mixer: master 0.0 dB, 16 inserts
+  insert 1 Insert 1: 0.0 dB, from Kick
+  insert 2 Insert 2: -3.0 dB, from Clap
+  insert 3 Insert 3: 0.0 dB, from HiHat
+  insert 4 Insert 4: 0.0 dB, from Snare
+  insert 5 Insert 5: 0.0 dB, from 808

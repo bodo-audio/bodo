@@ -1,0 +1,28 @@
+---
+source: crates/bodo-mcp/tests/tools.rs
+expression: "text.join(\"\\n---\\n\")"
+---
+error[not_found]: no channel matches `Kik`
+  candidates: Kick, Clap, HiHat, Snare, 808
+---
+error[unknown_command]: no command `channel.explode`
+  hint: list_commands shows every command
+---
+error[invalid_params]: pattern.set_steps: missing field `steps`
+  hint: see describe_command("pattern.set_steps") for the params
+---
+command 2 of 2 (mixer.set_volume) failed, so nothing changed:
+error[not_found]: there is no insert 99; there are 16 inserts
+---
+error[unknown_command]: no command `pattern.set_step`
+  candidates: pattern.clone, pattern.delete, pattern.new, pattern.rename, pattern.set_color, pattern.set_length, pattern.set_steps, pattern.toggle_step
+  hint: list_commands shows every command
+---
+error[not_found]: no namespace matches `synth`
+  candidates: browser, channel, clip, edit, mixer, note, pattern, playlist, project, transport, ui
+---
+error[invalid_params]: inspect_project: unknown field `verbose`, there are no fields
+  hint: see the tool's input schema
+---
+error[unknown_command]: no tool `render`
+  hint: the tools are inspect_project, inspect_pattern, inspect_mixer, list_commands, describe_command, execute, batch

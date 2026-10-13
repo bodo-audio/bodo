@@ -1,0 +1,13 @@
+---
+source: crates/bodo-mcp/tests/tools.rs
+expression: "ok(&mut agent, \"list_commands\", json!({ \"namespace\": \"pattern\" })).text"
+---
+8 commands; describe_command shows one's params, execute runs it.
+pattern.clone: Copies a pattern with its notes into a new current pattern. [undoable]
+pattern.delete: Deletes a pattern and every clip of it on the playlist. [undoable]
+pattern.new: Makes a new empty pattern and makes it current. [undoable]
+pattern.rename: Renames a pattern. [undoable]
+pattern.set_color: Sets a pattern's color. [undoable]
+pattern.set_length: Fixes a pattern's length, or sets it back to auto. [undoable]
+pattern.set_steps: Sets a channel's step sequence in a pattern from a string such as x...x...x...x.... [undoable]
+pattern.toggle_step: Turns one step of a channel on or off. [undoable]

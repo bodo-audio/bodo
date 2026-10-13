@@ -1,0 +1,8 @@
+---
+source: crates/bodo-mcp/tests/tools.rs
+expression: batch.text
+---
+ok batch of 2
+1 pattern.new: {"name":"Bridge","pattern":"pat_0000000000000000000000041P"}
+2 pattern.set_steps: {"channel":"ch_00000000000000000000000417","pattern":"pat_0000000000000000000000041P","steps":"x.x.x.x.x.x.x.x."}
+changed: Bridge (revision 27)
