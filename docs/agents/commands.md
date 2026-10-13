@@ -277,7 +277,7 @@ Adds a sampler channel to the channel rack, optionally loading a sample.
 | `color` | Color, optional | Its color; the next palette color by default. |
 | `name` | string, optional | Its name; the sample's file name by default. |
 | `sample` | string, optional | The audio file its sampler plays: a `factory:` path from browser.search, an absolute path, or a path inside the project's folder. Without one the sampler starts empty. |
-| `target` | InsertRef, optional | The mixer insert it plays into; by default the first insert no channel uses yet. |
+| `target` | InsertRef, optional | The mixer insert it plays into; none by default, so it plays into the master until channel.assign_insert gives it a mixer track. |
 
 Example:
 
@@ -354,6 +354,26 @@ Example:
 {
   "midiChannel": 2,
   "port": "IAC Bus 1"
+}
+```
+
+### `channel.assign_insert`
+
+Gives a channel its own mixer track: the one selected in the mixer, or a free one; a track with its default name takes the channel's name.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel; the selected channel by default. |
+| `free` | boolean, optional | Take a free mixer track even when one is selected in the mixer. |
+| `insert` | InsertRef, optional | The mixer track. By default the one selected in the mixer, or else a free one: the first that no channel plays into and that still has its default name, made after the last when every track is taken. |
+
+Example:
+
+```json
+{
+  "channel": "Kick"
 }
 ```
 
@@ -725,6 +745,24 @@ Example:
 {
   "channel": "Kick",
   "volume": 0.8
+}
+```
+
+### `channel.unassign_insert`
+
+Makes a channel play into the master again.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel; the selected channel by default. |
+
+Example:
+
+```json
+{
+  "channel": "Kick"
 }
 ```
 
@@ -3085,7 +3123,7 @@ Loads a .bodochannel file as a new channel, or into a channel to replace its sou
 |---|---|---|
 | `channel` | ChannelRef, optional | A channel to turn into the preset, keeping its place in the rack, its mixer insert and its MIDI input. By default the preset becomes a new channel. |
 | `path` | string | The `.bodochannel` file: an absolute path, a `library:` key, or a name in the library's Channel presets folder. |
-| `target` | InsertRef, optional | For a new channel, the mixer insert it plays into; the first insert no channel uses by default. |
+| `target` | InsertRef, optional | For a new channel, the mixer insert it plays into; none by default, so it plays into the master. |
 
 Example:
 

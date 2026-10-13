@@ -9,7 +9,7 @@ expression: snapshot
   },
   "result": {
     "channel": "ch_0000000000000000000000041P",
-    "insert": 6,
+    "insert": 0,
     "name": "Kick 2",
     "sample": "smp_00000000000000000000000414"
   },

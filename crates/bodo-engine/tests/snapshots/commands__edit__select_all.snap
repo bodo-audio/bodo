@@ -18,7 +18,7 @@ expression: snapshot
       "clip_0000000000000000000000041M",
       "clip_0000000000000000000000041N"
     ],
-    "insert": "ins_00000000000000000000000402",
+    "insert": null,
     "inserts": [],
     "notes": [],
     "track": "trk_0000000000000000000000040M"

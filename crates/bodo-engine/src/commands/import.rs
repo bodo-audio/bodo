@@ -146,8 +146,7 @@ fn import(ctx: &mut Ctx<'_>, p: Import) -> Result<Value, CommandError> {
         }
     }
 
-    // One empty sampler channel per part, each on the next insert no channel uses.
-    let mut used: BTreeSet<_> = ctx.project.channels.values().filter_map(|c| c.target).collect();
+    // One empty sampler channel per part, playing into the master until it is assigned a mixer track.
     let pattern_id = ctx.ids().pattern();
     let mut pattern = Pattern::new(pattern_id, name.clone(), palette::color(ctx.project.patterns.len()));
     let mut made = Vec::with_capacity(midi.parts.len());
@@ -156,10 +155,7 @@ fn import(ctx: &mut Ctx<'_>, p: Import) -> Result<Value, CommandError> {
         let id: ChannelId = ctx.ids().channel();
         first = first.or(Some(id));
         let channel_name = unique_name(&part.name, ctx.project.channels.values().map(|c| c.name.as_str()));
-        let target = ctx.project.mixer.order.iter().copied().find(|i| !used.contains(i));
-        if let Some(insert) = target {
-            used.insert(insert);
-        }
+        let target = None;
         let channel = Channel {
             id,
             name: channel_name.clone(),

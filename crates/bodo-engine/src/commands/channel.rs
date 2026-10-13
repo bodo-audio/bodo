@@ -26,7 +26,8 @@ struct Add {
     sample: Option<String>,
     /// Its name; the sample's file name by default.
     name: Option<String>,
-    /// The mixer insert it plays into; by default the first insert no channel uses yet.
+    /// The mixer insert it plays into; none by default, so it plays into the master until channel.assign_insert
+    /// gives it a mixer track.
     target: Option<InsertRef>,
     /// Its color; the next palette color by default.
     color: Option<ColorText>,
@@ -72,6 +73,26 @@ struct Reorder {
     channel: ChannelRef,
     /// Its new position in the channel rack, from 1.
     to: usize,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AssignInsert {
+    /// The channel; the selected channel by default.
+    channel: Option<ChannelRef>,
+    /// The mixer track. By default the one selected in the mixer, or else a free one: the first that no channel plays
+    /// into and that still has its default name, made after the last when every track is taken.
+    insert: Option<InsertRef>,
+    /// Take a free mixer track even when one is selected in the mixer.
+    #[serde(default)]
+    free: bool,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OneChannel {
+    /// The channel; the selected channel by default.
+    channel: Option<ChannelRef>,
 }
 
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
@@ -193,10 +214,7 @@ fn add(ctx: &mut Ctx<'_>, p: Add) -> Result<Value, CommandError> {
     let name = unique_name(base.trim(), ctx.project.channels.values().map(|c| c.name.as_str()));
     let target = match &p.target {
         Some(r) => Some(ctx.insert(Some(r))?).filter(|i| *i != ctx.project.mixer.master.id),
-        None => {
-            let used: BTreeSet<_> = ctx.project.channels.values().filter_map(|c| c.target).collect();
-            ctx.project.mixer.order.iter().copied().find(|i| !used.contains(i))
-        }
+        None => None,
     };
     let color = match p.color {
         Some(c) => c.resolve()?,
@@ -365,6 +383,71 @@ fn set_target(ctx: &mut Ctx<'_>, p: SetTarget) -> Result<Value, CommandError> {
     let number = insert_number(&ctx.project, insert).unwrap_or(0);
     ctx.set_label(format!("Route {} to insert {number}", name(ctx, id)));
     Ok(json!({ "channel": id, "insert": number }))
+}
+
+/// Whether `name` is the name a mixer insert starts with, such as "Insert 5".
+fn default_insert_name(name: &str) -> bool {
+    name.strip_prefix("Insert ").is_some_and(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+}
+
+/// A mixer insert no channel plays into that still has its default name, or a new one after the last.
+///
+/// Complexity: O(c + i) in channels and inserts.
+fn free_insert(ctx: &mut Ctx<'_>) -> bodo_model::InsertId {
+    let used: BTreeSet<_> = ctx.project.channels.values().filter_map(|c| c.target).collect();
+    let mixer = &ctx.project.mixer;
+    if let Some(found) =
+        mixer.order.iter().copied().find(|i| !used.contains(i) && mixer.inserts.get(i).is_some_and(|insert| default_insert_name(&insert.name)))
+    {
+        return found;
+    }
+    let count = mixer.order.len();
+    let name = unique_name(&format!("Insert {}", count + 1), mixer.inserts.values().map(|i| i.name.as_str()));
+    let id = ctx.ids().insert();
+    let mixer = Arc::make_mut(&mut ctx.project.mixer);
+    mixer.inserts.insert(id, Arc::new(bodo_model::MixerInsert::new(id, name)));
+    mixer.order.push_back(id);
+    id
+}
+
+fn assign_insert(ctx: &mut Ctx<'_>, p: AssignInsert) -> Result<Value, CommandError> {
+    let id = ctx.channel(p.channel.as_ref())?;
+    let master = ctx.project.mixer.master.id;
+    let chosen = match (&p.insert, p.free) {
+        (Some(r), _) => Some(ctx.insert(Some(r))?),
+        (None, false) => ctx.editor.insert.filter(|i| *i != master && ctx.project.mixer.inserts.contains_key(i)),
+        (None, true) => None,
+    };
+    if chosen == Some(master) {
+        return Err(CommandError::rejected("the master is not a mixer track a channel is assigned to")
+            .with_hint("channel.unassign_insert makes a channel play into the master"));
+    }
+    let insert = match chosen {
+        Some(insert) => insert,
+        None => free_insert(ctx),
+    };
+    ctx.edit_channel(id, |c| c.target = Some(insert))?;
+    // A track that still has its default name takes the channel's; one the user named keeps its name.
+    let channel_name = name(ctx, id);
+    let renamed = ctx.project.mixer.inserts.get(&insert).is_some_and(|i| default_insert_name(&i.name));
+    if renamed {
+        let new_name = unique_name(&channel_name, ctx.project.mixer.inserts.values().filter(|i| i.id != insert).map(|i| i.name.as_str()));
+        let mixer = Arc::make_mut(&mut ctx.project.mixer);
+        if let Some(track) = mixer.inserts.get_mut(&insert) {
+            Arc::make_mut(track).name = new_name;
+        }
+    }
+    let number = insert_number(&ctx.project, insert).unwrap_or(0);
+    let track_name = ctx.project.mixer.inserts.get(&insert).map(|i| i.name.clone()).unwrap_or_default();
+    ctx.set_label(format!("Assign {channel_name} to mixer track {number}"));
+    Ok(json!({ "channel": id, "insert": number, "name": track_name, "renamed": renamed }))
+}
+
+fn unassign_insert(ctx: &mut Ctx<'_>, p: OneChannel) -> Result<Value, CommandError> {
+    let id = ctx.channel(p.channel.as_ref())?;
+    ctx.edit_channel(id, |c| c.target = None)?;
+    ctx.set_label(format!("Unassign {} from its mixer track", name(ctx, id)));
+    Ok(json!({ "channel": id, "insert": 0 }))
 }
 
 fn set_volume(ctx: &mut Ctx<'_>, p: SetVolume) -> Result<Value, CommandError> {
@@ -660,6 +743,16 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "channel": "Kick", "color": "#f87171" }));
     r.edit("channel.reorder", "Move channel", "Moves a channel to another position in the channel rack.", Effects::UNDOABLE, reorder)
         .example(json!({ "channel": "Snare", "to": 1 }));
+    r.edit(
+        "channel.assign_insert",
+        "Assign to mixer track",
+        "Gives a channel its own mixer track: the one selected in the mixer, or a free one; a track with its default name takes the channel's name.",
+        Effects::UNDOABLE,
+        assign_insert,
+    )
+    .example(json!({ "channel": "Kick" }));
+    r.edit("channel.unassign_insert", "Unassign from mixer track", "Makes a channel play into the master again.", Effects::UNDOABLE, unassign_insert)
+        .example(json!({ "channel": "Kick" }));
     r.edit("channel.set_target_insert", "Set channel insert", "Sets the mixer insert a channel plays into.", Effects::UNDOABLE, set_target)
         .example(json!({ "channel": "Kick", "insert": 5 }));
     r.edit("channel.set_volume", "Set channel volume", "Sets a channel's volume (linear, 1 is unity).", Effects::UNDOABLE, set_volume)

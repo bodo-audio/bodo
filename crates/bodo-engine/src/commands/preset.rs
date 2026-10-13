@@ -50,7 +50,7 @@ struct LoadChannel {
     /// A channel to turn into the preset, keeping its place in the rack, its mixer insert and its MIDI input. By
     /// default the preset becomes a new channel.
     channel: Option<ChannelRef>,
-    /// For a new channel, the mixer insert it plays into; the first insert no channel uses by default.
+    /// For a new channel, the mixer insert it plays into; none by default, so it plays into the master.
     target: Option<InsertRef>,
 }
 
@@ -279,10 +279,8 @@ fn load_channel(ctx: &mut Ctx<'_>, p: LoadChannel) -> Result<Value, CommandError
         None => {
             let target = match &p.target {
                 Some(r) => Some(ctx.insert(Some(r))?).filter(|i| *i != ctx.project.mixer.master.id),
-                None => {
-                    let used: BTreeSet<_> = ctx.project.channels.values().filter_map(|c| c.target).collect();
-                    ctx.project.mixer.order.iter().copied().find(|i| !used.contains(i))
-                }
+                // A new channel plays into the master until it is assigned a mixer track.
+                None => None,
             };
             (ctx.ids().channel(), target, None, None, false)
         }

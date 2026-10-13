@@ -1,8 +1,8 @@
 //! New projects (project.md section 14.1).
 //!
 //! Every template starts at 120 BPM in 4/4 with the master, 16 inserts, 16 playlist tracks and one empty pattern. The
-//! basic template also loads a starter drum kit from the factory content, one channel per insert, so a beat can start
-//! right away.
+//! basic template also loads a starter drum kit from the factory content, so a beat can start right away. Its channels
+//! play into the master until they are assigned mixer tracks, and no mixer track is selected.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -24,7 +24,8 @@ use crate::state::EditorState;
 pub enum Template {
     /// Tracks, inserts and one pattern; no channels.
     Empty,
-    /// The empty template plus a starter drum kit: Kick, Clap, HiHat and Snare on inserts 1 to 4.
+    /// The empty template plus a starter drum kit: Kick, Clap, HiHat and Snare, playing into the master until they are
+    /// assigned mixer tracks.
     #[default]
     Basic,
 }
@@ -84,7 +85,7 @@ pub fn new_project(template: Template, ids: &mut IdSource, env: &Env, created: O
                     name: (*name).to_owned(),
                     color: palette::channel_color(n),
                     kind: ChannelKind::Sampler(Arc::new(params)),
-                    target: inserts.get(n).copied(),
+                    target: None,
                     volume: 1.0,
                     pan: 0.0,
                     pitch_cents: 0.0,
@@ -101,7 +102,7 @@ pub fn new_project(template: Template, ids: &mut IdSource, env: &Env, created: O
         pattern: Some(pattern),
         channel: project.rack_order.front().copied(),
         track: project.track_order.front().copied(),
-        insert: inserts.first().copied(),
+        insert: None,
         ..EditorState::default()
     };
     (project, editor)
