@@ -8,6 +8,7 @@
 //! Integer arithmetic on [`Tick`] and [`Frames`] saturates instead of overflowing, so it never panics.
 //! An `i64` of ticks at 960 PPQ covers millions of years, so saturation is unreachable in practice.
 
+use crate::rt_safe;
 use core::num::NonZeroU32;
 use core::ops::{Add, AddAssign, Neg, Sub, SubAssign};
 
@@ -86,6 +87,7 @@ impl SampleRate {
     /// Converts a frame count to seconds.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn frames_to_seconds(self, frames: Frames) -> Seconds {
         Seconds(frames.0 as f64 / f64::from(self.hz()))
     }
@@ -94,6 +96,7 @@ impl SampleRate {
     /// NaN to frame zero.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn seconds_to_frames(self, seconds: Seconds) -> Frames {
         // `as` from f64 to i64 saturates and maps NaN to 0, which is the documented behavior.
         Frames((seconds.0 * f64::from(self.hz())).round() as i64)

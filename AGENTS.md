@@ -21,6 +21,7 @@ A crate may depend only on crates in **strictly lower** layers. `cargo xtask lay
 
 | Layer | Crates |
 |---|---|
+| macros | `bodo-kit-macros` (proc macros: any crate may use them, and they use no workspace crate) |
 | L0 | `bodo-kit-core`, `bodo-kit-midi` |
 | L1 | `bodo-kit-dsp`, `bodo-kit-audio` |
 | L2 | `bodo-kit-analysis`, `bodo-kit-music`, `bodo-kit-graph` |

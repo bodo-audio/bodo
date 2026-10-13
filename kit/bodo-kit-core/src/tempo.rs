@@ -17,6 +17,7 @@
 //! Before tick 0 and after the last point the tempo is constant: the first point's tempo extends backwards, and the
 //! last point's tempo extends forwards whatever its curve.
 
+use crate::rt_safe;
 use crate::time::{PPQ, Seconds, Tick};
 
 /// The slowest tempo a tempo map accepts, in beats per minute.
@@ -189,6 +190,7 @@ impl TempoMap {
     /// The time at `tick`.
     ///
     /// RT-safe. Complexity: O(log n) in the number of points.
+    #[rt_safe]
     pub fn seconds_at(&self, tick: Tick) -> Seconds {
         self.seconds_at_ticks(tick.0 as f64)
     }
@@ -196,6 +198,7 @@ impl TempoMap {
     /// The time at a fractional tick position.
     ///
     /// RT-safe. Complexity: O(log n) in the number of points.
+    #[rt_safe]
     pub fn seconds_at_ticks(&self, ticks: f64) -> Seconds {
         let segment = self.segment_at_ticks(ticks);
         Seconds(segment.start + segment.seconds_into(ticks - segment.at))
@@ -204,6 +207,7 @@ impl TempoMap {
     /// The fractional tick position at `time`. The inverse of [`TempoMap::seconds_at_ticks`].
     ///
     /// RT-safe. Complexity: O(log n) in the number of points.
+    #[rt_safe]
     pub fn ticks_at(&self, time: Seconds) -> f64 {
         let index = self.segments.partition_point(|s| s.start <= time.0).saturating_sub(1);
         let segment = self.segments.get(index).unwrap_or(&self.origin);
@@ -213,6 +217,7 @@ impl TempoMap {
     /// The tempo at `tick`, in beats per minute.
     ///
     /// RT-safe. Complexity: O(log n) in the number of points.
+    #[rt_safe]
     pub fn bpm_at(&self, tick: Tick) -> f64 {
         let ticks = tick.0 as f64;
         let segment = self.segment_at_ticks(ticks);

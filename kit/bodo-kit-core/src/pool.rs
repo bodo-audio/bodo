@@ -9,9 +9,10 @@
 //! After a region, workers spin for [`RtPoolConfig::spin`], then park. [`RtPool::run`] only unparks workers that are
 //! parked, so back-to-back blocks need no syscalls.
 //!
-//! Workers can be promoted to real-time priority when they start. Joining the audio device's OS workgroup comes with
-//! the device layer.
+//! Workers can be promoted to real-time priority when they start, and they run with denormals flushed to zero.
+//! Joining the audio device's OS workgroup comes with the device layer.
 
+use crate::rt_safe;
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, mpsc};
 use std::thread::{self, JoinHandle};
@@ -154,14 +155,17 @@ fn worker_main<J: RtJob>(shared: &Shared<J>, index: usize, priority: Option<RtPr
     let Some(parked) = shared.parked.get(index) else { return };
     let participant = Participant(index + 1);
     let mut seen = shared.epoch.load(Ordering::Acquire);
-    while shared.wait_for_region(parked, &mut seen) {
-        shared.active.fetch_add(1, Ordering::SeqCst);
-        let _leave = LeaveRegion(&shared.active);
-        // A worker that woke too late finds the region closed and must not touch the job.
-        if shared.open.load(Ordering::SeqCst) {
-            shared.job.work(participant);
+    // The FPU mode is per thread, so set it once for the worker's whole life.
+    crate::rt::flush_denormals(|| {
+        while shared.wait_for_region(parked, &mut seen) {
+            shared.active.fetch_add(1, Ordering::SeqCst);
+            let _leave = LeaveRegion(&shared.active);
+            // A worker that woke too late finds the region closed and must not touch the job.
+            if shared.open.load(Ordering::SeqCst) {
+                shared.job.work(participant);
+            }
         }
-    }
+    });
 
     if let Some(handle) = rt_handle
         && let Err(err) = audio_thread_priority::demote_current_thread_from_real_time(handle)
@@ -216,6 +220,7 @@ impl<J: RtJob> RtPool<J> {
     /// caller's share is done and every worker that joined has left.
     ///
     /// RT-safe. Complexity: O(w) in the number of workers, plus the job's own work.
+    #[rt_safe]
     pub fn run(&mut self) {
         let shared = &*self.shared;
         shared.open.store(true, Ordering::SeqCst);

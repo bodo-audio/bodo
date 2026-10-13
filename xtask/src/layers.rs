@@ -1,6 +1,8 @@
 //! `cargo xtask layers`: crate layering and the dependency rules in AGENTS.md section 2.
 //!
-//! - Every workspace crate has a place: a layer from the table below, or plugins, apps or tooling by directory.
+//! - Every workspace crate has a place: a layer from the table below, a macro crate, or plugins, apps or tooling by
+//!   directory.
+//! - Macro crates (proc macros) sit below every layer: any crate may use them, and they use no workspace crate.
 //! - A crate depends only on crates in strictly lower layers. Kit (L0 to L4) never depends on DAW crates (L5 and
 //!   up), stock plugins depend on Kit only, and only apps depend on plugins.
 //! - `tokio`, `reqwest` and `rmcp` are reachable only from L8 and apps, through any chain of dependencies.
@@ -43,6 +45,9 @@ const LAYERS: &[(&str, u8)] = &[
     ("bodo-ui", 8),
 ];
 
+/// Proc-macro crates. They only generate code, so they sit below every layer. Keep in sync with AGENTS.md section 2.
+const MACRO_CRATES: &[&str] = &["bodo-kit-macros"];
+
 /// The highest Kit layer. Layers above it are DAW crates.
 const KIT_TOP: u8 = 4;
 /// The lowest layer allowed to reach an async runtime or network stack.
@@ -55,6 +60,7 @@ const EGUI_USERS: &[&str] = &["bodo-kit-ui", "bodo-ui"];
 /// Where a workspace crate sits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tier {
+    Macro,
     Layer(u8),
     Plugin,
     App,
@@ -64,6 +70,7 @@ enum Tier {
 impl fmt::Display for Tier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Macro => f.write_str("macros"),
             Self::Layer(layer) => write!(f, "L{layer}"),
             Self::Plugin => f.write_str("plugin"),
             Self::App => f.write_str("app"),
@@ -73,6 +80,9 @@ impl fmt::Display for Tier {
 }
 
 fn tier(name: &str, dir: &str) -> Option<Tier> {
+    if MACRO_CRATES.contains(&name) {
+        return Some(Tier::Macro);
+    }
     if let Some(&(_, layer)) = LAYERS.iter().find(|(crate_name, _)| *crate_name == name) {
         return Some(Tier::Layer(layer));
     }
@@ -87,6 +97,7 @@ fn tier(name: &str, dir: &str) -> Option<Tier> {
 /// The top-level directory a crate of this tier lives in.
 fn home(tier: Tier) -> &'static str {
     match tier {
+        Tier::Macro => "kit",
         Tier::Layer(layer) if layer <= KIT_TOP => "kit",
         Tier::Layer(_) => "crates",
         Tier::Plugin => "plugins",
@@ -100,6 +111,8 @@ fn edge_violation(from: Tier, to: Tier) -> Option<&'static str> {
     match (from, to) {
         (_, Tier::Tooling) => Some("nothing may depend on build tooling"),
         (Tier::Tooling, _) => None,
+        (Tier::Macro, _) => Some("macro crates may not depend on other workspace crates"),
+        (_, Tier::Macro) => None,
         (Tier::App, Tier::App) => Some("an app may not depend on another app"),
         (Tier::App, _) => None,
         (Tier::Plugin, Tier::Layer(layer)) if layer <= KIT_TOP => None,
@@ -228,11 +241,15 @@ mod tests {
         assert!(edge_violation(App, App).is_some());
         assert!(edge_violation(App, Tooling).is_some());
         assert_eq!(edge_violation(Tooling, App), None);
+        assert_eq!(edge_violation(Layer(0), Macro), None);
+        assert_eq!(edge_violation(Plugin, Macro), None);
+        assert!(edge_violation(Macro, Layer(0)).is_some());
     }
 
     #[test]
     fn tiers_come_from_the_table_or_the_directory() {
         assert_eq!(tier("bodo-kit-core", "kit/bodo-kit-core"), Some(Tier::Layer(0)));
+        assert_eq!(tier("bodo-kit-macros", "kit/bodo-kit-macros"), Some(Tier::Macro));
         assert_eq!(tier("bodo-engine", "crates/bodo-engine"), Some(Tier::Layer(7)));
         assert_eq!(tier("bodo-eq", "plugins/bodo-eq"), Some(Tier::Plugin));
         assert_eq!(tier("bodo-cli", "apps/bodo-cli"), Some(Tier::App));

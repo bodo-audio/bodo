@@ -15,12 +15,15 @@ publish = false
 [workspace.dependencies]
 # Bodo Kit
 bodo-kit-core = { path = "kit/bodo-kit-core" }
+bodo-kit-macros = { path = "kit/bodo-kit-macros" }
 bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
 # Real-time
 rtrb = "0.4.0"
 audio_thread_priority = { version = "0.38.0", default-features = false }
 assert_no_alloc = "1.1.2"
+no_denormals = "0.3.0"
+rtsan-standalone = "0.3.0"
 
 # MIDI
 midly = { version = "0.5.3", default-features = false, features = ["std"] }
@@ -35,6 +38,7 @@ tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 anyhow = "1.0.104"
 cargo_metadata = "0.23.1"
 proc-macro2 = { version = "1.0.107", features = ["span-locations"] }
+quote = "1.0.47"
 syn = { version = "3.0.9", features = ["full", "visit", "parsing"] }
 toml = "1.1.8"
 

@@ -13,8 +13,12 @@ default = []
 serde = ["dep:serde"]
 
 [dependencies]
+assert_no_alloc.workspace = true
 audio_thread_priority.workspace = true
+bodo-kit-macros.workspace = true
+no_denormals.workspace = true
 rtrb.workspace = true
+rtsan-standalone.workspace = true
 serde = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true

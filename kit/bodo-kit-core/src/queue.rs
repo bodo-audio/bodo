@@ -12,6 +12,7 @@
 //! Creating a queue allocates, and dropping the last handle frees the buffer, so do both off the audio thread. Values
 //! popped on the audio thread must not be dropped there if dropping them frees memory; send them on to a GC thread.
 
+use crate::rt_safe;
 use core::fmt;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -46,6 +47,7 @@ impl<T> Producer<T> {
     /// Appends `value`. When the queue is full, counts an overflow and returns the value in [`Full`].
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn push(&mut self, value: T) -> Result<(), Full<T>> {
         self.inner.push(value).map_err(|rtrb::PushError::Full(value)| {
             self.overflows.fetch_add(1, Ordering::Relaxed);
@@ -56,6 +58,7 @@ impl<T> Producer<T> {
     /// How many values can be pushed before the queue is full.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn free_slots(&self) -> usize {
         self.inner.slots()
     }
@@ -68,6 +71,7 @@ impl<T> Producer<T> {
     /// How many pushes have overflowed since the queue was created.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn overflows(&self) -> u64 {
         self.overflows.load(Ordering::Relaxed)
     }
@@ -75,6 +79,7 @@ impl<T> Producer<T> {
     /// Whether the consumer has been dropped.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn is_abandoned(&self) -> bool {
         self.inner.is_abandoned()
     }
@@ -84,6 +89,7 @@ impl<T: Copy> Producer<T> {
     /// Appends `value`, or drops it and counts an overflow when the queue is full. Returns whether it was queued.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn push_or_drop(&mut self, value: T) -> bool {
         self.push(value).is_ok()
     }
@@ -105,6 +111,7 @@ impl<T> Consumer<T> {
     /// Removes and returns the oldest value, or `None` when the queue is empty.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn pop(&mut self) -> Option<T> {
         self.inner.pop().ok()
     }
@@ -112,6 +119,7 @@ impl<T> Consumer<T> {
     /// How many values are waiting.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn len(&self) -> usize {
         self.inner.slots()
     }
@@ -119,6 +127,7 @@ impl<T> Consumer<T> {
     /// Whether no values are waiting.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
     }
@@ -131,6 +140,7 @@ impl<T> Consumer<T> {
     /// How many pushes have overflowed since the queue was created.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn overflows(&self) -> u64 {
         self.overflows.load(Ordering::Relaxed)
     }
@@ -138,6 +148,7 @@ impl<T> Consumer<T> {
     /// Whether the producer has been dropped.
     ///
     /// RT-safe.
+    #[rt_safe]
     pub fn is_abandoned(&self) -> bool {
         self.inner.is_abandoned()
     }

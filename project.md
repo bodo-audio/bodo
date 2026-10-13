@@ -190,6 +190,7 @@ bodo/
 ├── deny.toml                  # license and advisory policy (Kit vs DAW)
 ├── rustfmt.toml, clippy.toml
 ├── kit/                       # Bodo Kit, MIT OR Apache-2.0
+│   ├── bodo-kit-macros/
 │   ├── bodo-kit-core/
 │   ├── bodo-kit-midi/
 │   ├── bodo-kit-dsp/
@@ -236,6 +237,7 @@ bodo/
 
 | Layer | Crates | Responsibility |
 |---|---|---|
+| macros | `bodo-kit-macros` | Proc macros such as `#[rt_safe]`; any crate may use them, and they use no workspace crate |
 | L0 | `bodo-kit-core`, `bodo-kit-midi` | Time units, RT primitives, RT thread pool, MIDI 1/2, SMF, MPE |
 | L1 | `bodo-kit-dsp`, `bodo-kit-audio` | DSP building blocks; audio files, peaks, streaming |
 | L2 | `bodo-kit-analysis`, `bodo-kit-music`, `bodo-kit-graph` | Measurement, music theory and performance, the audio graph |
@@ -1691,7 +1693,7 @@ print_stderr = "deny"
 
 ### 19.3 Real-time safety checks
 
-- **`#[rt_safe]`:** a `bodo-kit-core` attribute macro that wraps a function in `assert_no_alloc` in debug builds.
+- **`#[rt_safe]`:** an attribute from `bodo-kit-macros`, re-exported by `bodo-kit-core`. It requires the function's docs to say `RT-safe`, wraps the body in `assert_no_alloc` in debug builds, and enters RealtimeSanitizer's real-time context in rtsan builds ([ADR 0014](docs/adr/0014-rt-safety-tooling-and-plan-handoff.md)).
 - **rtsan job:** a CI job on Linux and macOS builds with RealtimeSanitizer and runs the engine tests and golden renders.
 - **Stress tests:** a virtual device runs with a 64-frame buffer and 200 tracks while a fuzzer issues random edits during rendering. Zero deadline misses are allowed in headless timing mode.
 
