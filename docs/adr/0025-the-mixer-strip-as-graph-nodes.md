@@ -22,7 +22,7 @@ Taps are the hard part. A send can leave an insert at PreFx, PreFader or PostFad
 - **Delay compensation** uses ADR 0015's port offsets with no mixer-specific code in Kit:
   - The FX stage's latency is the sum of its slot latencies plus `max(latency_offset, 0)`. A disabled slot keeps its latency, and the dry path of a partial mix is delayed by the slot's latency.
   - A sidechain edge enters the FX stage at port `k` with offset `pre_k`, the latency of the slots before slot `k`. That gives section 9.4's `in(n) + pre_k - out(sc)`.
-  - A negative offset is a real delay in the output stage, so it adds to the insert's output latency.
+  - A negative offset is a real delay in the output stage that compensation doesn't see: it moves this insert later, and nothing else waits for it.
   - `PdcBypass::Always` marks the insert's outgoing edges as uncompensated: they carry no delay and don't raise `in(n)` downstream. `WhileRecording` does the same only while the transport records; the engine recompiles when recording starts and stops.
   - Automation for a node is read at `t - in(n)` (`LaneDelays`). Lanes are evaluated once per distinct delay per block, and route levels are automated through the edge gain handles.
   - `mix_latency(project, recording)` reports the total latency and each insert's input, own and output latency without running anything. `inspect_mixer` and `Engine::total_latency` use it.
