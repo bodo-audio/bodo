@@ -855,7 +855,8 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
         let Some(track) = project.tracks.get(&row.id) else { continue };
         let area = Rect::from_min_size(pos2(rect.left(), row.top), vec2(rect.width(), row.height));
         // The header itself goes first, so the buttons on it are above it and get their clicks.
-        let header = ui.interact(area.intersect(rect), ui.id().with(("track-header", row.id)), Sense::click());
+        // The header only opens its menu, which the pointer does; Tab goes to its switches instead.
+        let header = ui.interact(area.intersect(rect), ui.id().with(("track-header", row.id)), Sense::CLICK);
         painter.hline(area.x_range(), area.bottom() - 0.5, Stroke::new(1.0, tk.border));
         painter.text(
             area.left_top() + vec2(rem(0.64), rem(0.48)),
@@ -889,7 +890,7 @@ fn track_headers(app: &mut BodoApp, ui: &mut Ui, project: &Project, rect: Rect, 
         }
         // The bottom edge resizes the track.
         let edge = Rect::from_min_max(pos2(area.left(), area.bottom() - 4.0), pos2(area.right(), area.bottom() + 2.0)).intersect(rect);
-        let resize = ui.interact(edge, ui.id().with(("track-height", row.id)), Sense::drag()).on_hover_cursor(egui::CursorIcon::ResizeVertical);
+        let resize = ui.interact(edge, ui.id().with(("track-height", row.id)), Sense::DRAG).on_hover_cursor(egui::CursorIcon::ResizeVertical);
         if resize.drag_started() {
             app.view.playlist.height_drag = Some((row.id, app.new_gesture()));
         }

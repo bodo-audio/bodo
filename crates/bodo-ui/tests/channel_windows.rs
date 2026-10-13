@@ -172,7 +172,8 @@ fn a_layer_window_adds_and_removes_children() {
     h.run_steps(3);
     click(&mut h, "Stack");
     click(&mut h, "Stack add channel");
-    h.get_by_label("Clap").click();
+    // The rack's name button is called Clap too; the list's item comes after it.
+    h.query_all_by_label("Clap").last().unwrap().click();
     h.run_steps(3);
     let children = |h: &Harness<'_, BodoApp>| match &channel(h, "Stack").kind {
         ChannelKind::Layer { children } => children.len(),

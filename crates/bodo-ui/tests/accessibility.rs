@@ -138,6 +138,21 @@ fn mod_f6_moves_between_windows_and_tab_continues_inside_one() {
 }
 
 #[test]
+fn tab_skips_pointer_only_handles_and_custom_elements_tell_screen_readers_what_they_are() {
+    let mut h = harness(common::app(Theme::Dark));
+    to_window(&mut h, WindowKind::Playlist);
+    let mut stops = Vec::new();
+    for _ in 0..24 {
+        press(&mut h, Key::Tab);
+        stops.push(focused(&h).unwrap_or_default());
+    }
+    assert!(stops.iter().any(|s| s == "Track 1 on"), "Tab reaches the tracks' switches: {stops:?}");
+    assert!(!stops.iter().any(|s| s.contains("track-height") || s.contains("track-header")), "but not the resize edges: {stops:?}");
+    assert!(h.query_by_label("Playlist ruler").is_some(), "the ruler, a painted area, has a name for screen readers");
+    assert!(h.query_by_label("Kick").is_some(), "and so does a channel's name button");
+}
+
+#[test]
 fn the_arrow_keys_turn_a_focused_knob_and_delete_resets_it() {
     let mut h = harness(common::app(Theme::Dark));
     to_window(&mut h, WindowKind::ChannelRack);
@@ -176,7 +191,7 @@ fn escape_closes_the_dialogs_and_the_palette() {
     let mut h = harness(common::app(Theme::Dark));
     h.state_mut().view.dialogs.interface = true;
     h.run_steps(2);
-    assert!(h.get_by_label("Interface size").accesskit_node().value().is_some());
+    assert!(h.query_all_by_label("Interface size").any(|n| n.accesskit_node().numeric_value().is_some()), "the size slider shows, named");
     press(&mut h, Key::Escape);
     assert!(!h.state().view.dialogs.interface, "Escape closes the interface settings");
     h.state_mut().view.dialogs.about = true;

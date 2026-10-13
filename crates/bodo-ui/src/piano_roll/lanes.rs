@@ -237,7 +237,7 @@ pub(super) struct Brush {
 pub(super) fn split(app: &mut BodoApp, ui: &mut Ui, bar: Rect, body: Rect) {
     let tk = Tokens::get();
     ui.painter().rect_filled(bar, 0.0, tk.chrome_dark);
-    let response = ui.interact(bar, ui.id().with("piano-lane-split"), Sense::drag());
+    let response = ui.interact(bar, ui.id().with("piano-lane-split"), Sense::DRAG);
     control::record(ui, &response, "Piano roll lane divider", "splitter", None);
     if response.hovered() || response.dragged() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeVertical);

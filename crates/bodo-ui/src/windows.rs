@@ -427,7 +427,8 @@ pub fn show_frame<T: WindowHost>(
     let mut new_state = state;
     let mut events = WindowEvents::default();
     egui::Area::new(id).order(Order::Middle).fixed_pos(rect.min).constrain(false).show(ctx, |ui| {
-        let (rect, background) = ui.allocate_exact_size(rect.size(), Sense::click());
+        // Clicking the body brings the window forward; it is no stop for Tab, which goes to the controls in it.
+        let (rect, background) = ui.allocate_exact_size(rect.size(), Sense::CLICK);
         events.hovered = background.hovered() || ui.rect_contains_pointer(rect);
         let painter = ui.painter().clone();
         painter.add(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: tk.shadow }.as_shape(rect, CornerRadius::same(8)));
@@ -621,7 +622,8 @@ fn resize_grips(ui: &mut Ui, id: Id, rect: Rect, full: Rect, workspace: Rect, st
         (bottom, "bottom", egui::CursorIcon::ResizeVertical, vec2(rem(0.0), rem(0.08))),
         (corner, "corner", egui::CursorIcon::ResizeNwSe, vec2(rem(0.08), rem(0.08))),
     ] {
-        let response = ui.interact(rect, id.with(name), Sense::drag()).on_hover_cursor(cursor);
+        // The pointer resizes; the keyboard maximizes with Enter on the title bar, so the edges are no stops for Tab.
+        let response = ui.interact(rect, id.with(name), Sense::DRAG).on_hover_cursor(cursor);
         if response.dragged() {
             size += response.drag_delta() * axes;
         }

@@ -35,7 +35,34 @@ pub fn begin_frame(ctx: &egui::Context) {
 
 /// Records an element drawn with `response`, if it is visible. Never changes focus or input.
 pub fn record(ui: &egui::Ui, response: &egui::Response, label: &str, role: &'static str, selected: Option<bool>) {
+    describe(ui, response, label, role, selected);
     record_rect(ui, response.id, response.rect, label, role, selected, response.enabled());
+}
+
+/// Tells screen readers what a custom element is when it said nothing itself, such as a channel's name button or a
+/// marker on the ruler: its label, in the interface's language where the catalogs have it, and a kind from `role`.
+/// Widgets that describe themselves, such as egui's buttons and Kit's knobs, keep what they said.
+fn describe(ui: &egui::Ui, response: &egui::Response, label: &str, role: &str, selected: Option<bool>) {
+    let silent = ui.ctx().accesskit_node_builder(response.id, |node| node.label().is_none() && node.value().is_none());
+    if silent != Some(true) {
+        return;
+    }
+    let kind = match role {
+        "knob" | "slider" | "fader" | "point" | "marker" | "splitter" => egui::WidgetType::Slider,
+        "checkbox" | "led" | "step" => egui::WidgetType::Checkbox,
+        "combo" => egui::WidgetType::ComboBox,
+        "number" | "value" | "field" => egui::WidgetType::DragValue,
+        "text" => egui::WidgetType::TextEdit,
+        "label" | "badge" => egui::WidgetType::Label,
+        "canvas" | "graph" | "ruler" | "lane" | "keyboard" | "strip" => egui::WidgetType::Other,
+        _ => egui::WidgetType::Button,
+    };
+    let shown = crate::i18n::lookup(label).unwrap_or(label);
+    let enabled = response.enabled();
+    response.widget_info(|| match selected {
+        Some(on) => egui::WidgetInfo::selected(kind, enabled, on, shown),
+        None => egui::WidgetInfo::labeled(kind, enabled, shown),
+    });
 }
 
 /// Records an element at `rect` that has no response of its own, such as one step of a step row.
