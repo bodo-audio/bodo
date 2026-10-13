@@ -226,17 +226,68 @@ fn residual(samples: &[i32], order: usize) -> impl Iterator<Item = i64> + '_ {
     })
 }
 
-/// The Rice parameter and bit count that code `values` best. Partitions use 5-bit parameters (FLAC's second Rice
-/// method), so any parameter up to 30 is allowed.
+/// The Rice parameter and bit count that code `values` best, the smallest parameter among equals. Partitions use
+/// 5-bit parameters (FLAC's second Rice method), so any parameter up to 30 is allowed.
+///
+/// The cost is convex in the parameter (each value's quotient halves as it grows while the remainder's bits grow by
+/// one), so a walk downhill from the estimate the mean gives finds the best one in a few passes instead of 31.
 fn rice_cost(values: &[u64]) -> (u32, u64) {
-    let mut best = (0, u64::MAX);
-    for k in 0..=30u32 {
-        let cost: u64 = values.iter().map(|&u| (u >> k) + 1 + u64::from(k)).sum();
-        if cost < best.1 {
-            best = (k, cost);
+    let cost = |k: u32| values.iter().map(|&u| (u >> k) + 1 + u64::from(k)).sum::<u64>();
+    let Some(mean) = values.iter().sum::<u64>().checked_div(values.len() as u64) else { return (0, 0) };
+    let mut k = if mean == 0 { 0 } else { (63 - mean.leading_zeros()).min(30) };
+    let mut best = cost(k);
+    let mut moved = false;
+    while k > 0 {
+        let below = cost(k - 1);
+        if below > best {
+            break;
+        }
+        (k, best, moved) = (k - 1, below, true);
+    }
+    while !moved && k < 30 {
+        let above = cost(k + 1);
+        if above >= best {
+            break;
+        }
+        (k, best) = (k + 1, above);
+    }
+    (k, best)
+}
+
+#[cfg(test)]
+mod rice_tests {
+    use super::rice_cost;
+
+    /// The exhaustive search the walk replaces: the smallest parameter with the lowest cost.
+    fn exhaustive(values: &[u64]) -> (u32, u64) {
+        let mut best = (0, u64::MAX);
+        for k in 0..=30u32 {
+            let cost: u64 = values.iter().map(|&u| (u >> k) + 1 + u64::from(k)).sum();
+            if cost < best.1 {
+                best = (k, cost);
+            }
+        }
+        if values.is_empty() { (0, 0) } else { best }
+    }
+
+    #[test]
+    fn the_walk_finds_what_the_exhaustive_search_finds() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for case in 0..2000 {
+            let scale = next() % 40;
+            let values: Vec<u64> = (0..(case % 300)).map(|_| (next() >> 20) % (1u64 << scale).max(1)).collect();
+            assert_eq!(rice_cost(&values), exhaustive(&values), "{values:?}");
+        }
+        for values in [vec![], vec![0], vec![0, 0, 1], vec![1, 1, 1], vec![u64::from(u32::MAX); 4]] {
+            assert_eq!(rice_cost(&values), exhaustive(&values), "{values:?}");
         }
     }
-    best
 }
 
 /// Rice partitions: each one's parameter and its range of residuals.
