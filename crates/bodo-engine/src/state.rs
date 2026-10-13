@@ -6,12 +6,38 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use bodo_kit_core::Tick;
-use bodo_model::{ChannelId, ClipId, InsertId, NoteId, PatternId, Project, TrackId};
+use bodo_model::{ChannelId, Clip, ClipId, InsertId, Note, NoteId, PatternId, Project, TrackId};
+
+/// What `edit.copy` or `edit.cut` took, ready for `edit.paste`.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Clipboard {
+    /// Clips from the playlist.
+    Clips {
+        /// Each clip with its track's distance below the first copied track, and its start relative to `origin`.
+        clips: Vec<(usize, Clip)>,
+        /// The earliest start.
+        origin: Tick,
+        /// From the earliest start to the latest end.
+        span: Tick,
+        /// The position of the first copied track in the playlist.
+        first_track: usize,
+    },
+    /// Notes from a pattern.
+    Notes {
+        /// Each note with its channel, its start relative to `origin`.
+        notes: Vec<(ChannelId, Note)>,
+        /// The earliest start.
+        origin: Tick,
+        /// From the earliest start to the latest end.
+        span: Tick,
+    },
+}
 
 /// The editor's current pattern, channel and selection. Commands with empty params act on these.
-#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EditorState {
     /// The current pattern: what the channel rack and piano roll show, and what Pattern mode plays.
@@ -28,6 +54,9 @@ pub struct EditorState {
     pub insert: Option<InsertId>,
     /// The selected playlist track.
     pub track: Option<TrackId>,
+    /// What was copied last.
+    #[serde(skip)]
+    pub clipboard: Option<Arc<Clipboard>>,
 }
 
 impl EditorState {

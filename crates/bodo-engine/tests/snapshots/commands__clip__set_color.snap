@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "color": "#22d3ee"
+  },
+  "result": {
+    "changed": 1,
+    "color": "#22d3ee"
+  },
+  "undo": "Color clips"
+}

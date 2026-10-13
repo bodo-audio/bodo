@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "error": {
+    "code": "rejected",
+    "hint": "copy something with edit.copy first",
+    "message": "the clipboard is empty"
+  },
+  "params": {
+    "at": "9:1:0"
+  }
+}

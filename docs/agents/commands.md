@@ -318,6 +318,22 @@ Example:
 
 ## clip
 
+### `clip.make_unique`
+
+Gives a pattern clip its own copy of the pattern, to edit without changing the other clips.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `clip` | ClipRef, optional | The pattern clip; the selected clip by default. |
+
+Example:
+
+```json
+{}
+```
+
 ### `clip.move`
 
 Moves clips in time and optionally to another track.
@@ -346,6 +362,7 @@ Example:
 Mutes or unmutes clips; toggles each without `muted`.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -365,6 +382,7 @@ Example:
 Places a pattern on a playlist track; returns the clip's id.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -388,6 +406,7 @@ Example:
 Removes clips from the playlist.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -421,7 +440,108 @@ Example:
 }
 ```
 
+### `clip.set_color`
+
+Colors clips, or gives them their source's color again with null.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `clips` | array of ClipRef, optional | The clips; the selected clips by default. |
+| `color` | Color, optional | The color, or null to use the source's color again. |
+
+Example:
+
+```json
+{
+  "color": "#22d3ee"
+}
+```
+
+### `clip.slice`
+
+Cuts clips in two at a position; both halves keep playing the same source.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where to cut. |
+| `clips` | array of ClipRef, optional | Cut only these clips; by default every clip the cut crosses on `tracks`, or else the selected clips. |
+| `tracks` | array of TrackRef, optional | Cut every clip these tracks have at that point. |
+
+Example:
+
+```json
+{
+  "at": "4:1:0",
+  "tracks": [
+    1
+  ]
+}
+```
+
+### `clip.slip`
+
+Slides the content inside clips without moving or resizing them.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `by` | integer | Ticks to slide the content by: positive plays later material, negative earlier. Pattern content wraps around the pattern; audio stops at its start. |
+| `clips` | array of ClipRef, optional | The clips; the selected clips by default. |
+
+Example:
+
+```json
+{
+  "by": 240
+}
+```
+
 ## edit
+
+### `edit.copy`
+
+Copies the selected clips, or the selected notes, for edit.paste.
+
+- Effects: none
+- Menu: Edit > Copy
+- Shortcut: Mod+C
+
+| Param | Type | Description |
+|---|---|---|
+| `what` | CopyKind, optional | What to copy; the selected clips, or else the selected notes, by default. |
+
+Example:
+
+```json
+{
+  "what": "clips"
+}
+```
+
+### `edit.cut`
+
+Copies the selected clips or notes and removes them.
+
+- Effects: undoable
+- Menu: Edit > Cut
+- Shortcut: Mod+X
+
+| Param | Type | Description |
+|---|---|---|
+| `what` | CopyKind, optional | What to copy; the selected clips, or else the selected notes, by default. |
+
+Example:
+
+```json
+{}
+```
 
 ### `edit.deselect`
 
@@ -436,6 +556,27 @@ Example:
 
 ```json
 {}
+```
+
+### `edit.paste`
+
+Pastes what was copied: clips onto the playlist, notes into the current pattern.
+
+- Effects: undoable
+- Menu: Edit > Paste
+- Shortcut: Mod+V
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position, optional | Where the copied items start; right after where they were copied from by default. |
+| `track` | TrackRef, optional | For clips: the track the first copied track lands on; the same track by default. |
+
+Example:
+
+```json
+{
+  "at": "9:1:0"
+}
 ```
 
 ### `edit.redo`
@@ -469,6 +610,7 @@ Selects channels, clips, notes, an insert or a track; commands with empty params
 | `clips` | array of ClipRef, optional | Clips to select on the playlist. |
 | `insert` | InsertRef, optional | The insert to select in the mixer. |
 | `notes` | array of integer, optional | Notes of the current pattern to select, by id. |
+| `toggle` | boolean, optional | Flip each given item in or out of the selection, as Shift does with the select tool. |
 | `track` | TrackRef, optional | The playlist track to select. |
 
 Example:
@@ -1060,6 +1202,24 @@ Example:
 }
 ```
 
+### `pattern.split_by_channel`
+
+Makes one pattern per channel and stacks their clips where the pattern's clips were.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "pattern": "pattern:2"
+}
+```
+
 ### `pattern.toggle_step`
 
 Turns one step of a channel on or off.
@@ -1104,6 +1264,46 @@ Example:
 ```json
 {
   "name": "Drums"
+}
+```
+
+### `playlist.delete_time`
+
+Removes a span of the song and closes the gap, cutting clips at its edges.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where the time is inserted or removed. |
+| `length` | Length | How much. |
+
+Example:
+
+```json
+{
+  "at": "2:1:0",
+  "length": "1 bar"
+}
+```
+
+### `playlist.insert_time`
+
+Pushes everything from a position later by a length, cutting clips that cross it.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where the time is inserted or removed. |
+| `length` | Length | How much. |
+
+Example:
+
+```json
+{
+  "at": "3:1:0",
+  "length": "1 bar"
 }
 ```
 
@@ -1152,6 +1352,27 @@ Example:
 
 ## project
 
+### `project.add_marker`
+
+Puts a named marker on the timeline.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position | Where it goes. |
+| `color` | Color, optional | Its color. |
+| `name` | string, optional | Its name; "Marker N" by default. |
+
+Example:
+
+```json
+{
+  "at": "3:1:0",
+  "name": "Drop"
+}
+```
+
 ### `project.new`
 
 Starts a new project from a template, replacing the current one.
@@ -1193,6 +1414,45 @@ Example:
 ```json
 {
   "path": "My Song.bodo"
+}
+```
+
+### `project.remove_marker`
+
+Removes a marker by name or number.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `marker` | MarkerRef | The marker. |
+| `name` | string, optional | A new name, for renaming. |
+
+Example:
+
+```json
+{
+  "marker": 1
+}
+```
+
+### `project.rename_marker`
+
+Renames a marker.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `marker` | MarkerRef | The marker. |
+| `name` | string, optional | A new name, for renaming. |
+
+Example:
+
+```json
+{
+  "marker": 1,
+  "name": "Chorus"
 }
 ```
 

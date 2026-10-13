@@ -7,9 +7,12 @@ use bodo_model::{Color, PlaylistTrack};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use bodo_kit_core::Tick;
+use bodo_model::Clip;
+
 use super::{in_range, unique_name};
 use crate::error::CommandError;
-use crate::params::{ColorText, TrackRef};
+use crate::params::{ColorText, Length, Position, TrackRef, format_length, format_position};
 use crate::registry::{Effects, Registry};
 use crate::session::Ctx;
 
@@ -46,6 +49,103 @@ struct SetTrackProps {
     locked: Option<bool>,
     /// Its height in the playlist, from 16 to 400 points.
     height: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct TimeSpan {
+    /// Where the time is inserted or removed.
+    at: Position,
+    /// How much.
+    length: Length,
+}
+
+/// Shifts every clip and marker at or after `at` by `by` ticks, on unlocked tracks. Clips that cross `at` stay.
+fn shift_from(ctx: &mut Ctx<'_>, at: Tick, by: i64) -> Result<usize, CommandError> {
+    let mut moved = 0;
+    let tracks: Vec<_> = ctx.project.track_order.iter().copied().collect();
+    for track in tracks {
+        if ctx.project.tracks.get(&track).is_some_and(|t| t.locked) {
+            continue;
+        }
+        moved += ctx.edit_track(track, |t| {
+            let mut count = 0;
+            let clips: Vec<Clip> = t
+                .clips
+                .iter()
+                .map(|c| {
+                    let mut c = c.clone();
+                    if c.start >= at {
+                        c.start = Tick(c.start.0 + by);
+                        count += 1;
+                    }
+                    c
+                })
+                .collect();
+            t.clips = imbl::Vector::new();
+            for clip in clips {
+                t.insert_clip(clip);
+            }
+            Ok(count)
+        })?;
+    }
+    if ctx.project.markers.iter().any(|m| m.at >= at) {
+        ctx.project.markers = ctx
+            .project
+            .markers
+            .iter()
+            .cloned()
+            .map(|mut m| {
+                if m.at >= at {
+                    m.at = Tick(m.at.0 + by);
+                }
+                m
+            })
+            .collect();
+    }
+    Ok(moved)
+}
+
+fn insert_time(ctx: &mut Ctx<'_>, p: TimeSpan) -> Result<Value, CommandError> {
+    let at = p.at.resolve(&ctx.project)?.max(Tick::ZERO);
+    let length = p.length.resolve(&ctx.project, at)?;
+    // Clips that cross the point are cut there first, so their second half moves with the rest.
+    if ctx.project.tracks.values().any(|t| !t.locked && t.clips.iter().any(|c| c.start < at && c.end() > at)) {
+        let tracks: Vec<serde_json::Value> = ctx.project.track_order.iter().map(|t| json!(t)).collect();
+        super::clip_slice(ctx, at, &tracks)?;
+    }
+    let moved = shift_from(ctx, at, length.0)?;
+    ctx.set_label(format!("Insert {} at {}", format_length(&ctx.project, length), format_position(&ctx.project, at)));
+    Ok(json!({ "moved": moved }))
+}
+
+fn delete_time(ctx: &mut Ctx<'_>, p: TimeSpan) -> Result<Value, CommandError> {
+    let at = p.at.resolve(&ctx.project)?.max(Tick::ZERO);
+    let length = p.length.resolve(&ctx.project, at)?;
+    let end = Tick(at.0 + length.0);
+    // Cut clips at both edges, drop what lies inside, then close the gap.
+    for edge in [at, end] {
+        if ctx.project.tracks.values().any(|t| !t.locked && t.clips.iter().any(|c| c.start < edge && c.end() > edge)) {
+            let tracks: Vec<serde_json::Value> = ctx.project.track_order.iter().map(|t| json!(t)).collect();
+            super::clip_slice(ctx, edge, &tracks)?;
+        }
+    }
+    let mut removed = 0;
+    let tracks: Vec<_> = ctx.project.track_order.iter().copied().collect();
+    for track in tracks {
+        if ctx.project.tracks.get(&track).is_some_and(|t| t.locked) {
+            continue;
+        }
+        removed += ctx.edit_track(track, |t| {
+            let before = t.clips.len();
+            t.clips.retain(|c| !(c.start >= at && c.end() <= end));
+            Ok(before - t.clips.len())
+        })?;
+    }
+    ctx.project.markers.retain(|m| !(m.at >= at && m.at < end));
+    let moved = shift_from(ctx, end, -length.0)?;
+    ctx.set_label(format!("Delete {} at {}", format_length(&ctx.project, length), format_position(&ctx.project, at)));
+    Ok(json!({ "removed": removed, "moved": moved }))
 }
 
 fn add_track(ctx: &mut Ctx<'_>, p: AddTrack) -> Result<Value, CommandError> {
@@ -106,6 +206,22 @@ fn set_track_props(ctx: &mut Ctx<'_>, p: SetTrackProps) -> Result<Value, Command
 }
 
 pub(super) fn register(r: &mut Registry) {
+    r.edit(
+        "playlist.insert_time",
+        "Insert time",
+        "Pushes everything from a position later by a length, cutting clips that cross it.",
+        Effects::UNDOABLE,
+        insert_time,
+    )
+    .example(json!({ "at": "3:1:0", "length": "1 bar" }));
+    r.edit(
+        "playlist.delete_time",
+        "Delete time",
+        "Removes a span of the song and closes the gap, cutting clips at its edges.",
+        Effects::UNDOABLE,
+        delete_time,
+    )
+    .example(json!({ "at": "2:1:0", "length": "1 bar" }));
     r.edit("playlist.add_track", "Add track", "Adds a playlist track.", Effects::UNDOABLE, add_track)
         .example(json!({ "name": "Drums" }))
         .menu("Add/Playlist track");

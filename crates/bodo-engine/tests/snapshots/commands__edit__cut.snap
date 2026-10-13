@@ -1,0 +1,11 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "cut": 1
+  },
+  "undo": "Cut 1"
+}

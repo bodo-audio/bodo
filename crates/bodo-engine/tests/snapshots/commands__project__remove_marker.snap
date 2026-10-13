@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "error": {
+    "code": "not_found",
+    "message": "no marker matches `1`"
+  },
+  "params": {
+    "marker": 1
+  }
+}

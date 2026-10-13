@@ -164,6 +164,62 @@ fn set_meter(ctx: &mut Ctx<'_>, p: SetMeter) -> Result<Value, CommandError> {
     Ok(json!({ "meter": format!("{}/{}", p.numerator, p.denominator) }))
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AddMarker {
+    /// Where it goes.
+    at: crate::params::Position,
+    /// Its name; "Marker N" by default.
+    name: Option<String>,
+    /// Its color.
+    color: Option<crate::params::ColorText>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MarkerParams {
+    /// The marker.
+    marker: crate::params::MarkerRef,
+    /// A new name, for renaming.
+    name: Option<String>,
+}
+
+/// The index of the marker `r` names: a 1-based number or a name.
+fn marker_index(ctx: &Ctx<'_>, r: &crate::params::RefText) -> Result<usize, CommandError> {
+    let text = r.as_text();
+    let by_number = text.parse::<usize>().ok().and_then(|n| n.checked_sub(1)).filter(|i| *i < ctx.project.markers.len());
+    by_number
+        .or_else(|| ctx.project.markers.iter().position(|m| m.name.eq_ignore_ascii_case(&text)))
+        .ok_or_else(|| CommandError::not_found("marker", &text))
+}
+
+fn add_marker(ctx: &mut Ctx<'_>, p: AddMarker) -> Result<Value, CommandError> {
+    let at = p.at.resolve(&ctx.project)?.max(bodo_kit_core::Tick::ZERO);
+    let name = p.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| format!("Marker {}", ctx.project.markers.len() + 1));
+    let color = p.color.map(|c| c.resolve()).transpose()?;
+    let index = ctx.project.markers.iter().position(|m| m.at > at).unwrap_or(ctx.project.markers.len());
+    ctx.project.markers.insert(index, bodo_model::project::Marker { at, name: name.clone(), color });
+    ctx.set_label(format!("Add marker {name}"));
+    Ok(json!({ "marker": index + 1, "name": name, "at": crate::params::format_position(&ctx.project, at) }))
+}
+
+fn remove_marker(ctx: &mut Ctx<'_>, p: MarkerParams) -> Result<Value, CommandError> {
+    let index = marker_index(ctx, &p.marker.0)?;
+    let marker = ctx.project.markers.remove(index);
+    ctx.set_label(format!("Remove marker {}", marker.name));
+    Ok(json!({ "removed": marker.name }))
+}
+
+fn rename_marker(ctx: &mut Ctx<'_>, p: MarkerParams) -> Result<Value, CommandError> {
+    let index = marker_index(ctx, &p.marker.0)?;
+    let name = p.name.map(|n| n.trim().to_owned()).filter(|n| !n.is_empty()).ok_or_else(|| CommandError::invalid("give the new name"))?;
+    if let Some(marker) = ctx.project.markers.get_mut(index) {
+        marker.name.clone_from(&name);
+    }
+    ctx.set_label(format!("Rename marker to {name}"));
+    Ok(json!({ "marker": index + 1, "name": name }))
+}
+
 fn set_info(ctx: &mut Ctx<'_>, p: SetInfo) -> Result<Value, CommandError> {
     let mut meta = (*ctx.project.meta).clone();
     if let Some(title) = p.title {
@@ -207,6 +263,12 @@ pub(super) fn register(r: &mut Registry) {
         .merge(whole);
     r.edit("project.set_meter", "Set meter", "Sets the time signature at the start of the song.", Effects::UNDOABLE, set_meter)
         .example(json!({ "numerator": 3, "denominator": 4 }));
+    r.edit("project.add_marker", "Add marker", "Puts a named marker on the timeline.", Effects::UNDOABLE, add_marker)
+        .example(json!({ "at": "3:1:0", "name": "Drop" }));
+    r.edit("project.remove_marker", "Remove marker", "Removes a marker by name or number.", Effects::UNDOABLE, remove_marker)
+        .example(json!({ "marker": 1 }));
+    r.edit("project.rename_marker", "Rename marker", "Renames a marker.", Effects::UNDOABLE, rename_marker)
+        .example(json!({ "marker": 1, "name": "Chorus" }));
     r.edit("project.set_info", "Set project information", "Sets the song's title and author.", Effects::UNDOABLE, set_info)
         .example(json!({ "title": "First Beat", "author": "hasan-muzak" }));
 }

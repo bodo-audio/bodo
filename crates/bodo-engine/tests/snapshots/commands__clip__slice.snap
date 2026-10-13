@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": "4:1:0",
+    "tracks": [
+      1
+    ]
+  },
+  "result": {
+    "at": "4:1:0",
+    "newClips": [
+      "clip_0000000000000000000000041P"
+    ],
+    "sliced": 1
+  },
+  "undo": "Slice clip"
+}

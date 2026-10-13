@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "clip": "clip_0000000000000000000000041N",
+    "name": "Fill 2",
+    "pattern": "pat_0000000000000000000000041P"
+  },
+  "undo": "Make Fill unique"
+}

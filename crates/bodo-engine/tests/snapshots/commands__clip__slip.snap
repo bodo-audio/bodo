@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "by": 240
+  },
+  "result": {
+    "by": 240,
+    "slipped": 1
+  },
+  "undo": "Slip clip"
+}

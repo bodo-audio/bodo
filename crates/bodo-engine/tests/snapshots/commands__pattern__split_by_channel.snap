@@ -1,0 +1,19 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "pattern": "pattern:2"
+  },
+  "result": {
+    "clips": 4,
+    "patterns": [
+      "pat_0000000000000000000000041P",
+      "pat_0000000000000000000000041Q",
+      "pat_0000000000000000000000041R",
+      "pat_0000000000000000000000041S"
+    ]
+  },
+  "undo": "Split Verse by channel"
+}

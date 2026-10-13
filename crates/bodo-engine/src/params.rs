@@ -334,6 +334,12 @@ entity_ref!(
     "A clip on the playlist, by its id (\"clip_01J...\")."
 );
 entity_ref!(
+    /// A marker on the timeline.
+    MarkerRef,
+    "MarkerRef",
+    "A marker: its number counted from 1 in time order (\"2\" or 2), or its name."
+);
+entity_ref!(
     /// The source of a mixer route: a channel or an insert.
     RouteFromRef,
     "RouteFromRef",

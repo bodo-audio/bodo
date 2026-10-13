@@ -11,9 +11,10 @@ use bodo_model::{Clip, ClipId, TrackId};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{by_clips, pattern_length};
+use super::{by_clips, pattern_length, unique_name, whole};
 use crate::error::CommandError;
-use crate::params::{ClipRef, Length, PatternRef, Position, TrackRef, format_position};
+use crate::palette;
+use crate::params::{ClipRef, ColorText, Length, PatternRef, Position, TrackRef, format_position};
 use crate::registry::{Effects, Registry};
 use crate::session::Ctx;
 
@@ -70,6 +71,47 @@ struct Mute {
     clips: Vec<ClipRef>,
     /// Muted or not; toggles each clip when left out.
     muted: Option<bool>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Slice {
+    /// Where to cut.
+    at: Position,
+    /// Cut only these clips; by default every clip the cut crosses on `tracks`, or else the selected clips.
+    #[serde(default)]
+    clips: Vec<ClipRef>,
+    /// Cut every clip these tracks have at that point.
+    #[serde(default)]
+    tracks: Vec<TrackRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Slip {
+    /// The clips; the selected clips by default.
+    #[serde(default)]
+    clips: Vec<ClipRef>,
+    /// Ticks to slide the content by: positive plays later material, negative earlier. Pattern content wraps around
+    /// the pattern; audio stops at its start.
+    by: i64,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MakeUnique {
+    /// The pattern clip; the selected clip by default.
+    clip: Option<ClipRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetColor {
+    /// The clips; the selected clips by default.
+    #[serde(default)]
+    clips: Vec<ClipRef>,
+    /// The color, or null to use the source's color again.
+    color: Option<ColorText>,
 }
 
 /// Fails when track `id` is locked.
@@ -198,10 +240,148 @@ fn mute(ctx: &mut Ctx<'_>, p: Mute) -> Result<Value, CommandError> {
     Ok(json!({ "changed": count }))
 }
 
+/// The offset of the part of `clip` from `at` on: its offset moved forward by `at - start`.
+fn offset_after(project: &bodo_model::Project, clip: &Clip, at: Tick) -> ClipOffset {
+    let ticks = at.0 - clip.start.0;
+    match clip.offset {
+        ClipOffset::Ticks(t) => ClipOffset::Ticks(Tick(t.0 + ticks)),
+        ClipOffset::Frames(f) => {
+            let seconds = project.tempo.seconds_at(at).0 - project.tempo.seconds_at(clip.start).0;
+            ClipOffset::Frames(bodo_kit_core::Frames(f.0 + project.settings.sample_rate.seconds_to_frames(bodo_kit_core::Seconds(seconds)).0))
+        }
+    }
+}
+
+/// Slices every clip crossing `at` on `tracks` (given as JSON ids), for commands that cut the song.
+pub(crate) fn slice_tracks(ctx: &mut Ctx<'_>, at: Tick, tracks: &[Value]) -> Result<Value, CommandError> {
+    let tracks: Vec<TrackRef> = tracks.iter().filter_map(|t| serde_json::from_value(t.clone()).ok()).collect();
+    slice(ctx, Slice { at: Position::Ticks(at.0), clips: Vec::new(), tracks })
+}
+
+fn slice(ctx: &mut Ctx<'_>, p: Slice) -> Result<Value, CommandError> {
+    let at = p.at.resolve(&ctx.project)?;
+    let crosses = |c: &Clip| c.start < at && c.end() > at;
+    let targets: Vec<(TrackId, ClipId)> = if !p.clips.is_empty() {
+        ctx.clips(&p.clips)?
+    } else if !p.tracks.is_empty() {
+        let mut found = Vec::new();
+        for r in &p.tracks {
+            let track = ctx.track(Some(r))?;
+            if let Some(t) = ctx.project.tracks.get(&track) {
+                found.extend(t.clips.iter().filter(|c| crosses(c)).map(|c| (track, c.id)));
+            }
+        }
+        found
+    } else {
+        ctx.clips(&[])?
+    };
+    let mut pieces = Vec::new();
+    for (track, clip) in targets {
+        unlocked(ctx, track)?;
+        let Some(original) = ctx.project.tracks.get(&track).and_then(|t| t.clips.iter().find(|c| c.id == clip)).cloned() else { continue };
+        if !crosses(&original) {
+            continue;
+        }
+        let id = ctx.ids().clip();
+        let offset = offset_after(&ctx.project, &original, at);
+        // A fade-in stays on the left half, a fade-out moves to the right half.
+        let fades = original.fades;
+        let right = Clip {
+            id,
+            start: at,
+            len: Tick(original.end().0 - at.0),
+            offset,
+            fades: fades.map(|f| bodo_model::playlist::Fades { fade_in: Tick::ZERO, ..f }),
+            ..original
+        };
+        ctx.edit_track(track, |t| {
+            if let Some(left) = t.clips.iter_mut().find(|c| c.id == clip) {
+                left.len = Tick(at.0 - left.start.0);
+                left.fades = fades.map(|f| bodo_model::playlist::Fades { fade_out: Tick::ZERO, ..f });
+            }
+            t.insert_clip(right);
+            Ok(())
+        })?;
+        pieces.push(id);
+    }
+    let cut = pieces.len();
+    if cut == 0 {
+        return Err(CommandError::rejected(format!("no clip crosses {}", format_position(&ctx.project, at))));
+    }
+    ctx.set_label(if cut == 1 { String::from("Slice clip") } else { format!("Slice {cut} clips") });
+    Ok(json!({ "sliced": cut, "at": format_position(&ctx.project, at), "newClips": pieces }))
+}
+
+fn slip(ctx: &mut Ctx<'_>, p: Slip) -> Result<Value, CommandError> {
+    let targets = ctx.clips(&p.clips)?;
+    let project = ctx.project.clone();
+    let mut clips = take(ctx, &targets)?;
+    for (_, clip) in &mut clips {
+        clip.offset = match (clip.offset, clip.source) {
+            (ClipOffset::Ticks(t), ClipSource::Pattern(pattern)) => {
+                let length = pattern_length(&project, pattern).0.max(1);
+                ClipOffset::Ticks(Tick((t.0 + p.by).rem_euclid(length)))
+            }
+            (ClipOffset::Ticks(t), _) => ClipOffset::Ticks(Tick((t.0 + p.by).max(0))),
+            (ClipOffset::Frames(f), _) => {
+                let seconds = project.tempo.seconds_at(Tick(clip.start.0 + p.by)).0 - project.tempo.seconds_at(clip.start).0;
+                let frames = project.settings.sample_rate.seconds_to_frames(bodo_kit_core::Seconds(seconds.abs())).0;
+                ClipOffset::Frames(bodo_kit_core::Frames((f.0 + if seconds < 0.0 { -frames } else { frames }).max(0)))
+            }
+        };
+    }
+    let count = clips.len();
+    put(ctx, clips)?;
+    ctx.set_label(if count == 1 { String::from("Slip clip") } else { format!("Slip {count} clips") });
+    Ok(json!({ "slipped": count, "by": p.by }))
+}
+
+fn make_unique(ctx: &mut Ctx<'_>, p: MakeUnique) -> Result<Value, CommandError> {
+    let refs: Vec<ClipRef> = p.clip.into_iter().collect();
+    let targets = ctx.clips(&refs)?;
+    let [(track, clip)] = targets.as_slice() else {
+        return Err(CommandError::invalid("give one clip, or select one"));
+    };
+    let (track, clip) = (*track, *clip);
+    let source = ctx.project.tracks.get(&track).and_then(|t| t.clips.iter().find(|c| c.id == clip)).map(|c| c.source);
+    let Some(ClipSource::Pattern(pattern)) = source else {
+        return Err(CommandError::rejected("only pattern clips can be made unique"));
+    };
+    let original = ctx.project.patterns.get(&pattern).cloned().ok_or_else(|| CommandError::not_found("pattern", &pattern.to_string()))?;
+    let copy = ctx.ids().pattern();
+    let name = unique_name(&original.name, ctx.project.patterns.values().map(|p| p.name.as_str()));
+    let color = palette::color(ctx.project.patterns.len());
+    ctx.project.patterns.insert(copy, std::sync::Arc::new(bodo_model::Pattern { id: copy, name: name.clone(), color, ..(*original).clone() }));
+    ctx.edit_track(track, |t| {
+        if let Some(c) = t.clips.iter_mut().find(|c| c.id == clip) {
+            c.source = ClipSource::Pattern(copy);
+        }
+        Ok(())
+    })?;
+    ctx.editor.pattern = Some(copy);
+    ctx.editor.notes.clear();
+    ctx.set_label(format!("Make {} unique", original.name));
+    Ok(json!({ "clip": clip, "pattern": copy, "name": name }))
+}
+
+fn set_color(ctx: &mut Ctx<'_>, p: SetColor) -> Result<Value, CommandError> {
+    let targets = ctx.clips(&p.clips)?;
+    let color = p.color.map(|c| c.resolve()).transpose()?;
+    let mut clips = take(ctx, &targets)?;
+    for (_, clip) in &mut clips {
+        clip.color = color;
+    }
+    let count = clips.len();
+    put(ctx, clips)?;
+    ctx.set_label("Color clips");
+    Ok(json!({ "changed": count, "color": color }))
+}
+
 pub(super) fn register(r: &mut Registry) {
     r.edit("clip.place", "Place clip", "Places a pattern on a playlist track; returns the clip's id.", Effects::UNDOABLE, place)
-        .example(json!({ "track": 1, "pattern": "pattern:1", "start": "1:1:0" }));
-    r.edit("clip.remove", "Delete clips", "Removes clips from the playlist.", Effects::UNDOABLE, remove).example(json!({ "clips": [] }));
+        .example(json!({ "track": 1, "pattern": "pattern:1", "start": "1:1:0" }))
+        .merge(whole);
+    r.edit("clip.remove", "Delete clips", "Removes clips from the playlist.", Effects::UNDOABLE, remove).example(json!({ "clips": [] })).merge(whole);
     r.edit("clip.move", "Move clips", "Moves clips in time and optionally to another track.", Effects::UNDOABLE, move_clips)
         .example(json!({ "start": "5:1:0", "track": 2 }))
         .merge(by_clips);
@@ -209,5 +389,22 @@ pub(super) fn register(r: &mut Registry) {
         .example(json!({ "length": "4 bars" }))
         .merge(by_clips);
     r.edit("clip.mute", "Mute clips", "Mutes or unmutes clips; toggles each without `muted`.", Effects::UNDOABLE, mute)
-        .example(json!({ "muted": true }));
+        .example(json!({ "muted": true }))
+        .merge(whole);
+    r.edit("clip.slice", "Slice clips", "Cuts clips in two at a position; both halves keep playing the same source.", Effects::UNDOABLE, slice)
+        .example(json!({ "at": "4:1:0", "tracks": [1] }))
+        .merge(whole);
+    r.edit("clip.slip", "Slip clips", "Slides the content inside clips without moving or resizing them.", Effects::UNDOABLE, slip)
+        .example(json!({ "by": 240 }))
+        .merge(by_clips);
+    r.edit(
+        "clip.make_unique",
+        "Make unique",
+        "Gives a pattern clip its own copy of the pattern, to edit without changing the other clips.",
+        Effects::UNDOABLE,
+        make_unique,
+    )
+    .example(json!({}));
+    r.edit("clip.set_color", "Set clip color", "Colors clips, or gives them their source's color again with null.", Effects::UNDOABLE, set_color)
+        .example(json!({ "color": "#22d3ee" }));
 }

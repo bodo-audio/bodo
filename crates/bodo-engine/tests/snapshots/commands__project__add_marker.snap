@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": "3:1:0",
+    "name": "Drop"
+  },
+  "result": {
+    "at": "3:1:0",
+    "marker": 1,
+    "name": "Drop"
+  },
+  "undo": "Add marker Drop"
+}

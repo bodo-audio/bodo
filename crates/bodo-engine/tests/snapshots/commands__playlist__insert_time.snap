@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": "3:1:0",
+    "length": "1 bar"
+  },
+  "result": {
+    "moved": 4
+  },
+  "undo": "Insert 1 bar at 3:1:0"
+}

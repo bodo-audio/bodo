@@ -10,7 +10,7 @@ use bodo_kit_core::Tick;
 use bodo_model::channel::ChannelKind;
 use bodo_model::pattern::{NoteSeq, PatternLen};
 use bodo_model::playlist::ClipSource;
-use bodo_model::{ChannelId, Note, NoteId, Pattern, PatternId, Project};
+use bodo_model::{ChannelId, Clip, Note, NoteId, Pattern, PatternId, Project};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -322,6 +322,62 @@ fn toggle_step(ctx: &mut Ctx<'_>, p: ToggleStep) -> Result<Value, CommandError> 
     Ok(json!({ "pattern": id, "channel": channel, "step": p.step, "on": on }))
 }
 
+fn split_by_channel(ctx: &mut Ctx<'_>, p: One) -> Result<Value, CommandError> {
+    let id = ctx.pattern(p.pattern.as_ref())?;
+    let original = ctx.project.patterns.get(&id).cloned().ok_or_else(|| CommandError::not_found("pattern", &id.to_string()))?;
+    let channels: Vec<ChannelId> = ctx.project.rack_order.iter().copied().filter(|c| original.notes.contains_key(c)).collect();
+    if channels.len() < 2 {
+        return Err(CommandError::rejected(format!("{} has notes for fewer than two channels, so there is nothing to split", original.name)));
+    }
+    // One pattern per channel, named after the pattern and the channel.
+    let mut parts = Vec::with_capacity(channels.len());
+    for channel in &channels {
+        let channel_name = ctx.project.channels.get(channel).map(|c| c.name.clone()).unwrap_or_default();
+        let name = unique_name(&format!("{} - {channel_name}", original.name), ctx.project.patterns.values().map(|p| p.name.as_str()));
+        let part = ctx.ids().pattern();
+        let mut pattern = Pattern::new(part, name, ctx.project.channels.get(channel).map_or(original.color, |c| c.color));
+        pattern.length = original.length;
+        if let Some(seq) = original.notes.get(channel) {
+            pattern.notes.insert(*channel, seq.clone());
+        }
+        pattern.next_note_id = original.next_note_id;
+        pattern.automation = original.automation.clone();
+        ctx.project.patterns.insert(part, Arc::new(pattern));
+        parts.push(part);
+    }
+    // Every clip of the pattern becomes a stack of clips, one per part, on the tracks from its own downwards.
+    let order: Vec<_> = ctx.project.track_order.iter().copied().collect();
+    let mut placed = 0;
+    for (row, track) in order.iter().enumerate() {
+        let clips: Vec<Clip> = ctx
+            .project
+            .tracks
+            .get(track)
+            .map(|t| t.clips.iter().filter(|c| c.source == ClipSource::Pattern(id)).cloned().collect())
+            .unwrap_or_default();
+        for clip in clips {
+            ctx.edit_track(*track, |t| {
+                t.clips.retain(|c| c.id != clip.id);
+                Ok(())
+            })?;
+            for (index, part) in parts.iter().enumerate() {
+                let Some(target) = order.get(row + index).copied() else { break };
+                let new_id = if index == 0 { clip.id } else { ctx.ids().clip() };
+                let piece = Clip { id: new_id, source: ClipSource::Pattern(*part), ..clip.clone() };
+                ctx.edit_track(target, |t| {
+                    t.insert_clip(piece);
+                    Ok(())
+                })?;
+                placed += 1;
+            }
+        }
+    }
+    ctx.editor.pattern = parts.first().copied();
+    ctx.editor.notes.clear();
+    ctx.set_label(format!("Split {} by channel", original.name));
+    Ok(json!({ "patterns": parts, "clips": placed }))
+}
+
 fn select(ctx: &mut Ctx<'_>, p: Select) -> Result<Value, CommandError> {
     let target = match (&p.pattern, p.offset) {
         (Some(r), _) => ctx.pattern(Some(r))?,
@@ -371,6 +427,14 @@ pub(super) fn register(r: &mut Registry) {
     r.edit("pattern.toggle_step", "Toggle step", "Turns one step of a channel on or off.", Effects::UNDOABLE, toggle_step)
         .example(json!({ "channel": "Clap", "step": 5 }))
         .merge(whole);
+    r.edit(
+        "pattern.split_by_channel",
+        "Split by channel",
+        "Makes one pattern per channel and stacks their clips where the pattern's clips were.",
+        Effects::UNDOABLE,
+        split_by_channel,
+    )
+    .example(json!({ "pattern": "pattern:2" }));
     r.edit(
         "ui.select_pattern",
         "Select pattern",
