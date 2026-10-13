@@ -23,7 +23,8 @@ fn fixture() -> Session {
 }
 
 /// Commands that read or write files outside the test's control; the beat test covers them.
-const FILE_COMMANDS: [&str; 3] = ["project.open", "project.save", "project.save_as"];
+const FILE_COMMANDS: [&str; 6] =
+    ["project.open", "project.save", "project.save_as", "project.import_midi", "pattern.export_midi", "project.export_midi"];
 
 #[test]
 fn every_example_runs_validly_and_undoes_exactly() {

@@ -1101,6 +1101,27 @@ Example:
 }
 ```
 
+### `pattern.export_midi`
+
+Writes a pattern as a MIDI file, one track per channel.
+
+- Effects: disk
+- Menu: File > Export pattern as MIDI
+
+| Param | Type | Description |
+|---|---|---|
+| `path` | string | Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added when the path has no extension. |
+| `pattern` | PatternRef, optional | The pattern; the current pattern by default. |
+
+Example:
+
+```json
+{
+  "path": "Verse.mid",
+  "pattern": "pattern:1"
+}
+```
+
 ### `pattern.new`
 
 Makes a new empty pattern and makes it current.
@@ -1370,6 +1391,48 @@ Example:
 {
   "at": "3:1:0",
   "name": "Drop"
+}
+```
+
+### `project.export_midi`
+
+Writes the whole playlist as a MIDI file, every clip as it plays, one track per channel.
+
+- Effects: disk
+- Menu: File > Export song as MIDI
+
+| Param | Type | Description |
+|---|---|---|
+| `path` | string | Where to write the `.mid` file: an absolute path, or one relative to the project's folder. `.mid` is added when the path has no extension. |
+
+Example:
+
+```json
+{
+  "path": "Song.mid"
+}
+```
+
+### `project.import_midi`
+
+Imports a MIDI file as a new pattern, with an empty sampler channel per part, and places it on the playlist.
+
+- Effects: undoable
+- Menu: File > Import MIDI file
+
+| Param | Type | Description |
+|---|---|---|
+| `at` | Position, optional | Where the clip starts; bar 1 by default. |
+| `path` | string | The `.mid` file: an absolute path, or one relative to the project's folder. |
+| `place` | boolean, optional | Place a clip of the new pattern on the playlist; true by default. |
+| `tempo` | boolean, optional | Make the file's first tempo and time signature the project's; true by default. |
+| `track` | TrackRef, optional | The track for the clip; the first track with no clips by default (a new track when none is empty). |
+
+Example:
+
+```json
+{
+  "path": "Groove.mid"
 }
 ```
 

@@ -2,9 +2,10 @@
 source: crates/bodo-mcp/tests/tools.rs
 expression: "ok(&mut agent, \"list_commands\", json!({ \"namespace\": \"pattern\" })).text"
 ---
-8 commands; describe_command shows one's params, execute runs it.
+9 commands; describe_command shows one's params, execute runs it.
 pattern.clone: Copies a pattern with its notes into a new current pattern. [undoable]
 pattern.delete: Deletes a pattern and every clip of it on the playlist. [undoable]
+pattern.export_midi: Writes a pattern as a MIDI file, one track per channel. [disk]
 pattern.new: Makes a new empty pattern and makes it current. [undoable]
 pattern.rename: Renames a pattern. [undoable]
 pattern.set_color: Sets a pattern's color. [undoable]

@@ -15,7 +15,7 @@ command 2 of 2 (mixer.set_volume) failed, so nothing changed:
 error[not_found]: there is no insert 99; there are 16 inserts
 ---
 error[unknown_command]: no command `pattern.set_step`
-  candidates: pattern.clone, pattern.delete, pattern.new, pattern.rename, pattern.set_color, pattern.set_length, pattern.set_steps, pattern.toggle_step
+  candidates: pattern.clone, pattern.delete, pattern.export_midi, pattern.new, pattern.rename, pattern.set_color, pattern.set_length, pattern.set_steps, pattern.toggle_step
   hint: list_commands shows every command
 ---
 error[not_found]: no namespace matches `synth`
