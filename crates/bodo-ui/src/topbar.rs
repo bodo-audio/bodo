@@ -10,8 +10,8 @@ use bodo_kit_ui::icons;
 use egui::{Align, FontId, Layout, Rect, RichText, Sense, Ui, UiBuilder, vec2};
 use serde_json::json;
 
-use crate::theme::{Tokens, size};
-use crate::windows::{Preset, WindowKind, icon_button};
+use crate::theme::{self, Tokens, size};
+use crate::windows::{Preset, WindowKind, icon_button, painted_button};
 use crate::{BodoApp, Snap, control, dialogs};
 
 /// Draws the top bar.
@@ -226,10 +226,24 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     if stop.clicked() {
         let _ = app.run("transport.stop", json!({}));
     }
-    ui.add_enabled_ui(false, |ui| {
-        let record = icon_button(ui, icons::PLAYER_RECORD, "Record", false);
-        app.hint(&record, "Recording arrives in a later version");
+    record_button(app, ui, transport.recording);
+    ui.add_space(4.0);
+    let metronome = icon_button(ui, icons::METRONOME, "Metronome", transport.metronome);
+    app.hint(&metronome, "Metronome: clicks every beat while playing and recording");
+    if metronome.clicked() {
+        let _ = app.run("transport.metronome", json!({ "on": !transport.metronome }));
+    }
+    let count_in = painted_button(ui, "Count-in", transport.count_in, |painter, rect, color| {
+        // Four beats, the first one stressed: a bar counted in.
+        for beat in 0..4 {
+            let center = egui::pos2(rect.center().x + (beat as f32 - 1.5) * 4.5, rect.center().y);
+            painter.circle_filled(center, if beat == 0 { 2.0 } else { 1.4 }, color);
+        }
     });
+    app.hint(&count_in, "Count-in: a bar of clicks before recording starts");
+    if count_in.clicked() {
+        let _ = app.run("transport.count_in", json!({ "on": !transport.count_in }));
+    }
     ui.add_space(10.0);
 
     // Tempo: drag or type.
@@ -259,6 +273,18 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
         app.view.dialogs.clock_seconds = !app.view.dialogs.clock_seconds;
     }
     ui.add_space(10.0);
+
+    // The Song mode loop, when there is one.
+    if let Some((start, end)) = transport.loop_region {
+        let text = format!("Loop {} to {}", short_position(&project, start), short_position(&project, end));
+        let looped = ui.add(egui::Button::new(RichText::new(text).size(size::SMALL).color(tk.accent)).fill(tk.accent_soft));
+        control::record(ui, &looped, "Loop region", "button", Some(true));
+        app.hint(&looped, "Song mode loops this region; click to stop looping");
+        if looped.clicked() {
+            let _ = app.run("transport.set_loop", json!({ "off": true }));
+        }
+        ui.add_space(10.0);
+    }
 
     // Master volume and level.
     let mut db = project.mixer.master.volume_db;
@@ -295,6 +321,41 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     let perf = ui.add(egui::Label::new(RichText::new(text).monospace().size(size::SMALL).color(color)).sense(Sense::hover()));
     let audio_status = app.audio.status().to_owned();
     app.hint(&perf, format!("Audio: {audio_status}"));
+}
+
+/// The record button: red while recording, blinking while a count-in clicks.
+fn record_button(app: &mut BodoApp, ui: &mut Ui, recording: bool) {
+    let tk = Tokens::get();
+    let counting = recording && app.audio.is_counting_in();
+    if counting {
+        ui.ctx().request_repaint_after(std::time::Duration::from_millis(100));
+    }
+    let lit = !counting || ui.input(|i| i.time).fract() < 0.5;
+    let record = painted_button(ui, "Record", recording, |painter, rect, color| {
+        let color = match (recording, lit) {
+            (true, true) => tk.record,
+            (true, false) => theme::faded(tk.record, 0.3),
+            (false, _) => color,
+        };
+        icons::PLAYER_RECORD.paint(painter, Rect::from_center_size(rect.center(), vec2(14.0, 14.0)), color);
+    });
+    let hint = if counting {
+        "Counting in: recording starts after this bar"
+    } else if recording {
+        "Recording: click to stop; the takes land on the playlist"
+    } else {
+        "Record: plays and records the armed mixer inserts and the notes you play"
+    };
+    app.hint(&record, hint);
+    if record.clicked() {
+        let _ = app.run("transport.record", json!({}));
+    }
+}
+
+/// `tick` as bar:beat, with the ticks only when it is between beats.
+fn short_position(project: &bodo_model::Project, tick: Tick) -> String {
+    let at = project.meter.position(tick);
+    if at.tick == 0 { format!("{}:{}", at.bar + 1, at.beat + 1) } else { format!("{}:{}:{}", at.bar + 1, at.beat + 1, at.tick) }
 }
 
 fn tools(app: &mut BodoApp, ui: &mut Ui) {

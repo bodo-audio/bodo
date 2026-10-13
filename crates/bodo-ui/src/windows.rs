@@ -253,12 +253,17 @@ fn button_style(tk: &Tokens) -> IconButtonStyle {
 
 /// A small icon button in the interface's style. Returns its response; the caller acts on clicks.
 pub fn icon_button(ui: &mut Ui, icon: Icon, label: &str, selected: bool) -> egui::Response {
+    painted_button(ui, label, selected, |painter, rect, color| {
+        let side = 14.0;
+        icon.paint(painter, Rect::from_center_size(rect.center(), vec2(side, side)), color);
+    })
+}
+
+/// A small button in the interface's style whose face `paint` draws into its rect, in the color its state gives.
+pub fn painted_button(ui: &mut Ui, label: &str, selected: bool, paint: impl FnOnce(&egui::Painter, Rect, egui::Color32)) -> egui::Response {
     let tk = Tokens::get();
     let style = button_style(&tk);
-    let response = IconButton::new(label, vec2(22.0, 20.0), &style).selected(selected).show(ui, |ui, rect, color| {
-        let side = 14.0;
-        icon.paint(ui.painter(), Rect::from_center_size(rect.center(), vec2(side, side)), color);
-    });
+    let response = IconButton::new(label, vec2(22.0, 20.0), &style).selected(selected).show(ui, |ui, rect, color| paint(ui.painter(), rect, color));
     crate::control::record(ui, &response, label, "button", Some(selected));
     response.on_hover_text(label)
 }
