@@ -1,4 +1,4 @@
-//! `transport.*`: play, stop and the song position (project.md section 14.1).
+//! `transport.*`: play, stop, the song position, the metronome and count-in (project.md section 14.1).
 //!
 //! The session only records what the transport should do and queues events; whoever plays audio carries them out and
 //! reports the playhead back. Stopping returns to the start, as FL users expect.
@@ -27,6 +27,27 @@ struct SetMode {
     mode: PlayMode,
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Switch {
+    /// On or off; toggles when left out.
+    on: Option<bool>,
+}
+
+fn metronome(ctx: &mut Ctx<'_>, p: Switch) -> Value {
+    let on = p.on.unwrap_or(!ctx.transport.metronome);
+    ctx.transport.metronome = on;
+    ctx.emit(Event::Metronome(on));
+    json!({ "metronome": on })
+}
+
+fn count_in(ctx: &mut Ctx<'_>, p: Switch) -> Value {
+    let on = p.on.unwrap_or(!ctx.transport.count_in);
+    ctx.transport.count_in = on;
+    ctx.emit(Event::CountIn(on));
+    json!({ "countIn": on })
+}
+
 fn state(ctx: &Ctx<'_>) -> Value {
     json!({ "playing": ctx.transport.playing, "mode": ctx.transport.mode, "position": format_position(&ctx.project, ctx.transport.position) })
 }
@@ -39,6 +60,7 @@ fn play(ctx: &mut Ctx<'_>) -> Value {
 
 fn stop(ctx: &mut Ctx<'_>) -> Value {
     ctx.transport.playing = false;
+    ctx.transport.recording = false;
     ctx.transport.position = Tick::ZERO;
     ctx.emit(Event::Stop);
     ctx.emit(Event::Seek(Tick::ZERO));
@@ -78,4 +100,12 @@ pub(super) fn register(r: &mut Registry) {
         set_mode,
     )
     .example(json!({ "mode": "song" }));
+    r.edit("transport.metronome", "Metronome", "Turns the metronome on or off; it clicks every beat while playing.", Effects::NONE, |ctx, p| {
+        Ok(metronome(ctx, p))
+    })
+    .example(json!({ "on": true }));
+    r.edit("transport.count_in", "Count-in", "Turns count-in on or off: recording starts after a bar of clicks.", Effects::NONE, |ctx, p| {
+        Ok(count_in(ctx, p))
+    })
+    .example(json!({}));
 }

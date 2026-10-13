@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "on": true
+  },
+  "result": {
+    "metronome": true
+  },
+  "undo": null
+}

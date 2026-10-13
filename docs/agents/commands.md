@@ -195,6 +195,28 @@ Example:
 }
 ```
 
+### `channel.set_midi_in`
+
+Binds a channel to a MIDI input port and optionally one MIDI channel, or removes the binding.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The channel; the selected channel by default. |
+| `midiChannel` | integer, optional | The MIDI channel to listen to, 1 to 16; every channel when null or left out. |
+| `port` | string, optional | The MIDI input port's name, as the system lists it; null or left out removes the binding. |
+
+Example:
+
+```json
+{
+  "channel": "Kick",
+  "midiChannel": 10,
+  "port": "Pads"
+}
+```
+
 ### `channel.set_pan`
 
 Sets a channel's pan from -1 (left) to 1 (right).
@@ -2071,6 +2093,40 @@ Example:
 ```
 
 ## transport
+
+### `transport.count_in`
+
+Turns count-in on or off: recording starts after a bar of clicks.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `on` | boolean, optional | On or off; toggles when left out. |
+
+Example:
+
+```json
+{}
+```
+
+### `transport.metronome`
+
+Turns the metronome on or off; it clicks every beat while playing.
+
+- Effects: none
+
+| Param | Type | Description |
+|---|---|---|
+| `on` | boolean, optional | On or off; toggles when left out. |
+
+Example:
+
+```json
+{
+  "on": true
+}
+```
 
 ### `transport.play`
 

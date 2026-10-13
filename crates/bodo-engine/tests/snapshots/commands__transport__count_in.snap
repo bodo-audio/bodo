@@ -1,0 +1,11 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "countIn": true
+  },
+  "undo": null
+}

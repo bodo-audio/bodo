@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick",
+    "midiChannel": 10,
+    "port": "Pads"
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "midiChannel": 10,
+    "port": "Pads"
+  },
+  "undo": "Set Kick MIDI input"
+}
