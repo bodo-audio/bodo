@@ -90,8 +90,9 @@ pub struct GraphDesc<P> {
     /// The node whose output the caller reads after each block, such as the master.
     pub output: Option<NodeKey>,
     /// More nodes whose outputs the caller reads after each block, by their index in this list
-    /// ([`crate::GraphRunner::read_tap`]).
-    pub taps: Vec<NodeKey>,
+    /// ([`crate::GraphRunner::read_tap`]). Each comes with a tag the caller chooses, such as where the tap's audio
+    /// goes, which travels with the plan so it always matches the plan running.
+    pub taps: Vec<(NodeKey, u64)>,
     /// Frames over which an edge's gain may move across its whole range, 0 to 1; zero lets it move in one block.
     /// Edges that are new in a recompiled plan start silent and fade in at this rate.
     pub gain_ramp: u32,
@@ -290,8 +291,8 @@ pub struct Plan<P> {
     pub(crate) gains: Arc<[AtomicU32]>,
     pub(crate) ready: ArrayQueue<u32>,
     pub(crate) output: Option<u32>,
-    /// Nodes the caller reads after a block, by tap index.
-    pub(crate) taps: Vec<u32>,
+    /// Nodes the caller reads after a block, by tap index, with their tags.
+    pub(crate) taps: Vec<(u32, u64)>,
     /// Nanoseconds each node has spent processing.
     pub(crate) times: Arc<[AtomicU64]>,
     /// Frames a full gain swing takes; zero for one block.
@@ -385,7 +386,10 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
         Some(key) => Some(*index.get(&key).ok_or(CompileError::UnknownNode { node: key })?),
         None => None,
     };
-    let taps = taps.iter().map(|key| index.get(key).copied().ok_or(CompileError::UnknownNode { node: *key })).collect::<Result<Vec<_>, _>>()?;
+    let taps = taps
+        .iter()
+        .map(|&(key, tag)| index.get(&key).map(|&n| (n, tag)).ok_or(CompileError::UnknownNode { node: key }))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Resolve and sort the edges: by target, then port, then key. That fixes the summing order.
     let mut seen_edges = HashMap::with_capacity(edges.len());
@@ -481,7 +485,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
     for &(_, _, _, from, _) in &resolved {
         readers[from] += 1;
     }
-    let read_by_caller = |n: usize| output == Some(n) || taps.contains(&n);
+    let read_by_caller = |n: usize| output == Some(n) || taps.iter().any(|&(t, _)| t == n);
     let mut buffer_of = vec![u32::MAX; nodes.len()];
     let mut buffer_channels: Vec<usize> = Vec::new();
     for &n in &order {
@@ -566,7 +570,7 @@ pub fn compile<P>(desc: GraphDesc<P>, max_frames: usize, previous: Option<&Layou
             gains: Arc::clone(&gains),
             ready: ArrayQueue::new(node_count.max(1)),
             output: output.map(|o| o as u32),
-            taps: taps.iter().map(|&t| t as u32).collect(),
+            taps: taps.iter().map(|&(t, tag)| (t as u32, tag)).collect(),
             times: Arc::clone(&times),
             gain_ramp,
             adopt_nodes,

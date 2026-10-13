@@ -281,16 +281,17 @@ impl<P: Processor<C>, C: Send + Sync + 'static> GraphRunner<P, C> {
         Some(read(&output))
     }
 
-    /// Calls `read` with the output of tap `index` (its place in [`crate::GraphDesc::taps`]) from the last block, or
-    /// returns `None` when the plan has no such tap.
+    /// Calls `read` with the output of tap `index` (its place in [`crate::GraphDesc::taps`]) from the last block and
+    /// the tap's tag, or returns `None` when the plan has no such tap.
     ///
     /// RT-safe as long as `read` is.
     #[rt_safe]
-    pub fn read_tap<R>(&self, index: usize, read: impl FnOnce(&AudioBuffer) -> R) -> Option<R> {
+    pub fn read_tap<R>(&self, index: usize, read: impl FnOnce(&AudioBuffer, u64) -> R) -> Option<R> {
         let plan = self.pool.job().plan.try_borrow().ok()?;
-        let node = plan.nodes.get(*plan.taps.get(index)? as usize)?;
+        let &(node, tag) = plan.taps.get(index)?;
+        let node = plan.nodes.get(node as usize)?;
         let output = plan.buffers.get(node.output as usize)?.try_borrow().ok()?;
-        Some(read(&output))
+        Some(read(&output, tag))
     }
 
     /// How many taps the current plan has.
