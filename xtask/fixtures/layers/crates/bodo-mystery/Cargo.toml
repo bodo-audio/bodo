@@ -1,0 +1,6 @@
+[package]
+name = "bodo-mystery"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+

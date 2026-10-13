@@ -1,0 +1,11 @@
+[package]
+name = "bodo-model"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+bodo-kit-core = { path = "../../kit/bodo-kit-core" }
+
+[dev-dependencies]
+bodo-engine = { path = "../../kit/bodo-engine" }

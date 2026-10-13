@@ -1,0 +1,12 @@
+# Fixture for `cargo xtask layers`. Each crate breaks one layering rule on purpose; see the test in
+# xtask/src/layers.rs. The crates under vendor/ stand in for external crates of the same name.
+
+[workspace]
+resolver = "3"
+members = ["kit/*", "crates/*", "plugins/*"]
+exclude = ["vendor"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2024"
+publish = false

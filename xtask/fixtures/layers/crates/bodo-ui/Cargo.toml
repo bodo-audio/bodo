@@ -1,0 +1,9 @@
+[package]
+name = "bodo-ui"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+egui = { path = "../../vendor/egui" }
+tokio = { path = "../../vendor/tokio" }

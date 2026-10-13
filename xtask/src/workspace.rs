@@ -1,0 +1,41 @@
+//! Shared helpers: workspace metadata, running cargo, and reporting findings.
+
+use std::path::{Path, PathBuf};
+
+use anyhow::{Context, Result, bail};
+use cargo_metadata::{CargoOpt, Metadata, MetadataCommand, Package};
+
+/// The repository root, the directory above this crate.
+pub fn root() -> PathBuf {
+    let xtask_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    xtask_dir.parent().unwrap_or(xtask_dir).to_path_buf()
+}
+
+/// Metadata for the workspace at `manifest`, resolved with every feature enabled so that optional dependencies are
+/// checked too.
+pub fn metadata(manifest: &Path) -> Result<Metadata> {
+    MetadataCommand::new()
+        .manifest_path(manifest)
+        .features(CargoOpt::AllFeatures)
+        .exec()
+        .with_context(|| format!("cargo metadata failed for {}", manifest.display()))
+}
+
+/// The directory of `package` relative to the workspace root, with `/` separators.
+pub fn relative_dir(metadata: &Metadata, package: &Package) -> String {
+    let dir = package.manifest_path.parent().unwrap_or(&package.manifest_path);
+    let relative = dir.strip_prefix(&metadata.workspace_root).unwrap_or(dir);
+    relative.as_str().replace('\\', "/")
+}
+
+/// Prints `findings` and fails when there are any.
+pub fn report(check: &str, findings: Vec<String>) -> Result<()> {
+    if findings.is_empty() {
+        println!("{check}: ok");
+        return Ok(());
+    }
+    for finding in &findings {
+        eprintln!("error[{check}]: {finding}");
+    }
+    bail!("{check}: {} problem(s)", findings.len())
+}
