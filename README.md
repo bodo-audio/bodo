@@ -2,7 +2,7 @@
 
 A free, open-source, AI-native digital audio workstation written entirely in Rust.
 
-Bodo is early: the audio core and the first version of the interface work, and you can make a beat with the step sequencer, arrange it and save it. [`docs/STATUS.md`](docs/STATUS.md) tracks what exists.
+Bodo is early: you can make a beat with the step sequencer, write melodies in the piano roll, arrange patterns, audio and automation on the playlist, record audio and MIDI, and save it all. [`docs/STATUS.md`](docs/STATUS.md) tracks what exists.
 
 - [`project.md`](project.md): the specification.
 - [`AGENTS.md`](AGENTS.md): the rules for anyone, human or coding agent, who changes code here.

@@ -107,6 +107,56 @@ Started and finished 2026-10-13. Every check passes on macOS; CI on Linux and Wi
 - **Opening a project in the running app** from the Hub or a second launch.
 - **Headroom:** the master has no limiter yet, so stacking many hits can still go over 0 dBFS.
 
-## M3 to M9
+## M3: Editing depth (done on macOS, 2026-10-13)
+
+Started and finished 2026-10-13. Every check passes on macOS; CI on Linux and Windows runs once these commits are pushed.
+
+| Item | State | Where |
+|---|---|---|
+| Playlist tools | Done | all nine tools of section 10.3 with FL's keys, snap from a sixth of a step to a bar, Alt for no snap, loop region, markers, track heights, clip menu (make unique, split by channel, color, stretch, fades) |
+| Playlist commands | Done | `clip.slice`, `clip.slip`, `clip.make_unique`, `clip.set_color`, `playlist.insert_time` and `delete_time`, `pattern.split_by_channel`, markers, copy, cut and paste |
+| Piano roll tools | Done | the playlist's tools on notes (all but Slip), stamp, strum, arpeggiate, chop, glue, slice, legato, quantize with strength and swing, articulate, flip, transpose, humanize and un-humanize, randomize, limit to scale; scale highlighting and a chord readout (`bodo-kit-music`) |
+| Lanes | Done | velocity, release, fine pitch, pan, Mod X and Y; MPE pitch, pressure and timbre curves per note; pitch bend, channel pressure and any CC as pattern lanes. Each stroke is one undo step |
+| Automation clips | Done | a channel kind with clips on any track, pattern lanes, eight curve shapes, editing on the playlist, "Create automation clip" on rack knobs; played per block ([ADR 0024](adr/0024-automation-swing-and-the-song-loop.md)) |
+| Audio clips and stretching | Done | waveforms, fades, slip and slice, resample or stretch to the tempo with Signalsmith Stretch, sounds dropped from the browser ([ADR 0021](adr/0021-audio-clips-and-time-stretching.md)) |
+| Audio recording | Done | arm, input, tap and format per insert; takes written by a disk thread and placed as one undo step, with latency compensation ([ADR 0022](adr/0022-recording-audio-and-midi.md)) |
+| MIDI devices | Done | MIDI inputs play the selected channel or bound channels, MIDI recording into the current pattern, metronome, count-in, typing keyboard ([ADR 0023](adr/0023-live-midi-input.md)) |
+| SMF import and export | Done | `project.import_midi`, `project.export_midi`, `pattern.export_midi`, and the File menu |
+| Swing and the Song loop | Done | swing plays; Shift+drag on the playlist ruler loops Song mode on the exact frame |
+
+There are now 123 commands in [`agents/commands.md`](agents/commands.md).
+
+### Exit criteria
+
+| Criterion | State |
+|---|---|
+| Every row of the tool table in 10.3 covered by tests | Met. `crates/bodo-ui/tests/playlist_tools.rs` drives each of the nine tools with pointer events and checks the project, the undo history and what must stay out of it; `crates/bodo-engine/tests/playlist_tools.rs` covers the commands behind them. The piano roll's tools have their own: `crates/bodo-ui/tests/piano_roll_tools.rs` |
+| Recorded audio lands within 1 ms after latency compensation | Met. `crates/bodo-mix/tests/record.rs` records an impulse through the virtual device's loopback at three latency pairs and finds it on the exact frame; `bodo-ui`'s audio tests run the app's own callback the same way and check the clip's place on the playlist |
+
+### Deferred
+
+- **Automation timing:** values are evaluated at the start of each block and ramped, so they can be a block late; splitting blocks at points is the fix ([ADR 0024](adr/0024-automation-swing-and-the-song-loop.md)). Lanes for CC, pitch bend, pressure, plugins, sends and tempo are stored and edited but not heard until their processors arrive (M4 to M6).
+- **Live MIDI timing** is quantized to the audio buffer; only notes are routed, and nothing sends MIDI out yet.
+- **Recording:** loop recording into separate takes, FLAC, and pre-FX and post-FX taps that differ from the input (they need M4's FX slots).
+- **Audio clips:** files over 30 seconds load into memory, stretched copies render on the control thread, and a tempo change inside a clip uses the tempo at its start.
+- **Playback tool** scrubbing doesn't play audio clips at varying speed.
+- **Snapshot tolerance:** the interface snapshots allow 400 differing pixels, enough to hide a small regression; a tighter check per region would catch more.
+
+## Interface gaps against the spec
+
+The owner noted on 2026-10-13 that much of section 14's interface is still missing. This list tracks what is not built yet, with the milestone that plans it.
+
+- **Top bar:** loop record, the oscilloscope, auto scrolling (`[->]`), one-click audio recording (`[mic]`), and memory in the performance readout. The Marketplace (M8) and AI (M7) buttons are placeholders.
+- **Browser:** the Plugins tab, the folder list of section 14.1 (recent files, plugin database, presets, scores, recorded, rendered and the rest), back and up buttons, tag filters, the Marketplace section, and previewing a sound by clicking it.
+- **Channel Rack:** the header (options menu, channel group filter, swing knob, graph editor and view buttons), the per-step graph editor, channel groups, reordering by dragging, colors, and a channel's MIDI input in its own menu (it is in the audio settings now).
+- **Channel windows:** the Sampler window of section 10.2 and every other channel window.
+- **Playlist:** track groups, a time selection apart from the loop, consolidating clips to audio, and curve tension handles on automation points.
+- **Piano roll:** following the playhead, a note properties dialog, and showing or hiding ghost notes.
+- **Mixer (M4):** the insert panel, FX slots, sends and routing, meters on every insert, solo and the strip EQ.
+- **Windows:** detaching into OS windows, saving custom layouts, the native macOS menu, and editable shortcuts.
+- **Later panels:** the AI Assistant (M7), the Marketplace window (M8) and plugin editors (M5 and M6).
+- **Accessibility and localization (14.7):** screen readers see the controls through AccessKit, but full keyboard navigation, UI scaling, the high-contrast theme, color-blind-safe options and translated strings are still to come.
+
+## M4 to M9
 
 Not started.
