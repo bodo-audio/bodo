@@ -262,6 +262,7 @@ fn a_layer_plays_every_child() {
         swing: 0.0,
         muted: false,
         midi_in: None,
+        group: None,
     };
     b.project.channels.insert(layer, Arc::new(channel));
     b.project.rack_order.push_back(layer);

@@ -32,6 +32,7 @@ fn plain_channel(id: ChannelId, name: &str, kind: ChannelKind) -> Channel {
         swing: 0.0,
         muted: false,
         midi_in: None,
+        group: None,
     }
 }
 
