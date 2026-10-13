@@ -352,16 +352,62 @@ fn the_export_dialog_writes_the_mix_and_the_stems() {
     dialog.name = String::from("Beat");
     h.run_steps(2);
     click(&mut h, "Export run");
+    // The export renders on its own thread while the interface keeps drawing, with a progress bar.
+    assert!(h.state().view.dialogs.exporting.is_some(), "the export runs in the background");
+    wait_for_export(&mut h);
     assert!(dir.join("Beat.wav").is_file());
-    // The export ran inside the last frame; let the dialog settle before the next click.
-    h.run_steps(3);
+    let said = h.state().view.dialogs.export.as_ref().and_then(|d| d.message.clone());
+    assert!(said.as_ref().is_some_and(|(text, error)| !error && text.starts_with("Wrote")), "{said:?}");
     click(&mut h, "Export Stems and the mix");
     click(&mut h, "Export format FLAC");
     click(&mut h, "Export run");
+    wait_for_export(&mut h);
     let said = h.state().view.dialogs.export.as_ref().and_then(|d| d.message.clone());
     assert!(dir.join("Beat stems").join("Mix.flac").is_file(), "{said:?}");
     let stems = std::fs::read_dir(dir.join("Beat stems")).unwrap().count();
     assert!(stems > 2, "{stems} files");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+/// Steps the interface until the background export has finished.
+fn wait_for_export(h: &mut egui_kittest::Harness<'_, bodo_ui::BodoApp>) {
+    // Debug builds encode FLAC slowly; give the stems a minute.
+    for _ in 0..12_000 {
+        if h.state().view.dialogs.exporting.is_none() {
+            h.run_steps(2);
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+        h.step();
+    }
+    panic!("the export didn't finish");
+}
+
+#[test]
+fn an_export_can_be_cancelled() {
+    let dir = std::env::temp_dir().join(format!("bodo-ui-export-cancel-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut app = common::beat_app();
+    // At 10 BPM the beat lasts minutes, so the render is still going when it is cancelled.
+    app.run("project.set_tempo", serde_json::json!({ "bpm": 10 })).unwrap();
+    let mut h = common::harness(app, Theme::Dark, false);
+    h.run_steps(3);
+    click_labeled(&mut h, "File");
+    h.run_steps(2);
+    click_labeled(&mut h, "Export mix...");
+    h.run_steps(2);
+    let dialog = h.state_mut().view.dialogs.export.as_mut().unwrap();
+    dialog.folder = dir.display().to_string();
+    dialog.name = String::from("Beat");
+    h.run_steps(2);
+    click(&mut h, "Export run");
+    // The dialog grows by a progress bar and re-centers; let it settle before aiming at its Cancel button.
+    h.run_steps(4);
+    element(&h, "Export progress");
+    click(&mut h, "Export cancel");
+    wait_for_export(&mut h);
+    let said = h.state().view.dialogs.export.as_ref().and_then(|d| d.message.clone());
+    assert!(said.as_ref().is_some_and(|(text, error)| *error && text.contains("cancelled")), "{said:?}");
     let _ = std::fs::remove_dir_all(dir);
 }
 

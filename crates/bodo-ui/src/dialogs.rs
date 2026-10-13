@@ -58,6 +58,68 @@ pub struct Dialogs {
     pub clock_seconds: bool,
     /// The export dialog, while it is open.
     pub export: Option<Export>,
+    /// The export rendering on a background thread, if one is.
+    pub exporting: Option<ExportTask>,
+}
+
+/// An export rendering on a background thread, so the interface keeps working meanwhile.
+pub struct ExportTask {
+    /// Where it writes: the mix file or the stems folder.
+    pub place: String,
+    /// How far it has come; it can also cancel it.
+    pub progress: std::sync::Arc<bodo_mix::RenderProgress>,
+    handle: Option<std::thread::JoinHandle<Result<serde_json::Value, String>>>,
+}
+
+impl std::fmt::Debug for ExportTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExportTask").field("place", &self.place).field("fraction", &self.progress.fraction()).finish()
+    }
+}
+
+impl ExportTask {
+    /// Starts rendering `job` on its own thread.
+    fn start(job: bodo_engine::ExportJob) -> Result<Self, String> {
+        let place = job.place().display().to_string();
+        let progress = std::sync::Arc::new(bodo_mix::RenderProgress::default());
+        let shared = std::sync::Arc::clone(&progress);
+        let handle = std::thread::Builder::new()
+            .name(String::from("bodo-export"))
+            .spawn(move || job.run(&shared).map_err(|e| e.to_string()))
+            .map_err(|e| format!("the export could not start: {e}"))?;
+        Ok(Self { place, progress, handle: Some(handle) })
+    }
+
+    /// The export's outcome once it has finished: what it wrote, or why it couldn't.
+    fn finished(&mut self) -> Option<Result<serde_json::Value, String>> {
+        if !self.handle.as_ref().is_some_and(std::thread::JoinHandle::is_finished) {
+            return None;
+        }
+        let handle = self.handle.take()?;
+        Some(handle.join().unwrap_or_else(|_| Err(String::from("the export stopped unexpectedly"))))
+    }
+}
+
+/// Takes the background export's outcome when it finishes, into the export dialog's message and the status line.
+pub(crate) fn poll_export(app: &mut BodoApp, ctx: &egui::Context) {
+    let Some(task) = app.view.dialogs.exporting.as_mut() else { return };
+    let Some(outcome) = task.finished() else {
+        // Keep the progress bar moving while it renders.
+        ctx.request_repaint_after(std::time::Duration::from_millis(100));
+        return;
+    };
+    app.view.dialogs.exporting = None;
+    let (message, error) = match outcome {
+        Ok(result) => {
+            let place = result.get("path").or_else(|| result.get("folder")).and_then(serde_json::Value::as_str).unwrap_or_default();
+            (format!("Wrote {place}"), false)
+        }
+        Err(error) => (error, true),
+    };
+    app.set_status(message.clone(), error);
+    if let Some(dialog) = app.view.dialogs.export.as_mut() {
+        dialog.message = Some((message, error));
+    }
 }
 
 /// What the export dialog renders.
@@ -251,6 +313,7 @@ fn modal(ctx: &egui::Context, title: &str, add: impl FnOnce(&mut egui::Ui)) {
 
 /// Draws whichever dialogs are open.
 pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
+    poll_export(app, ctx);
     if let Some(action) = app.view.dialogs.unsaved.clone() {
         let mut choice = None;
         modal(ctx, "Unsaved changes", |ui| {
@@ -481,15 +544,35 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
             crate::control::record(ui, &field, "Export name", "text", None);
             ui.end_row();
         });
-        if let Some((message, error)) = &dialog.message {
+        let running = app.view.dialogs.exporting.as_ref().map(|task| (task.place.clone(), std::sync::Arc::clone(&task.progress)));
+        if let Some((place, progress)) = &running {
+            ui.add_space(4.0);
+            ui.label(RichText::new(format!("Exporting to {place}")).size(size::SMALL).color(tk.text_dim));
+            let bar = ui.add(egui::ProgressBar::new(progress.fraction()).show_percentage());
+            crate::control::record(ui, &bar, "Export progress", "progress", None);
+        } else if let Some((message, error)) = &dialog.message {
             ui.add_space(4.0);
             ui.label(RichText::new(message).size(size::SMALL).color(if *error { tk.error } else { tk.text_dim }));
         }
         ui.add_space(6.0);
-        let button = ui.add_enabled(!dialog.name.trim().is_empty() && !dialog.folder.trim().is_empty(), egui::Button::new("Export"));
-        crate::control::record(ui, &button, "Export run", "button", None);
-        if button.clicked() {
-            run = true;
+        ui.horizontal(|ui| {
+            let ready = running.is_none() && !dialog.name.trim().is_empty() && !dialog.folder.trim().is_empty();
+            let button = ui.add_enabled(ready, egui::Button::new("Export"));
+            crate::control::record(ui, &button, "Export run", "button", None);
+            if button.clicked() {
+                run = true;
+            }
+            if let Some((_, progress)) = &running {
+                let cancel = ui.button("Cancel export");
+                crate::control::record(ui, &cancel, "Export cancel", "button", None);
+                app.hint(&cancel, "Stops the export; the files written so far stay");
+                if cancel.clicked() {
+                    progress.cancel();
+                }
+            }
+        });
+        if running.is_some() {
+            ui.label(RichText::new("You can close this dialog and keep working while it renders.").size(size::SMALL).color(tk.text_faint));
         }
     });
     if run {
@@ -513,13 +596,14 @@ fn export(app: &mut BodoApp, ctx: &egui::Context) {
             map.insert(String::from("end"), json!(end));
         }
         let id = if dialog.what == ExportWhat::Mix { "render.export_mix" } else { "render.export_stems" };
-        dialog.message = Some(match app.run(id, params) {
-            Ok(result) => {
-                let place = result.get("path").or_else(|| result.get("folder")).and_then(serde_json::Value::as_str).unwrap_or_default();
-                (format!("Wrote {place}"), false)
+        // The render runs on its own thread; the dialog shows its progress and the outcome when it finishes.
+        match app.session.prepare_export(id, params).map_err(|e| e.to_string()).and_then(ExportTask::start) {
+            Ok(task) => {
+                dialog.message = None;
+                app.view.dialogs.exporting = Some(task);
             }
-            Err(error) => (error, true),
-        });
+            Err(error) => dialog.message = Some((error, true)),
+        }
     }
     if open {
         app.view.dialogs.export = Some(dialog);
