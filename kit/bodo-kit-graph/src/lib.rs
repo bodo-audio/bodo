@@ -14,4 +14,6 @@ pub mod plan;
 
 pub use dag::{DagError, DagNode, IncrementalDag};
 pub use exec::{GraphRunner, NodeIo, PlanSender, Processor, runner};
-pub use plan::{CompileError, Compiled, EdgeDesc, EdgeGains, EdgeKey, GraphDesc, LatencyReport, Layout, NodeDesc, NodeKey, NodeTimes, Plan, compile};
+pub use plan::{
+    CompileError, Compiled, EdgeDesc, EdgeGains, EdgeKey, GainHandle, GraphDesc, LatencyReport, Layout, NodeDesc, NodeKey, NodeTimes, Plan, compile,
+};

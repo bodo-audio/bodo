@@ -18,6 +18,7 @@ bodo-model.workspace = true
 crossbeam-queue.workspace = true
 imbl.workspace = true
 signalsmith-stretch.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

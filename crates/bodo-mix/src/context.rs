@@ -1,5 +1,5 @@
-//! The per-block context every graph node can read: rate, transport, the device's input, the note events of the
-//! block, and the audio clip segments it plays.
+//! The per-block context every graph node can read: rate, transport and tempo, the device's input, the note events of
+//! the block, the audio clip segments it plays, and the values automation set.
 
 use bodo_kit_core::{PPQ, SampleRate, Seconds, TempoMap, Tick, rt_safe};
 use bodo_kit_dsp::AudioBuffer;
@@ -62,6 +62,10 @@ pub struct BlockContext {
     pub tick: f64,
     /// How many ticks a frame lasts at the tempo there; zero until the engine sets a position.
     pub ticks_per_frame: f64,
+    /// The tempo at the start of the block, in BPM, for tempo-synced effects.
+    pub tempo: f64,
+    /// Set on the first block of a new loop pass while loop recording: the timeline frame that pass's take starts at.
+    pub pass_start: Option<i64>,
     /// The device's input for the block, [`MAX_INPUTS`] channels; `input_channels` of them are real.
     input: AudioBuffer,
     /// How many of `input`'s channels the device filled this block.
@@ -91,6 +95,8 @@ impl BlockContext {
             frame: 0,
             tick: 0.0,
             ticks_per_frame: 0.0,
+            tempo: 120.0,
+            pass_start: None,
             input: AudioBuffer::for_blocks(MAX_INPUTS),
             input_channels: 0,
             events: Vec::with_capacity(MAX_EVENTS),

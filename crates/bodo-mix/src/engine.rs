@@ -2,12 +2,18 @@
 //!
 //! The control side compiles plans and song indexes and sends them, with transport commands, through bounded queues.
 //! The audio side switches to whatever arrived at the start of a block, takes in notes played live, runs the
-//! sequencer and the graph, copies the master into the device's output and adds the metronome. Neither side ever
-//! waits for the other.
+//! sequencer and the graph, copies the master into the device's output, adds direct hardware outputs and the
+//! metronome, and feeds the scope. Neither side ever waits for the other.
+//!
+//! The control side also reads what the interface shows: every insert's meter ([`Engine::meter`]), its share of the
+//! CPU ([`Engine::insert_cpu`]), its latency ([`Engine::insert_latency`]) and the master's last moments
+//! ([`Engine::scope`]).
 
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU64, Ordering};
+use std::time::Instant;
 
 use bodo_kit_core::TempoMap;
 use bodo_kit_core::handoff::{self, Receiver, Sender};
@@ -18,12 +24,13 @@ use bodo_kit_device::{AudioCallback, Block};
 use bodo_kit_dsp::AudioBuffer;
 use bodo_kit_graph::{GraphRunner, LatencyReport, Plan, PlanSender, runner};
 use bodo_model::meter::MeterMap;
-use bodo_model::{Pattern, PatternId, PlaylistTrack, Project, SampleRoots, TrackId};
+use bodo_model::{InsertId, Pattern, PatternId, PlaylistTrack, Project, SampleRoots, TrackId};
 use imbl::{OrdMap, Vector};
 
-use crate::compile::Compiler;
+use crate::compile::{AutomationTargets, Compiler, StemSource, hardware_channels};
 use crate::context::{BlockContext, EventKind, NoteEvent};
 use crate::input::{LIVE_CAPACITY, LiveEvent, LiveInput};
+use crate::meter::{MeterReading, Scope};
 use crate::metronome::{Metronome, count_in_beats};
 use crate::midi_record::{CAPTURE_CAPACITY, Capture, CapturedNote, CapturedTake};
 use crate::nodes::MixNode;
@@ -77,6 +84,18 @@ struct Shared {
     count_in: AtomicBool,
     counting_in: AtomicBool,
     recording: AtomicBool,
+    loop_record: AtomicBool,
+}
+
+/// An insert's latency, as delay compensation decided it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct InsertLatency {
+    /// How late its input is, in frames, so it lines up with the latest signal reaching it.
+    pub input: u32,
+    /// The latency its own slots report, plus a positive track latency.
+    pub own: u32,
+    /// How late its output is: its input latency plus its own.
+    pub output: u32,
 }
 
 /// A snapshot of the engine's state.
@@ -112,6 +131,11 @@ pub struct Engine {
     capture_start: Option<i64>,
     captured: Vec<CapturedNote>,
     recorder: Recorder,
+    targets: Sender<Box<AutomationTargets>>,
+    pending_targets: Option<Box<AutomationTargets>>,
+    scope: Arc<Scope>,
+    /// Each insert's processing time and the time it was read, for [`Engine::insert_cpu`].
+    cpu: HashMap<InsertId, (u64, Instant)>,
 }
 
 /// What a song index is built from. Snapshots share unchanged parts, so comparing pointers tells cheaply whether an
@@ -203,6 +227,15 @@ pub struct AudioEngine {
     capturing: bool,
     capture_started: bool,
     captures: Producer<Capture>,
+    /// Automation targets of the running plan.
+    targets: Box<AutomationTargets>,
+    target_updates: Receiver<Box<AutomationTargets>>,
+    scope: Arc<Scope>,
+    /// While loop recording in Pattern mode: where the pattern pass that recording began in starts, which every later
+    /// pass's take starts at too.
+    pass_origin: Option<i64>,
+    /// The next block starts a new loop pass whose takes start at this frame.
+    pass_start: Option<i64>,
 }
 
 /// What a block played, for the metronome.
@@ -227,11 +260,19 @@ impl std::fmt::Debug for AudioEngine {
 ///
 /// Compiles the first plan, loads samples and spawns the workers.
 pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> Result<(Engine, AudioEngine), MixError> {
+    build(project, roots, config, false)
+}
+
+/// Builds an engine, tapping every signal entering the master when `stems` is set.
+pub(crate) fn build(project: &Project, roots: &SampleRoots, config: EngineConfig, stems: bool) -> Result<(Engine, AudioEngine), MixError> {
     let rate = project.settings.sample_rate;
     let max_frames = config.max_frames.clamp(1, MAX_BLOCK_FRAMES);
-    let mut compiler = Compiler::new(roots.clone(), max_frames, rate);
+    let mut compiler = Compiler::new(roots.clone(), max_frames, rate, stems);
     compiler.set_streaming(config.realtime_buffer.is_some());
     let plan = compiler.update(project)?.unwrap_or_else(|| Plan::empty(max_frames));
+    let targets = compiler.take_targets().unwrap_or_default();
+    let (targets_tx, targets_rx) = handoff::handoff(4);
+    let scope = Arc::new(Scope::default());
     let pool = RtPoolConfig {
         priority: config.realtime_buffer.map(|buffer_frames| RtPriority { buffer_frames, sample_rate: rate }),
         ..RtPoolConfig::new(config.workers)
@@ -261,6 +302,10 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         capture_start: None,
         captured: Vec::new(),
         recorder: Recorder::default(),
+        targets: targets_tx,
+        pending_targets: None,
+        scope: Arc::clone(&scope),
+        cpu: HashMap::new(),
     };
     let audio = AudioEngine {
         runner: graph,
@@ -284,6 +329,11 @@ pub fn engine(project: &Project, roots: &SampleRoots, config: EngineConfig) -> R
         captures: captures_tx,
         loop_region: None,
         wrapped: false,
+        targets,
+        target_updates: targets_rx,
+        scope,
+        pass_origin: None,
+        pass_start: None,
     };
     Ok((control, audio))
 }
@@ -297,6 +347,9 @@ impl Engine {
     pub fn set_project(&mut self, project: &Project) -> Result<(), MixError> {
         if let Some(plan) = self.compiler.update(project)? {
             self.pending_plan = Some(Box::new(plan));
+        }
+        if let Some(targets) = self.compiler.take_targets() {
+            self.pending_targets = Some(targets);
         }
         if !self.song_inputs.same_as(project) {
             self.song_inputs = SongInputs::of(project);
@@ -316,15 +369,34 @@ impl Engine {
         self.compiler.set_roots(roots);
     }
 
-    /// Sends anything still waiting and drops whatever the audio side retired. Call it regularly.
+    /// Sends anything still waiting and drops whatever the audio side retired. Once the edges and nodes an edit removed
+    /// have faded out, it compiles the plan without them. Call it regularly.
     pub fn flush(&mut self) {
         self.plans.collect();
         self.songs.collect();
+        self.targets.collect();
         self.compiler.captures_mut().collect();
+        self.compiler.collect();
+        if self.pending_plan.is_none() {
+            match self.compiler.expire_ghosts(Instant::now()) {
+                Ok(Some(plan)) => self.pending_plan = Some(Box::new(plan)),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(%error, "could not drop the faded-out parts of the mix graph"),
+            }
+        }
+        if let Some(targets) = self.compiler.take_targets() {
+            self.pending_targets = Some(targets);
+        }
         if let Some(plan) = self.pending_plan.take()
             && let Err(plan) = self.plans.send(*plan)
         {
             self.pending_plan = Some(plan);
+        }
+        if self.pending_plan.is_none()
+            && let Some(targets) = self.pending_targets.take()
+            && let Err(full) = self.targets.send(targets)
+        {
+            self.pending_targets = Some(full.0);
         }
         if let Some(song) = self.pending_song.take()
             && let Err(full) = self.songs.send(song)
@@ -341,12 +413,97 @@ impl Engine {
     /// Starts playing to record: live notes are captured until [`Engine::stop`], and with count-in on a bar of clicks
     /// plays first while the playhead waits. Collect the take with [`Engine::take_midi_recording`].
     pub fn record(&mut self) {
+        self.set_recording(true);
         self.command(Command::Record);
     }
 
     /// Stops playing, ends a recording and releases every note, live ones included.
     pub fn stop(&mut self) {
         self.command(Command::Stop);
+        self.set_recording(false);
+    }
+
+    /// Recompiles with delay compensation bypassed, or not, for inserts that bypass it while recording.
+    fn set_recording(&mut self, recording: bool) {
+        match self.compiler.set_recording(recording) {
+            Ok(Some(plan)) => {
+                self.pending_plan = Some(Box::new(plan));
+                self.flush();
+            }
+            Ok(None) => {}
+            Err(error) => tracing::warn!(%error, "could not switch delay compensation for recording"),
+        }
+    }
+
+    /// Turns loop recording on or off: while it is on and the transport loops (the Song loop, or the pattern in
+    /// Pattern mode), every pass of a recording becomes its own take, and MIDI notes of every pass add up.
+    pub fn set_loop_record(&self, on: bool) {
+        self.shared.loop_record.store(on, Ordering::Relaxed);
+    }
+
+    /// What the meter of `insert` read since the last call, which clears its peaks; `None` for an insert the engine
+    /// doesn't know yet.
+    pub fn meter(&self, insert: InsertId) -> Option<MeterReading> {
+        self.compiler.strips().get(&insert).map(|live| live.meter.read())
+    }
+
+    /// Clears the clip latch of `insert`'s meter.
+    pub fn clear_clip(&self, insert: InsertId) {
+        if let Some(live) = self.compiler.strips().get(&insert) {
+            live.meter.clear_clip();
+        }
+    }
+
+    /// Clears the clip latch of every meter.
+    ///
+    /// Complexity: O(i) in inserts.
+    pub fn clear_clips(&self) {
+        for live in self.compiler.strips().values() {
+            live.meter.clear_clip();
+        }
+    }
+
+    /// The share of real time `insert`'s three stages spent processing since the last call for it: 0.01 is 1%.
+    /// The first call for an insert, and the first after a recompile, returns 0.
+    pub fn insert_cpu(&mut self, insert: InsertId) -> f32 {
+        let Some(times) = self.compiler.times() else { return 0.0 };
+        let nanos: u64 = [keys::insert_input(insert), keys::insert_fx(insert), keys::insert(insert)].iter().filter_map(|&key| times.nanos(key)).sum();
+        let now = Instant::now();
+        let load = match self.cpu.insert(insert, (nanos, now)) {
+            Some((before, then)) if nanos >= before => {
+                let wall = now.duration_since(then).as_nanos() as f64;
+                if wall > 0.0 { ((nanos - before) as f64 / wall) as f32 } else { 0.0 }
+            }
+            _ => 0.0,
+        };
+        load.max(0.0)
+    }
+
+    /// Copies the latest `out.len()` frames of the master output, mixed to mono, into `out`, for an oscilloscope.
+    ///
+    /// Complexity: O(n) in `out.len()`.
+    pub fn scope(&self, out: &mut [f32]) {
+        self.scope.read(out);
+    }
+
+    /// The latency of `insert` as delay compensation decided it for the running plan.
+    pub fn insert_latency(&self, insert: InsertId) -> Option<InsertLatency> {
+        let report = self.compiler.latency();
+        let input = report.nodes.get(&keys::insert_input(insert))?.input;
+        let output = report.nodes.get(&keys::insert(insert))?.output;
+        Some(InsertLatency { input, own: output.saturating_sub(input), output })
+    }
+
+    /// The latency of the whole mix: how late the master's output is.
+    pub fn total_latency(&self) -> u32 {
+        self.compiler.latency().total
+    }
+
+    /// The stems of an engine built for stems, by tap index, each with the compensation delay of its way into the
+    /// master.
+    pub(crate) fn stems(&self) -> Vec<(StemSource, u32)> {
+        let report = self.compiler.latency();
+        self.compiler.stem_sources().iter().map(|s| (s.clone(), report.edges.get(&s.edge).copied().unwrap_or(0))).collect()
     }
 
     /// Turns the metronome on or off; it clicks while the transport plays.
@@ -486,18 +643,32 @@ impl AudioEngine {
             if rendered == 0 {
                 break;
             }
+            // The master goes to the first two device outputs; any further outputs start silent for direct outs.
+            let scope = &self.scope;
             let copied = self.runner.read_output(|master| {
                 for (channel, out) in output.channels_mut().enumerate() {
-                    let source = master.channel(channel.min(master.channels().saturating_sub(1)));
-                    let n = rendered.min(source.len()).min(out.len().saturating_sub(done));
-                    out[done..done + n].copy_from_slice(&source[..n]);
+                    let n = rendered.min(out.len().saturating_sub(done));
+                    let Some(out) = out.get_mut(done..done + n) else { continue };
+                    if channel < 2 {
+                        let source = master.channel(channel.min(master.channels().saturating_sub(1)));
+                        out.copy_from_slice(source.get(..n).unwrap_or(&[]));
+                    } else {
+                        out.fill(0.0);
+                    }
+                }
+                if master.channels() >= 2 {
+                    let n = rendered.min(master.frames());
+                    scope.write(master.channel(0).get(..n).unwrap_or(&[]), master.channel(1).get(..n).unwrap_or(&[]));
                 }
             });
             if copied.is_none() {
                 for out in output.channels_mut() {
-                    out[done..done + rendered].fill(0.0);
+                    if let Some(out) = out.get_mut(done..done + rendered) {
+                        out.fill(0.0);
+                    }
                 }
             }
+            self.add_hardware_outputs(output, done, rendered);
             match self.block {
                 BlockKind::Song(first) if self.shared.metronome.load(Ordering::Relaxed) => {
                     self.metronome.song(&self.song, self.rate, first, rendered, output, done);
@@ -512,12 +683,75 @@ impl AudioEngine {
         }
     }
 
+    /// Adds the inserts with direct hardware outputs into those device outputs, for `frames` frames from `at`.
+    ///
+    /// RT-safe. Complexity: O(t * frames) in taps.
+    fn add_hardware_outputs(&self, output: &mut AudioBuffer, at: usize, frames: usize) {
+        for tap in 0..self.runner.tap_count() {
+            self.runner.read_tap(tap, |source, tag| {
+                let Some((left, right)) = hardware_channels(tag) else { return };
+                if source.channels() < 2 {
+                    return;
+                }
+                let (from_l, from_r) = (source.channel(0), source.channel(1));
+                let mut add = |channel: usize, f: &dyn Fn(usize) -> f32| {
+                    if channel < output.channels() {
+                        let out = output.channel_mut(channel);
+                        for i in 0..frames.min(from_l.len()) {
+                            if let Some(o) = out.get_mut(at + i) {
+                                *o += f(i);
+                            }
+                        }
+                    }
+                };
+                match right {
+                    Some(right) => {
+                        add(left, &|i| from_l.get(i).copied().unwrap_or(0.0));
+                        add(right, &|i| from_r.get(i).copied().unwrap_or(0.0));
+                    }
+                    None => add(left, &|i| 0.5 * (from_l.get(i).copied().unwrap_or(0.0) + from_r.get(i).copied().unwrap_or(0.0))),
+                }
+            });
+        }
+    }
+
+    /// Calls `read` with each stem tap's index and audio from the last block. Only an engine built for stems has them.
+    ///
+    /// RT-safe as long as `read` is. Complexity: O(t) in taps.
+    pub(crate) fn read_stems(&self, mut read: impl FnMut(usize, &AudioBuffer)) {
+        for tap in 0..self.runner.tap_count() {
+            self.runner.read_tap(tap, |buffer, tag| {
+                if hardware_channels(tag).is_none() {
+                    read(tag as usize, buffer);
+                }
+            });
+        }
+    }
+
+    /// The frames from `frame` to the end of the pattern loop, in Pattern mode while loop recording; `None` otherwise.
+    ///
+    /// RT-safe. Complexity: O(log m) in tempo points.
+    fn pattern_pass(&self) -> Option<(i64, i64)> {
+        let PlayMode::Pattern(pattern) = self.transport.mode else { return None };
+        if !self.capturing || !self.shared.loop_record.load(Ordering::Relaxed) {
+            return None;
+        }
+        let length = frame_at(&self.song, Tick(self.song.pattern_length(pattern)?), self.rate).0;
+        if length <= 0 {
+            return None;
+        }
+        let start = self.transport.frame.div_euclid(length) * length;
+        Some((start, start + length))
+    }
+
     /// Runs one block of at most `max_frames`, with `input` from frame `offset` on, and advances the transport. A block
     /// never spans the end of a count-in. In Song mode with a loop, a block ends at the loop's end and the next one
-    /// starts at the loop's start.
+    /// starts at the loop's start; while loop recording in Pattern mode, a block ends where the pattern loops.
     fn render_block(&mut self, frames: usize, input: Option<&AudioBuffer>, offset: usize) -> usize {
+        self.target_updates.update(&mut self.targets);
         // A loop wrap at the end of the last block is a jump for this one.
         let mut jumped = std::mem::take(&mut self.wrapped);
+        let pass_start = self.pass_start.take();
         while let Some(command) = self.commands.pop() {
             match command {
                 Command::Play => self.transport.playing = true,
@@ -555,6 +789,15 @@ impl AudioEngine {
                 }
             }
         }
+        // Loop recording in Pattern mode: stop the block where the pattern loops, so the next pass starts its takes.
+        let mut pattern_wrap = None;
+        if let Some((pass, end)) = self.pattern_pass().filter(|_| self.transport.playing && !counting) {
+            let left = usize::try_from(end - self.transport.frame).unwrap_or(usize::MAX);
+            if left > 0 && left <= frames {
+                frames = left;
+                pattern_wrap = Some(*self.pass_origin.get_or_insert(pass));
+            }
+        }
         let playing = self.transport.playing && !counting;
         if playing && self.capturing && !self.capture_started && self.captures.push(Capture::Start { frame: self.transport.frame }).is_ok() {
             self.capture_started = true;
@@ -565,7 +808,9 @@ impl AudioEngine {
         }
 
         let (song, transport, rate) = (&*self.song, self.transport, self.rate);
-        let (live, live_channels) = (&self.live_events, &self.live_channels);
+        let (live, live_channels, targets) = (&self.live_events, &self.live_channels, &*self.targets);
+        let seconds = bodo_kit_core::Seconds(transport.frame.max(0) as f64 / f64::from(rate.hz()));
+        let tempo = song.tempo().bpm_at(Tick(song.tempo().ticks_at(seconds).round() as i64));
         let mut dropped = 0;
         let rendered = self.runner.process(frames, |context| {
             context.clear();
@@ -573,6 +818,8 @@ impl AudioEngine {
             context.playing = playing;
             context.frame = transport.frame;
             context.set_position(song.tempo(), transport.frame);
+            context.tempo = tempo;
+            context.pass_start = pass_start.filter(|_| playing);
             context.set_input(input, offset, frames);
             if jumped {
                 // Back to the project's own values until a lane plays again.
@@ -583,8 +830,12 @@ impl AudioEngine {
                 }
             }
             if playing {
-                automation::apply(&song.automation, song.tempo(), &transport, rate, &mut context.params);
+                automation::apply(&song.automation, song.tempo(), &transport, rate, &mut context.params, &targets.delays);
                 emit(song, &transport, frames, rate, context);
+            }
+            // Automated send levels go straight to their edges; the others keep the project's level.
+            for (key, gain, base) in &targets.routes {
+                gain.set(context.params.get(*key).unwrap_or(*base));
             }
             for &(channel, event) in live {
                 context.push(channel, event);
@@ -617,6 +868,14 @@ impl AudioEngine {
             {
                 self.transport.frame = start;
                 self.wrapped = true;
+                if self.capturing && self.shared.loop_record.load(Ordering::Relaxed) {
+                    self.pass_start = Some(start);
+                }
+            }
+            if let Some(origin) = pattern_wrap
+                && rendered == frames
+            {
+                self.pass_start = Some(origin);
             }
         }
         self.shared.playing.store(self.transport.playing, Ordering::Relaxed);
@@ -632,6 +891,8 @@ impl AudioEngine {
         self.transport.playing = true;
         self.capturing = true;
         self.capture_started = false;
+        self.pass_origin = None;
+        self.pass_start = None;
         if self.shared.count_in.load(Ordering::Relaxed) {
             let seconds = bodo_kit_core::Seconds(self.transport.frame as f64 / f64::from(self.rate.hz()));
             let tick = Tick(self.song.tempo().ticks_at(seconds).round() as i64);
@@ -653,6 +914,8 @@ impl AudioEngine {
         }
         self.capturing = false;
         self.capture_started = false;
+        self.pass_origin = None;
+        self.pass_start = None;
     }
 
     /// Takes the notes played live since the last block as this block's events, and captures them while recording.

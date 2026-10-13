@@ -114,6 +114,9 @@ pub struct MixerInsert {
     /// Its color.
     #[serde(default = "gray")]
     pub color: Color,
+    /// The name of its icon in the mixer, such as `drum` or `microphone`; none by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
     /// The ten FX slots, in processing order.
     #[serde(default)]
     pub slots: [FxSlot; FX_SLOTS],
@@ -182,6 +185,7 @@ impl MixerInsert {
             id,
             name: name.into(),
             color: Color::GRAY,
+            icon: None,
             slots: Default::default(),
             eq: StripEq::default(),
             volume_db: 0.0,
@@ -215,12 +219,49 @@ pub struct FxSlot {
     pub mix: f32,
     /// The route feeding this slot's sidechain input. It must be a sidechain route into this insert.
     pub sidechain: Option<RouteSource>,
+    /// The values of a native effect's parameters, by their stable ids; a parameter that isn't listed is at its
+    /// default. Plugins of other formats keep their settings in their own state instead.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub params: Vec<ParamValue>,
 }
 
 impl Default for FxSlot {
     fn default() -> Self {
-        Self { plugin: None, enabled: true, mix: 1.0, sidechain: None }
+        Self { plugin: None, enabled: true, mix: 1.0, sidechain: None, params: Vec::new() }
     }
+}
+
+impl FxSlot {
+    /// The value of parameter `id`, if it was set.
+    ///
+    /// Complexity: O(log n) in the parameters set.
+    pub fn param(&self, id: u32) -> Option<f32> {
+        self.params.binary_search_by_key(&id, |p| p.id).ok().and_then(|i| self.params.get(i)).map(|p| p.value)
+    }
+
+    /// Sets parameter `id` to `value`, keeping the list sorted by id.
+    ///
+    /// Complexity: O(n) in the parameters set.
+    pub fn set_param(&mut self, id: u32, value: f32) {
+        match self.params.binary_search_by_key(&id, |p| p.id) {
+            Ok(i) => {
+                if let Some(p) = self.params.get_mut(i) {
+                    p.value = value;
+                }
+            }
+            Err(i) => self.params.insert(i, ParamValue { id, value }),
+        }
+    }
+}
+
+/// The value of one effect parameter.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParamValue {
+    /// The parameter's stable id.
+    pub id: u32,
+    /// Its value, in the parameter's own unit.
+    pub value: f32,
 }
 
 /// One band of the strip EQ.
@@ -291,8 +332,10 @@ pub enum RecordFormat {
     Float32,
     /// 24-bit WAV.
     Int24,
-    /// FLAC.
+    /// 24-bit FLAC, lossless and about half the size.
     Flac,
+    /// 32-bit float Wave64, for takes longer than WAV's 4 GB.
+    W64,
 }
 
 /// Hardware channels of the audio device, by index.

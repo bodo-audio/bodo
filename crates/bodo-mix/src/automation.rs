@@ -10,12 +10,15 @@
 //! and their per-block gain ramps smooth each step. A value holds after its lane ends; stopping, seeking or a loop
 //! wrap clears the table, so the project's own values come back until a lane plays again.
 //!
-//! Played now: channel volume, pan and pitch (pitch when a note starts), and insert volume, pan and stereo
-//! separation. Route levels, FX slots, plugin parameters, MIDI CC, pitch bend, pressure and tempo are stored and
-//! edited but not yet played.
+//! Each lane is read as far back as its parameter's audio is late through delay compensation ([`LaneDelays`]), so
+//! automation lines up with what is heard (project.md section 9.4).
+//!
+//! Played now: channel volume, pan and pitch (pitch when a note starts); insert volume, pan and stereo separation;
+//! FX slot mix and on switch; native effect parameters; and route send levels. MIDI CC, pitch bend, pressure,
+//! plugins hosted from other formats and tempo are stored and edited but not yet played.
 
 use bodo_kit_core::{SampleRate, Seconds, rt_safe};
-use bodo_model::automation::{AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget};
+use bodo_model::automation::{AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget, SlotParam};
 use bodo_model::channel::ChannelKind;
 use bodo_model::pattern::Pattern;
 use bodo_model::playlist::{ClipOffset, ClipSource};
@@ -60,7 +63,43 @@ fn playable_key(target: &ParamTarget) -> Option<u64> {
         ParamTarget::Insert(id, InsertParam::Volume) => Some(param_key(keys::insert(*id), Param::Volume)),
         ParamTarget::Insert(id, InsertParam::Pan) => Some(param_key(keys::insert(*id), Param::Pan)),
         ParamTarget::Insert(id, InsertParam::StereoSep) => Some(param_key(keys::insert(*id), Param::StereoSep)),
+        ParamTarget::Slot(id, index, SlotParam::Mix) => Some(keys::slot_param(*id, *index, 0)),
+        ParamTarget::Slot(id, index, SlotParam::Enabled) => Some(keys::slot_param(*id, *index, 1)),
+        ParamTarget::Plugin(instance, param) => Some(keys::plugin_param(*instance, *param)),
+        ParamTarget::Route(key) => Some(keys::route_level(*key)),
         _ => None,
+    }
+}
+
+/// How late each automated parameter's audio is, so its lane is read that much earlier (project.md section 9.4:
+/// automation for node n is read at `t - in(n)`). Sorted by parameter key; parameters left out have no delay.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct LaneDelays {
+    entries: Vec<(u64, u32)>,
+    /// The distinct delays, smallest first, zero included.
+    distinct: Vec<u32>,
+}
+
+impl LaneDelays {
+    /// Delays from `(parameter key, frames)` pairs.
+    ///
+    /// Allocates. Complexity: O(n log n).
+    pub fn new(mut entries: Vec<(u64, u32)>) -> Self {
+        entries.retain(|&(_, d)| d > 0);
+        entries.sort_unstable();
+        entries.dedup_by_key(|e| e.0);
+        let mut distinct: Vec<u32> = std::iter::once(0).chain(entries.iter().map(|&(_, d)| d)).collect();
+        distinct.sort_unstable();
+        distinct.dedup();
+        Self { entries, distinct }
+    }
+
+    /// The delay of the parameter with `key`, in frames.
+    ///
+    /// RT-safe. Complexity: O(log n).
+    #[rt_safe]
+    pub fn of(&self, key: u64) -> u32 {
+        self.entries.binary_search_by_key(&key, |&(k, _)| k).ok().and_then(|i| self.entries.get(i)).map_or(0, |&(_, d)| d)
     }
 }
 
@@ -271,10 +310,12 @@ impl AutomationIndex {
         self.placements.is_empty() && self.patterns.is_empty()
     }
 
-    fn set_lanes(&self, first: u32, count: u32, local: f64, values: &mut ParamValues) {
+    fn set_lanes(&self, first: u32, count: u32, local: f64, values: &mut ParamValues, wanted: &impl Fn(u64) -> bool) {
         let range = first as usize..(first + count) as usize;
         for lane in self.lanes.get(range).unwrap_or(&[]) {
-            values.set(lane.key, lane.value_at(local));
+            if wanted(lane.key) {
+                values.set(lane.key, lane.value_at(local));
+            }
         }
     }
 
@@ -283,6 +324,14 @@ impl AutomationIndex {
     /// RT-safe. Complexity: O(log P + k log n) in placements, active lanes and their points.
     #[rt_safe]
     pub fn evaluate(&self, mode: PlayMode, tick: f64, values: &mut ParamValues) {
+        self.evaluate_where(mode, tick, values, &|_| true);
+    }
+
+    /// Like [`AutomationIndex::evaluate`], for the lanes whose keys `wanted` accepts.
+    ///
+    /// RT-safe. Complexity: O(log P + k log n) in placements, active lanes and their points.
+    #[rt_safe]
+    pub fn evaluate_where(&self, mode: PlayMode, tick: f64, values: &mut ParamValues, wanted: &impl Fn(u64) -> bool) {
         match mode {
             PlayMode::Song => {
                 let to = self.placements.partition_point(|p| (p.start as f64) <= tick);
@@ -296,7 +345,7 @@ impl AutomationIndex {
                     if placement.repeat > 0 {
                         local = local.rem_euclid(placement.repeat as f64);
                     }
-                    self.set_lanes(placement.first, placement.count, local, values);
+                    self.set_lanes(placement.first, placement.count, local, values, wanted);
                 }
             }
             PlayMode::Pattern(id) => {
@@ -304,23 +353,37 @@ impl AutomationIndex {
                 if let Ok(i) = self.patterns.binary_search_by_key(&key, |p| p.key)
                     && let Some(lanes) = self.patterns.get(i)
                 {
-                    self.set_lanes(lanes.first, lanes.count, tick.rem_euclid(lanes.length as f64), values);
+                    self.set_lanes(lanes.first, lanes.count, tick.rem_euclid(lanes.length as f64), values, wanted);
                 }
             }
         }
     }
 }
 
-/// Sets the automated values for the block that starts at the transport's frame.
+/// Sets the automated values for the block that starts at the transport's frame. Each lane is read as far back as
+/// its parameter's audio is late, by `delays`, so automation lines up with delay-compensated audio.
 ///
-/// RT-safe. Complexity: O(log m) in tempo points, plus [`AutomationIndex::evaluate`].
+/// RT-safe. Complexity: O(d log m) in distinct delays and tempo points, plus [`AutomationIndex::evaluate`] per delay.
 #[rt_safe]
-pub fn apply(index: &AutomationIndex, tempo: &bodo_kit_core::TempoMap, transport: &Transport, rate: SampleRate, values: &mut ParamValues) {
+pub fn apply(
+    index: &AutomationIndex,
+    tempo: &bodo_kit_core::TempoMap,
+    transport: &Transport,
+    rate: SampleRate,
+    values: &mut ParamValues,
+    delays: &LaneDelays,
+) {
     if index.is_empty() {
         return;
     }
-    let tick = tempo.ticks_at(Seconds(transport.frame as f64 / f64::from(rate.hz())));
-    index.evaluate(transport.mode, tick, values);
+    let tick_at = |delay: u32| tempo.ticks_at(Seconds((transport.frame - i64::from(delay)).max(0) as f64 / f64::from(rate.hz())));
+    if delays.entries.is_empty() {
+        index.evaluate(transport.mode, tick_at(0), values);
+        return;
+    }
+    for &delay in &delays.distinct {
+        index.evaluate_where(transport.mode, tick_at(delay), values, &|key| delays.of(key) == delay);
+    }
 }
 
 #[cfg(test)]

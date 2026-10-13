@@ -2,14 +2,19 @@
 //!
 //! It runs exactly the engine that plays live, so a render matches what the user hears. It is deterministic: the
 //! same project gives bit-identical output on every run, whatever the block size or number of workers.
+//!
+//! [`render_stems`] renders every signal that enters the master, each insert and each channel that plays straight
+//! into the master, to its own audio in the same pass, lined up as the master hears them. With the master strip at its
+//! defaults, the stems add up to the mix.
 
 use bodo_kit_audio::AudioData;
 use bodo_kit_core::{Seconds, Tick};
 use bodo_kit_dsp::AudioBuffer;
+use bodo_model::mixer::RouteSource;
 use bodo_model::{Project, SampleRoots};
 
 use crate::MixError;
-use crate::engine::{EngineConfig, engine};
+use crate::engine::{AudioEngine, Engine, EngineConfig, build, engine};
 use crate::sequence::{PlayMode, SongIndex, frame_at};
 
 /// What to render.
@@ -35,20 +40,39 @@ impl Default for OfflineOptions {
     }
 }
 
-/// Renders `project` to stereo audio at its sample rate. Sample paths resolve through `roots`.
-///
-/// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block.
-pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<AudioData, MixError> {
+/// One stem: a signal entering the master.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Stem {
+    /// The insert, or the channel playing straight into the master.
+    pub source: RouteSource,
+    /// Its name.
+    pub name: String,
+    /// The audio, stereo at the project's sample rate, as long as the mix.
+    pub audio: AudioData,
+}
+
+/// Starts an engine for `options` and returns its two sides, with the number of frames to render.
+fn start(project: &Project, roots: &SampleRoots, options: &OfflineOptions, stems: bool) -> Result<(Engine, AudioEngine, usize), MixError> {
     let rate = project.settings.sample_rate;
     let block = options.block.max(1);
-    let (mut control, mut audio) = engine(project, roots, EngineConfig { workers: options.workers, max_frames: block, realtime_buffer: None })?;
+    let config = EngineConfig { workers: options.workers, max_frames: block, realtime_buffer: None };
+    let (mut control, audio) = if stems { build(project, roots, config, true)? } else { engine(project, roots, config)? };
     control.set_mode(options.mode);
     control.seek(options.start);
     control.play();
     let song = SongIndex::build(project);
     let start = frame_at(&song, options.start, rate).0;
     let end = frame_at(&song, options.end, rate).0 + rate.seconds_to_frames(options.tail).0;
-    let total = usize::try_from(end - start).unwrap_or(0);
+    Ok((control, audio, usize::try_from(end - start).unwrap_or(0)))
+}
+
+/// Renders `project` to stereo audio at its sample rate. Sample paths resolve through `roots`.
+///
+/// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block.
+pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<AudioData, MixError> {
+    let rate = project.settings.sample_rate;
+    let block = options.block.max(1);
+    let (_control, mut audio, total) = start(project, roots, options, false)?;
     let mut channels = vec![Vec::with_capacity(total), Vec::with_capacity(total)];
     let mut buffer = AudioBuffer::new(2, block);
     let mut rendered = 0;
@@ -64,4 +88,52 @@ pub fn render_offline(project: &Project, roots: &SampleRoots, options: &OfflineO
         return Err(MixError::Faults(audio.faults()));
     }
     Ok(AudioData { rate, channels })
+}
+
+/// Renders `project` as stems: every insert that feeds the master, and every channel that plays straight into it,
+/// each to its own stereo audio, over the same range as [`render_offline`]. Each stem is delayed as delay compensation
+/// delays it on its way into the master, so the stems line up with each other and with the mix.
+///
+/// Allocates the output. Complexity: proportional to the rendered length times the engine's cost per block, plus the
+/// stems.
+pub fn render_stems(project: &Project, roots: &SampleRoots, options: &OfflineOptions) -> Result<Vec<Stem>, MixError> {
+    let rate = project.settings.sample_rate;
+    let block = options.block.max(1);
+    let (control, mut audio, total) = start(project, roots, options, true)?;
+    let sources = control.stems();
+    let mut channels: Vec<[Vec<f32>; 2]> = sources.iter().map(|_| [Vec::with_capacity(total), Vec::with_capacity(total)]).collect();
+    let mut buffer = AudioBuffer::new(2, block);
+    let mut rendered = 0;
+    while rendered < total {
+        let frames = block.min(total - rendered);
+        audio.render(frames, &mut buffer);
+        audio.read_stems(|index, stem| {
+            if let Some([left, right]) = channels.get_mut(index) {
+                for (out, side) in [(left, 0), (right, 1)] {
+                    let source = stem.channel(side.min(stem.channels().saturating_sub(1)));
+                    out.extend_from_slice(source.get(..frames).unwrap_or(&[]));
+                    out.resize(rendered + frames, 0.0);
+                }
+            }
+        });
+        rendered += frames;
+    }
+    if audio.faults() > 0 {
+        return Err(MixError::Faults(audio.faults()));
+    }
+    Ok(sources
+        .into_iter()
+        .zip(channels)
+        .map(|((source, delay), [left, right])| {
+            // The master hears each stem delayed by its edge's compensation; so do the stems.
+            let shift = |mut samples: Vec<f32>| {
+                samples.resize(total, 0.0);
+                let delay = (delay as usize).min(total);
+                samples.rotate_right(delay);
+                samples[..delay].fill(0.0);
+                samples
+            };
+            Stem { source: source.source, name: source.name, audio: AudioData { rate, channels: vec![shift(left), shift(right)] } }
+        })
+        .collect())
 }

@@ -10,6 +10,15 @@
 //! `output` latency earlier; their sound then takes the `input` latency to reach the engine. So audio that arrives at
 //! transport frame `t` belongs on the timeline at `t - (input + output)`, and that is where a take starts
 //! ([`Take::timeline_frame`]). The two latencies come from the audio stream ([`Compensation::from_status`]).
+//!
+//! **Taps.** The strip is three graph nodes, so each tap is recorded by the node that has it: Input and PreFx by the
+//! input stage, PostFx by the FX stage, PostFader by the output stage ([`CaptureStage`]).
+//!
+//! **Formats.** 32-bit float or 24-bit WAV, 24-bit FLAC, or 32-bit float Wave64 ([`RecordFormat`]).
+//!
+//! **Loop recording.** When the transport wraps while loop recording, the strips mark where the new pass starts in
+//! their rings, and the disk thread starts a new file there: every pass becomes its own take, starting where the loop
+//! starts.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,7 +27,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use bodo_kit_audio::{WavFormat, WavWriter};
+use bodo_kit_audio::{AudioError, FlacWriter, W64Format, W64Writer, WavFormat, WavWriter};
 use bodo_kit_core::handoff::{self, Receiver, Sender};
 use bodo_kit_core::queue::{Consumer, Producer, spsc};
 use bodo_kit_core::{Frames, SampleRate, Seconds, TempoMap, rt_safe};
@@ -111,6 +120,31 @@ impl Take {
     }
 }
 
+/// Which stage of a strip records a tap.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CaptureStage {
+    /// The input stage: the Input and PreFx taps.
+    Input,
+    /// The FX stage: the PostFx tap.
+    Fx,
+    /// The output stage: the PostFader tap.
+    Output,
+}
+
+impl CaptureStage {
+    /// The stage that has `tap`.
+    pub fn of(tap: RecordTap) -> Self {
+        match tap {
+            RecordTap::Input | RecordTap::PreFx => Self::Input,
+            RecordTap::PostFx => Self::Fx,
+            RecordTap::PostFader => Self::Output,
+        }
+    }
+}
+
+/// How many loop passes one recording can mark; later passes join the last take.
+const PASS_CAPACITY: usize = 256;
+
 /// The audio thread's end of one insert's recording.
 #[derive(Debug)]
 pub struct Capture {
@@ -119,6 +153,10 @@ pub struct Capture {
     /// The transport frame of the first block captured, or `i64::MIN` before it.
     first_frame: Arc<AtomicI64>,
     overflows: Arc<AtomicU64>,
+    /// Where loop passes start: the frames pushed before each, and the timeline frame it starts at.
+    passes: Producer<(u64, i64)>,
+    /// Frames pushed so far.
+    pushed: u64,
 }
 
 /// What a strip holds: a capture while recording, `None` otherwise.
@@ -173,6 +211,11 @@ impl StripCapture {
             return;
         }
         let frames = left.len().min(right.len());
+        if let Some(start) = context.pass_start
+            && capture.pushed > 0
+        {
+            capture.passes.push_or_drop((capture.pushed, start));
+        }
         if capture.producer.free_slots() < frames * 2 {
             capture.overflows.fetch_add(1, Ordering::Relaxed);
             return;
@@ -184,31 +227,33 @@ impl StripCapture {
             capture.producer.push_or_drop(*l);
             capture.producer.push_or_drop(*r);
         }
+        capture.pushed += frames as u64;
     }
 }
 
-/// The control side's links to every strip's capture slot.
+/// The control side's links to every strip stage's capture slot.
 #[derive(Debug, Default)]
 pub(crate) struct CaptureLinks {
-    senders: HashMap<InsertId, Sender<CaptureSlot>>,
+    senders: HashMap<(InsertId, CaptureStage), Sender<CaptureSlot>>,
 }
 
 impl CaptureLinks {
-    /// A new link for the strip of `insert`, replacing any older one, and the receiver its strip node keeps.
-    pub(crate) fn link(&mut self, insert: InsertId) -> Receiver<CaptureSlot> {
+    /// A new link for `stage` of the strip of `insert`, replacing any older one, and the receiver its node keeps.
+    pub(crate) fn link(&mut self, insert: InsertId, stage: CaptureStage) -> Receiver<CaptureSlot> {
         let (sender, receiver) = handoff::handoff(4);
-        self.senders.insert(insert, sender);
+        self.senders.insert((insert, stage), sender);
         receiver
     }
 
     /// Forgets the links of inserts `keep` rejects.
     pub(crate) fn retain(&mut self, keep: impl Fn(&InsertId) -> bool) {
-        self.senders.retain(|id, _| keep(id));
+        self.senders.retain(|(id, _), _| keep(id));
     }
 
-    /// Sends `slot` to the strip of `insert`. Returns false when there is no such strip or its queue is full.
-    fn send(&mut self, insert: InsertId, slot: CaptureSlot) -> bool {
-        self.senders.get_mut(&insert).is_some_and(|sender| sender.send(slot).is_ok())
+    /// Sends `slot` to `stage` of the strip of `insert`. Returns false when there is no such strip or its queue is
+    /// full.
+    fn send(&mut self, insert: InsertId, stage: CaptureStage, slot: CaptureSlot) -> bool {
+        self.senders.get_mut(&(insert, stage)).is_some_and(|sender| sender.send(slot).is_ok())
     }
 
     /// Drops the captures strips handed back, which closes their rings so the disk thread can finish.
@@ -223,20 +268,29 @@ impl CaptureLinks {
 #[derive(Debug)]
 struct Lane {
     insert: InsertId,
-    path: PathBuf,
+    stage: CaptureStage,
     first_frame: Arc<AtomicI64>,
     overflows: Arc<AtomicU64>,
 }
 
-/// What the disk thread wrote for one lane.
-type Written = Result<Vec<u64>, RecordError>;
+/// A file the disk thread wrote: its path, the timeline frame it starts at (`None` for a lane's first file, which
+/// starts at the lane's first captured frame), and its length.
+#[derive(Debug)]
+struct Written {
+    path: PathBuf,
+    start: Option<i64>,
+    frames: u64,
+}
+
+/// What the disk thread wrote, per lane.
+type WrittenLanes = Result<Vec<Vec<Written>>, RecordError>;
 
 /// A recording in progress.
 #[derive(Debug)]
 struct Active {
     lanes: Vec<Lane>,
     stop: Arc<AtomicBool>,
-    thread: Option<JoinHandle<Written>>,
+    thread: Option<JoinHandle<WrittenLanes>>,
     compensation: Compensation,
     stopping: bool,
 }
@@ -247,14 +301,6 @@ pub(crate) struct Recorder {
     active: Option<Active>,
 }
 
-/// The format a recording is written in. FLAC recording isn't written yet, so it records 32-bit float WAV.
-fn wav_format(format: RecordFormat) -> WavFormat {
-    match format {
-        RecordFormat::Int24 => WavFormat::Int24,
-        RecordFormat::Float32 | RecordFormat::Flac => WavFormat::Float32,
-    }
-}
-
 /// `name` made safe for a file name.
 fn file_name(name: &str) -> String {
     let clean: String = name.chars().map(|c| if c.is_alphanumeric() || matches!(c, ' ' | '-' | '_') { c } else { '_' }).collect();
@@ -262,12 +308,136 @@ fn file_name(name: &str) -> String {
     if clean.is_empty() { String::from("Insert") } else { clean.to_owned() }
 }
 
-/// The first `<folder>/<name>_<n>.wav` that doesn't exist yet, counting from 1.
+/// The file extension of recordings in `format`.
+pub fn extension(format: RecordFormat) -> &'static str {
+    match format {
+        RecordFormat::Float32 | RecordFormat::Int24 => "wav",
+        RecordFormat::Flac => "flac",
+        RecordFormat::W64 => "w64",
+    }
+}
+
+/// The first `<folder>/<name>_<n>.<extension>` that doesn't exist yet, counting from 1.
 ///
 /// Does I/O. Complexity: O(n) in the takes already there.
-pub fn next_take_path(folder: &Path, name: &str) -> PathBuf {
+pub fn next_take_path(folder: &Path, name: &str, extension: &str) -> PathBuf {
     let name = file_name(name);
-    (1..).map(|n| folder.join(format!("{name}_{n}.wav"))).find(|path| !path.exists()).unwrap_or_else(|| folder.join(format!("{name}.wav")))
+    (1..)
+        .map(|n| folder.join(format!("{name}_{n}.{extension}")))
+        .find(|path| !path.exists())
+        .unwrap_or_else(|| folder.join(format!("{name}.{extension}")))
+}
+
+/// A take file being written, in any of the recording formats.
+#[derive(Debug)]
+enum TakeWriter {
+    Wav(WavWriter),
+    W64(W64Writer),
+    Flac(FlacWriter),
+}
+
+impl TakeWriter {
+    /// Creates `path` for a stereo take at `rate` in `format`.
+    ///
+    /// Does I/O.
+    fn create(path: &Path, rate: SampleRate, format: RecordFormat) -> Result<Self, AudioError> {
+        Ok(match format {
+            RecordFormat::Float32 => Self::Wav(WavWriter::create(path, rate, 2, WavFormat::Float32)?),
+            RecordFormat::Int24 => Self::Wav(WavWriter::create(path, rate, 2, WavFormat::Int24)?),
+            RecordFormat::Flac => Self::Flac(FlacWriter::create(path, rate, 2)?),
+            RecordFormat::W64 => Self::W64(W64Writer::create(path, rate, 2, W64Format::Float32)?),
+        })
+    }
+
+    fn write(&mut self, channels: &[&[f32]], frames: usize) -> Result<(), AudioError> {
+        match self {
+            Self::Wav(w) => w.write(channels, frames),
+            Self::W64(w) => w.write(channels, frames),
+            Self::Flac(w) => w.write(channels, frames),
+        }
+    }
+
+    fn finish(self) -> Result<(), AudioError> {
+        match self {
+            Self::Wav(w) => w.finish(),
+            Self::W64(w) => w.finish(),
+            Self::Flac(w) => w.finish(),
+        }
+    }
+}
+
+/// What the disk thread needs for one lane.
+#[derive(Debug)]
+struct DiskLane {
+    samples: Consumer<f32>,
+    passes: Consumer<(u64, i64)>,
+    writer: Option<TakeWriter>,
+    current: Written,
+    done: Vec<Written>,
+    /// Frames taken from the ring so far.
+    consumed: u64,
+    /// The next pass mark, once read.
+    next_pass: Option<(u64, i64)>,
+    folder: PathBuf,
+    name: String,
+    format: RecordFormat,
+    rate: SampleRate,
+}
+
+impl DiskLane {
+    fn file_error(path: &Path) -> impl Fn(AudioError) -> RecordError + '_ {
+        move |e| RecordError::File { path: path.to_path_buf(), message: e.to_string() }
+    }
+
+    /// Writes `left` and `right`, starting a new file at every pass mark they cross.
+    fn write(&mut self, mut left: &[f32], mut right: &[f32]) -> Result<(), RecordError> {
+        while !left.is_empty() {
+            if self.next_pass.is_none() {
+                self.next_pass = self.passes.pop();
+            }
+            let until = self.next_pass.map_or(left.len() as u64, |(at, _)| at.saturating_sub(self.consumed).min(left.len() as u64)) as usize;
+            if until > 0 {
+                let (now_l, rest_l) = left.split_at(until);
+                let (now_r, rest_r) = right.split_at(until.min(right.len()));
+                if let Some(writer) = self.writer.as_mut() {
+                    writer.write(&[now_l, now_r], until).map_err(Self::file_error(&self.current.path))?;
+                }
+                self.current.frames += until as u64;
+                self.consumed += until as u64;
+                left = rest_l;
+                right = rest_r;
+            }
+            if let Some((at, start)) = self.next_pass
+                && at <= self.consumed
+            {
+                self.next_pass = None;
+                self.split(start)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Finishes the current file and starts the next pass's at timeline frame `start`.
+    fn split(&mut self, start: i64) -> Result<(), RecordError> {
+        if let Some(writer) = self.writer.take() {
+            writer.finish().map_err(Self::file_error(&self.current.path))?;
+        }
+        let path = next_take_path(&self.folder, &self.name, extension(self.format));
+        let writer = TakeWriter::create(&path, self.rate, self.format).map_err(Self::file_error(&path))?;
+        let finished = std::mem::replace(&mut self.current, Written { path, start: Some(start), frames: 0 });
+        self.done.push(finished);
+        self.writer = Some(writer);
+        Ok(())
+    }
+
+    /// Finishes the last file and returns every file written.
+    fn finish(mut self) -> Result<Vec<Written>, RecordError> {
+        if let Some(writer) = self.writer.take() {
+            writer.finish().map_err(Self::file_error(&self.current.path))?;
+        }
+        self.done.push(self.current);
+        Ok(self.done)
+    }
 }
 
 impl Recorder {
@@ -293,23 +463,44 @@ impl Recorder {
         let rate = project.settings.sample_rate;
         let capacity = RING_SECONDS * rate.hz() as usize * 2;
         let mut lanes = Vec::new();
-        let mut disk: Vec<(Consumer<f32>, WavWriter, PathBuf)> = Vec::new();
+        let mut disk: Vec<DiskLane> = Vec::new();
         let armed = project.mixer.order.iter().filter_map(|id| project.mixer.inserts.get(id)).chain(std::iter::once(&project.mixer.master));
         for insert in armed.filter(|i| i.armed) {
-            let path = next_take_path(folder, &insert.name);
-            let writer = WavWriter::create(&path, rate, 2, wav_format(insert.record_format))
-                .map_err(|e| RecordError::File { path: path.clone(), message: e.to_string() })?;
-            let (producer, consumer) = spsc(capacity);
+            let path = next_take_path(folder, &insert.name, extension(insert.record_format));
+            let writer = TakeWriter::create(&path, rate, insert.record_format).map_err(DiskLane::file_error(&path))?;
+            let (producer, samples) = spsc(capacity);
+            let (passes_tx, passes) = spsc(PASS_CAPACITY);
             let first_frame = Arc::new(AtomicI64::new(i64::MIN));
             let overflows = Arc::new(AtomicU64::new(0));
-            let capture = Capture { producer, tap: insert.record_tap, first_frame: Arc::clone(&first_frame), overflows: Arc::clone(&overflows) };
-            if !links.send(insert.id, Some(Box::new(capture))) {
+            let capture = Capture {
+                producer,
+                tap: insert.record_tap,
+                first_frame: Arc::clone(&first_frame),
+                overflows: Arc::clone(&overflows),
+                passes: passes_tx,
+                pushed: 0,
+            };
+            let stage = CaptureStage::of(insert.record_tap);
+            if !links.send(insert.id, stage, Some(Box::new(capture))) {
                 tracing::warn!(insert = %insert.id, "the insert has no strip yet; it isn't recorded");
+                let _ = writer.finish();
                 let _ = std::fs::remove_file(&path);
                 continue;
             }
-            disk.push((consumer, writer, path.clone()));
-            lanes.push(Lane { insert: insert.id, path, first_frame, overflows });
+            disk.push(DiskLane {
+                samples,
+                passes,
+                writer: Some(writer),
+                current: Written { path, start: None, frames: 0 },
+                done: Vec::new(),
+                consumed: 0,
+                next_pass: None,
+                folder: folder.to_path_buf(),
+                name: insert.name.clone(),
+                format: insert.record_format,
+                rate,
+            });
+            lanes.push(Lane { insert: insert.id, stage, first_frame, overflows });
         }
         if lanes.is_empty() {
             return Err(RecordError::NothingArmed);
@@ -332,7 +523,7 @@ impl Recorder {
             return;
         }
         for lane in &active.lanes {
-            if !links.send(lane.insert, None) {
+            if !links.send(lane.insert, lane.stage, None) {
                 tracing::warn!(insert = %lane.insert, "could not ask the strip to stop recording");
             }
         }
@@ -341,6 +532,7 @@ impl Recorder {
     }
 
     /// The takes, once a stopped recording has finished writing; `None` while it is still running or finishing.
+    /// A lane recorded over several loop passes gives one take per pass.
     pub(crate) fn finish(&mut self, links: &mut CaptureLinks) -> Option<Result<Vec<Take>, RecordError>> {
         links.collect();
         let active = self.active.as_mut()?;
@@ -352,41 +544,41 @@ impl Recorder {
             Some(Ok(written)) => written,
             Some(Err(_)) | None => Err(RecordError::Thread(String::from("the disk thread stopped unexpectedly"))),
         };
-        Some(written.map(|frames| {
-            active
-                .lanes
-                .into_iter()
-                .zip(frames)
-                .filter_map(|(lane, frames)| {
-                    let start_frame = lane.first_frame.load(Ordering::Relaxed);
-                    if frames == 0 || start_frame == i64::MIN {
-                        let _ = std::fs::remove_file(&lane.path);
-                        return None;
+        Some(written.map(|files| {
+            let mut takes = Vec::new();
+            for (lane, files) in active.lanes.into_iter().zip(files) {
+                let first = lane.first_frame.load(Ordering::Relaxed);
+                let overflows = lane.overflows.load(Ordering::Relaxed);
+                for file in files {
+                    let start = file.start.unwrap_or(first);
+                    if file.frames == 0 || start == i64::MIN {
+                        let _ = std::fs::remove_file(&file.path);
+                        continue;
                     }
-                    Some(Take {
+                    takes.push(Take {
                         insert: lane.insert,
-                        path: lane.path,
-                        start_frame,
-                        frames,
+                        path: file.path,
+                        start_frame: start,
+                        frames: file.frames,
                         compensation: active.compensation,
-                        overflows: lane.overflows.load(Ordering::Relaxed),
-                    })
-                })
-                .collect()
+                        overflows,
+                    });
+                }
+            }
+            takes
         }))
     }
 }
 
-/// The disk thread: drains every ring into its file until recording stops and every ring is closed and empty. Returns
-/// the frames written to each file.
-fn write_takes(mut lanes: Vec<(Consumer<f32>, WavWriter, PathBuf)>, stop: &AtomicBool) -> Written {
-    let mut written = vec![0u64; lanes.len()];
+/// The disk thread: drains every ring into its files until recording stops and every ring is closed and empty,
+/// starting a new file at each loop pass. Returns the files written for each lane.
+fn write_takes(mut lanes: Vec<DiskLane>, stop: &AtomicBool) -> WrittenLanes {
     let (mut left, mut right) = (Vec::new(), Vec::new());
     loop {
         let stopping = stop.load(Ordering::Relaxed);
         let mut busy = false;
-        for (index, (consumer, writer, path)) in lanes.iter_mut().enumerate() {
-            let frames = consumer.len() / 2;
+        for lane in &mut lanes {
+            let frames = lane.samples.len() / 2;
             if frames == 0 {
                 continue;
             }
@@ -394,15 +586,12 @@ fn write_takes(mut lanes: Vec<(Consumer<f32>, WavWriter, PathBuf)>, stop: &Atomi
             left.clear();
             right.clear();
             for _ in 0..frames {
-                left.push(consumer.pop().unwrap_or(0.0));
-                right.push(consumer.pop().unwrap_or(0.0));
+                left.push(lane.samples.pop().unwrap_or(0.0));
+                right.push(lane.samples.pop().unwrap_or(0.0));
             }
-            writer.write(&[&left, &right], frames).map_err(|e| RecordError::File { path: path.clone(), message: e.to_string() })?;
-            if let Some(count) = written.get_mut(index) {
-                *count += frames as u64;
-            }
+            lane.write(&left, &right)?;
         }
-        let closed = lanes.iter().all(|(consumer, _, _)| consumer.is_abandoned() && consumer.len() < 2);
+        let closed = lanes.iter().all(|lane| lane.samples.is_abandoned() && lane.samples.len() < 2);
         if stopping && closed {
             break;
         }
@@ -410,10 +599,7 @@ fn write_takes(mut lanes: Vec<(Consumer<f32>, WavWriter, PathBuf)>, stop: &Atomi
             std::thread::sleep(DISK_POLL);
         }
     }
-    for (_, writer, path) in lanes {
-        writer.finish().map_err(|e| RecordError::File { path, message: e.to_string() })?;
-    }
-    Ok(written)
+    lanes.into_iter().map(DiskLane::finish).collect()
 }
 
 #[cfg(test)]
@@ -424,10 +610,10 @@ mod tests {
     fn takes_get_numbered_names_that_are_safe_on_disk() {
         let dir = std::env::temp_dir().join(format!("bodo-record-names-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let first = next_take_path(&dir, "Vox: lead/double");
+        let first = next_take_path(&dir, "Vox: lead/double", "wav");
         assert_eq!(first.file_name().and_then(|n| n.to_str()), Some("Vox_ lead_double_1.wav"));
         std::fs::write(&first, b"").unwrap();
-        assert_eq!(next_take_path(&dir, "Vox: lead/double").file_name().and_then(|n| n.to_str()), Some("Vox_ lead_double_2.wav"));
+        assert_eq!(next_take_path(&dir, "Vox: lead/double", "wav").file_name().and_then(|n| n.to_str()), Some("Vox_ lead_double_2.wav"));
         std::fs::remove_dir_all(dir).unwrap();
     }
 
@@ -436,7 +622,14 @@ mod tests {
         let (producer, mut consumer) = spsc(8);
         let first_frame = Arc::new(AtomicI64::new(i64::MIN));
         let overflows = Arc::new(AtomicU64::new(0));
-        let capture = Capture { producer, tap: RecordTap::Input, first_frame: Arc::clone(&first_frame), overflows: Arc::clone(&overflows) };
+        let capture = Capture {
+            producer,
+            tap: RecordTap::Input,
+            first_frame: Arc::clone(&first_frame),
+            overflows: Arc::clone(&overflows),
+            passes: spsc(4).0,
+            pushed: 0,
+        };
         let mut strip = StripCapture { state: Mutex::new(CaptureState { receiver: None, current: Some(Box::new(capture)) }) };
         let mut context = BlockContext::new(SampleRate::HZ_48000);
         let block = [0.5f32; 4];

@@ -195,6 +195,35 @@ impl EdgeGains {
     pub fn get(&self, key: EdgeKey) -> Option<f32> {
         self.slots.get(&key).and_then(|&slot| self.gains.get(slot)).map(|cell| f32::from_bits(cell.load(Ordering::Relaxed)))
     }
+
+    /// A handle to the gain of edge `key` alone, which the audio thread can set without a lookup.
+    pub fn handle(&self, key: EdgeKey) -> Option<GainHandle> {
+        self.slots.get(&key).map(|&slot| GainHandle { gains: Arc::clone(&self.gains), slot })
+    }
+}
+
+/// The gain of one edge of a plan, settable from any thread.
+#[derive(Clone, Debug)]
+pub struct GainHandle {
+    gains: Arc<[AtomicU32]>,
+    slot: usize,
+}
+
+impl GainHandle {
+    /// Sets the gain; the executor ramps to it.
+    ///
+    /// RT-safe.
+    #[bodo_kit_core::rt_safe]
+    pub fn set(&self, gain: f32) {
+        if let Some(cell) = self.gains.get(self.slot) {
+            cell.store(gain.to_bits(), Ordering::Relaxed);
+        }
+    }
+
+    /// The gain.
+    pub fn get(&self) -> f32 {
+        self.gains.get(self.slot).map_or(0.0, |cell| f32::from_bits(cell.load(Ordering::Relaxed)))
+    }
 }
 
 /// The processing time each node of a plan has used, added up since the plan started.

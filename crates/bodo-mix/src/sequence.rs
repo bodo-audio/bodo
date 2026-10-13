@@ -191,6 +191,13 @@ impl SongIndex {
         &self.tempo
     }
 
+    /// How long pattern `id` loops, in ticks.
+    ///
+    /// RT-safe. Complexity: O(log p) in patterns.
+    pub fn pattern_length(&self, id: PatternId) -> Option<i64> {
+        self.pattern_index(keys::pattern(id)).and_then(|i| self.patterns.get(i)).map(|p| p.length)
+    }
+
     /// The meter map the index was built with.
     pub fn meter(&self) -> &MeterMap {
         &self.meter

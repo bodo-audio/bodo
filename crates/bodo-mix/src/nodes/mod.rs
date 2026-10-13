@@ -12,7 +12,7 @@ pub mod strip;
 
 pub use audio_clip::AudioClipNode;
 pub use sampler::SamplerNode;
-pub use strip::StripNode;
+pub use strip::{SlotPatch, SlotQueues, SlotState, StripFx, StripInput, StripOutput};
 
 /// Every kind of node the mix graph has.
 #[derive(Debug)]
@@ -21,8 +21,12 @@ pub enum MixNode {
     Sampler(Box<SamplerNode>),
     /// An audio clip channel.
     AudioClip(Box<AudioClipNode>),
-    /// A mixer insert or the master.
-    Strip(StripNode),
+    /// The input stage of a mixer insert or the master: input, polarity and swap.
+    StripInput(StripInput),
+    /// The FX stage of a mixer insert or the master: slots, EQ and stereo separation.
+    StripFx(Box<StripFx>),
+    /// The output stage of a mixer insert or the master: pan, fader, mute, meters and the negative latency delay.
+    StripOutput(StripOutput),
     /// A MIDI Out channel.
     MidiOut(Box<crate::midi_out::MidiOutNode>),
 }
@@ -36,7 +40,9 @@ impl Processor<BlockContext> for MixNode {
         match self {
             MixNode::Sampler(node) => node.process(io, context),
             MixNode::AudioClip(node) => node.process(io, context),
-            MixNode::Strip(node) => node.process(io, context),
+            MixNode::StripInput(node) => node.process(io, context),
+            MixNode::StripFx(node) => node.process(io, context),
+            MixNode::StripOutput(node) => node.process(io, context),
             MixNode::MidiOut(node) => node.process(io, context),
         }
     }
