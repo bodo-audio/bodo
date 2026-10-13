@@ -843,6 +843,27 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
                     chosen = Some(("pattern.split_by_channel", json!({ "pattern": pattern })));
                 }
             }
+            if let ClipSource::Audio(channel) = source {
+                let mode = project.channels.get(&channel).and_then(|c| match &c.kind {
+                    bodo_model::channel::ChannelKind::AudioClip { stretch, .. } => Some(*stretch),
+                    _ => None,
+                });
+                ui.menu_button("Stretch", |ui| {
+                    use bodo_model::channel::StretchMode;
+                    for (label, id, value) in [
+                        ("Its own speed", "none", StretchMode::None),
+                        ("Resample to the tempo", "resample", StretchMode::Resample),
+                        ("Stretch to the tempo", "stretch", StretchMode::Stretch),
+                    ] {
+                        if ui.selectable_label(mode == Some(value), label).clicked() {
+                            chosen = Some(("clip.set_stretch", json!({ "channel": channel, "mode": id })));
+                        }
+                    }
+                });
+                if ui.button("Remove fades").clicked() {
+                    chosen = Some(("clip.set_fades", json!({ "clips": [clip], "fadeIn": 0, "fadeOut": 0 })));
+                }
+            }
             if ui.button("Mute or unmute").clicked() {
                 chosen = Some(("clip.mute", json!({ "clips": [clip] })));
             }
@@ -867,10 +888,10 @@ fn clip_menu(app: &mut BodoApp, ctx: &egui::Context, project: &Project) {
             }
         });
     });
-    // A press outside the menu and its submenus closes it.
+    // A press outside the menu and its submenus closes it, but not the press that opened it.
     let pressed_at = ctx.input(|i| if i.pointer.any_pressed() { i.pointer.interact_pos() } else { None });
-    let outside =
-        pressed_at.is_some_and(|p| !area.response.rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order != egui::Order::Foreground));
+    let outside = pressed_at
+        .is_some_and(|p| p != at && !area.response.rect.contains(p) && ctx.layer_id_at(p).is_none_or(|l| l.order != egui::Order::Foreground));
     let dismissed = ctx.input(|i| i.key_pressed(egui::Key::Escape)) || outside;
     if let Some((id, params)) = chosen {
         let _ = app.run(id, params);

@@ -198,3 +198,23 @@ fn shift_dragging_the_ruler_sets_the_song_loop() {
     assert_eq!(h.state().session.transport().loop_region, Some((Tick(7680), Tick(15_360))), "bars 3 to 5");
     assert_eq!(steps(&h), before, "the loop is transport state, not an edit");
 }
+
+#[test]
+fn a_clips_menu_opens_from_its_name_strip_and_makes_it_unique() {
+    use egui_kittest::kittest::Queryable;
+    let (mut h, canvas) = setup("draw");
+    let verse = clips(&h, 1)[1].clone();
+    let strip = pos2(at(canvas, 4.0, 1).x, canvas.top() + 4.0);
+    h.event(egui::Event::PointerMoved(strip));
+    h.step();
+    for pressed in [true, false] {
+        h.event(egui::Event::PointerButton { pos: strip, button: PointerButton::Secondary, pressed, modifiers: Modifiers::NONE });
+        h.step();
+    }
+    h.step();
+    h.get_by_label("Make unique").click();
+    h.run_steps(3);
+    let after = clips(&h, 1)[1].clone();
+    assert_eq!((after.id, after.start), (verse.id, verse.start), "the right-click didn't delete the clip");
+    assert_ne!(after.source, verse.source, "the clip plays a copy of its pattern now");
+}

@@ -257,3 +257,29 @@ fn a_waveform_and_a_curve_dark() {
 fn a_waveform_and_a_curve_light() {
     snapshot("clips_light", Theme::Light);
 }
+
+#[test]
+fn the_clip_menu_sets_an_audio_clips_stretch_and_removes_its_fades() {
+    use egui_kittest::kittest::Queryable;
+    let (mut h, _) = harness(crash_clip);
+    let clip = clips(&h, 1)[0].id;
+    h.state_mut().run("clip.set_fades", json!({ "clips": [clip], "fadeIn": 960, "fadeOut": 960 })).unwrap();
+    h.run_steps(2);
+    // The name strip along the clip's top opens its menu.
+    let strip = element(&h, "Clip Crash at 1:1:0");
+    let header = pos2(strip.center().x, strip.top() + 4.0);
+    right_click_at(&mut h, header);
+    h.get_by_label_contains("Stretch").click();
+    h.run_steps(3);
+    h.get_by_label("Stretch to the tempo").click();
+    h.run_steps(3);
+    let stretch = match &h.state().session.project().channels[&channel_named(&h, "Crash")].kind {
+        ChannelKind::AudioClip { stretch, .. } => *stretch,
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(stretch, bodo_model::channel::StretchMode::Stretch);
+    right_click_at(&mut h, header);
+    h.get_by_label("Remove fades").click();
+    h.run_steps(3);
+    assert!(clips(&h, 1)[0].fades.is_none_or(|f| f.fade_in == Tick(0) && f.fade_out == Tick(0)), "{:?}", clips(&h, 1)[0].fades);
+}
