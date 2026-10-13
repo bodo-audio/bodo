@@ -42,11 +42,11 @@
 
 ## 1. Vision and principles
 
-Bodo is a complete music production environment. You can compose, arrange, record, mix, master and export in it. Its workflow is pattern based and will feel familiar to FL Studio users, and it ships with an AI assistant that can do real production work: it writes parts the way a pianist would play them, mixes and masters stems, and designs sounds in a synthesizer. Everything is free. The one paid product is **Bodo Cloud**, which gives you managed access to AI models so you don't have to bring your own API key.
+Bodo is a complete music production environment. You can compose, arrange, record, mix, master and export in it. Its workflow is pattern based and will feel familiar to FL Studio users, and it ships with an AI assistant that can do real production work: it writes parts the way a pianist would play them, mixes and masters stems, and designs sounds in a synthesizer. The app is free. The main paid product is **Bodo Cloud**, which gives you managed access to AI models so you don't have to bring your own API key. The marketplace also lets creators sell stems and plugins next to free content.
 
 ### 1.1 Principles
 
-1. **Free forever.** The DAW, Bodo Kit, the stock plugins, the marketplace and its content, and MCP access are all free. Users run the assistant with their own key (OpenRouter, OpenAI, Anthropic, Gemini) or a local model at no cost. Bodo Cloud sells convenience. It does not unlock features.
+1. **Free forever.** The DAW, Bodo Kit, the stock plugins and MCP access are all free. The marketplace is free to use and full of free content; creators may also sell stems and plugins there ([ADR 0013](docs/adr/0013-paid-items-in-the-marketplace.md)). Users run the assistant with their own key (OpenRouter, OpenAI, Anthropic, Gemini) or a local model at no cost. Bodo Cloud sells convenience. It does not unlock features.
 2. **AI-native, AI-optional.** Every feature works without AI, and the AI can reach every feature. Both go through the same command system (see [section 12](#12-command-system-and-mcp)).
 3. **Real-time correctness first.** The audio thread never allocates, takes a lock or blocks. A dropout is a bug.
 4. **One mutation path.** The UI, shortcuts, the command palette, scripts, MCP clients and the assistant all change the project through `engine.execute(command_id, params)`.
@@ -62,7 +62,7 @@ Bodo is a complete music production environment. You can compose, arrange, recor
 - VST3, CLAP and AU (macOS) hosting, plus LV2 on Linux, with optional crash isolation.
 - A professional set of stock instruments and effects, all built with Bodo Kit.
 - The Bodo Assistant, plus an MCP server that any agent can drive.
-- A free marketplace for samples, presets, templates and open-source plugins, with instant previews.
+- A marketplace of free and paid stems, samples, presets, templates and plugins, with instant previews.
 - The Bodo Hub launcher and auto-updates.
 
 ### 1.3 Non-goals for 1.0
@@ -83,7 +83,7 @@ Bodo is a complete music production environment. You can compose, arrange, recor
 | Bodo Hub | `apps/bodo-hub` | GPL-3.0-or-later | Launcher, updater, project dashboard, marketplace front, account |
 | bodo-cli | `apps/bodo-cli` | GPL-3.0-or-later | Headless rendering, MCP over stdio, project tools, marketplace publishing |
 | bodo-plugin-bridge | `apps/bodo-plugin-bridge` | GPL-3.0-or-later | Sandboxed plugin host process and plugin scanner |
-| Marketplace | `services/market` (separate repo later) | AGPL-3.0 (proposed) | Package index, review pipeline, CDN delivery |
+| Marketplace | `services/market` (separate repo later) | AGPL-3.0 (proposed) | Package index, review pipeline, CDN delivery, payments |
 | Bodo Cloud | `services/cloud` (separate repo later) | Open question ([section 21](#21-risks-and-open-questions)) | Model gateway for subscribers: auth, metering, billing |
 
 ```mermaid
@@ -110,7 +110,7 @@ flowchart LR
 | The DAW, every feature, every stock plugin | A managed model key with monthly credits |
 | The assistant with any user-supplied key, or with local models | No API key setup and curated model routing |
 | The MCP server for any external agent | Usage dashboard and spend caps across devices |
-| The marketplace and all of its content | |
+| The marketplace, and all free content in it | Paid stems and plugins that creators sell in the marketplace |
 | Bodo Kit for building your own plugins, including commercial ones | |
 
 The agent always runs locally inside Bodo. Bodo Cloud is only a model gateway that speaks the OpenAI-compatible protocol, so BYOK users and subscribers get exactly the same assistant features. This is honest, and it fits the GPL: there is no closed-source feature to strip out of a fork.
@@ -389,7 +389,7 @@ Soundcraft's main alpha blocker was the device layer, so Bodo builds it first.
 - **Latency:** the device layer reports input latency, output latency and buffer size. Recordings are offset to compensate, and the wizard includes a loopback "ping" calibration.
 - **Hot-plug:** if the device disappears, the engine stops cleanly and the UI offers to reconnect. The project is never lost.
 - **MIDI:** `midir` input and output, enabled per device. MIDI clock and MTC can be sent out (receiving comes later), and any control supports MIDI learn.
-- **Xruns:** each callback is timed against its deadline (the buffer duration). The main window shows an xrun counter and a CPU meter ([14.1](#141-main-window-layout)).
+- **Xruns:** each callback is timed against its deadline (the buffer duration). The top bar shows an xrun counter and a CPU meter ([14.1](#141-main-window-layout)).
 
 ### 6.3 Real-time contract
 
@@ -576,6 +576,7 @@ pub struct Channel {
     pub volume: f32,
     pub pan: f32,
     pub pitch_cents: f32,
+    pub swing: f32,                               // 0..1: how late every second step plays
     pub muted: bool,
     pub midi_in: Option<MidiBinding>,
 }
@@ -846,11 +847,12 @@ The mixer is a directed graph. Its nodes are channel sources, inserts and the Ma
 
 The mixer UI follows FL's layout but uses Bodo's own visual design.
 
-- **Strips** have, from top to bottom: the name, a peak meter with a clip LED, the pan knob, and a fader with a dB scale ([14.1](#141-main-window-layout)). Stereo separation, polarity, swap, mute, solo and arm are compact controls on the strip. At the bottom is the **route control**, which shows whether the *selected* insert routes to this strip:
+- **The mixer window** is a free window ([14.1](#141-main-window-layout)). Its header has the options menu, view buttons, `+` to add an insert, and the view size (Wide, Compact, Extra compact). A dB scale runs down its left edge.
+- **Strips** have, from top to bottom: the name (vertical), the mute LED, the pan and stereo separation knobs, the fader with a peak meter and clip LED beside it, and the **route control** at the bottom. Polarity, swap, solo and arm are compact controls on the strip. The route control shows whether the *selected* insert routes to this strip:
   - click it to toggle the route;
   - drag its knob to set the send level;
   - Cmd/Ctrl-click to create a sidechain-only route.
-- **The insert panel** sits on the right side, titled with the insert's name ("Mixer - Insert 3"), and shows the selected insert:
+- **The insert panel** opens on the mixer's right side, titled with the insert's name ("Mixer - Insert 3"), and shows the selected insert:
   - the input selector;
   - slots 1 to 10, each with an enable LED and a mix knob. Slots can be dragged to reorder, and their context menu offers replace, presets, move up/down and sandbox mode;
   - the strip EQ;
@@ -873,7 +875,9 @@ The mixer UI follows FL's layout but uses Bodo's own visual design.
 
 ### 10.2 Channel Rack
 
+- **The Channel Rack** floats inside the main window ([14.1](#141-main-window-layout)). Its header has the options menu, the channel group filter, the swing knob, the graph editor and view buttons, and close. `+` under the rows adds a channel.
 - **Channel row:** mute LED, pan and volume knobs, target insert number, a name button that opens the channel window, and a step-sequencer row.
+- **Swing:** each channel has its own swing, which delays every second step. The header knob sets it for every channel in the current group.
 - **Step sequencer:** 16 steps by default, following the pattern length. Each step is a note at the channel's root key. A graph editor sets velocity, pitch, pan and release for each step.
 - **Organizing:** channel groups and filters, drag-reorder, and color.
 - **Channel kinds:** Sampler, Instrument (a plugin), Audio clip, Automation clip, Layer and MIDI Out.
@@ -889,7 +893,7 @@ The mixer UI follows FL's layout but uses Bodo's own visual design.
 
 ### 10.3 Playlist
 
-Any track can hold any kind of clip: pattern, audio or automation, as in FL. The default shortcuts match FL, so people switching from FL feel at home.
+Any track can hold any kind of clip: pattern, audio or automation, as in FL. The default shortcuts match FL, so people switching from FL feel at home. The Playlist window's header holds the tool buttons ([14.1](#141-main-window-layout)); the Playback tool is reached by its shortcut.
 
 | Tool | Key | Behavior | Complexity |
 |---|---|---|---|
@@ -1008,7 +1012,7 @@ pub struct CommandSpec {
 | `transport` | play, stop, toggle_play, record, loop_record, set_position, scrub, set_loop, set_mode (pattern/song), metronome, count_in, typing_keyboard |
 | `edit` | undo, redo, cut, copy, paste, select, select_all, deselect |
 | `project` | new, open, save, save_as, set_tempo, add_tempo_point, set_meter, set_settings, add_marker |
-| `channel` | add, remove, duplicate, rename, reorder, set_target_insert, add_send, set_volume, set_pan, set_pitch, mute, replace_instrument |
+| `channel` | add, remove, duplicate, rename, reorder, set_target_insert, add_send, set_volume, set_pan, set_pitch, set_swing, mute, replace_instrument |
 | `pattern` | new, delete, clone, rename, set_length, set_binding, split_by_channel, make_unique |
 | `note` | add_many, remove, move, resize, set_props, quantize, transpose, legato, chop, strum, arpeggiate, set_expression |
 | `playlist` | add_track, remove_track, set_track_props, reorder_tracks, insert_time, delete_time |
@@ -1018,11 +1022,12 @@ pub struct CommandSpec {
 | `plugin` | scan, list, describe, set_param, get_params, load_preset, save_preset, open_editor, set_sandbox |
 | `automation` | create_for, set_points, add_point, remove_point, set_curve, clear, link_controller |
 | `browser` | search, preview, import, favorite, rescan |
+| `market` | search, preview, get, install, update, publish (buying always starts with the user, see [15.8](#158-selling)) |
 | `render` | export_mix, export_stems, bounce_insert, preview, freeze_channel |
 | `analysis` | loudness, spectrum, stereo, masking, transients, key, chords, tempo, check, compare, report |
-| `ui` | focus, toggle_panel, open_piano_roll, select_pattern, set_tool, set_snap, auto_scroll, set_layout, zoom, scroll_to, palette, inspect, click, drag, key, screenshot |
+| `ui` | focus, toggle_window, detach_window, maximize_window, open_piano_roll, select_pattern, set_tool, set_snap, auto_scroll, set_layout, zoom, scroll_to, palette, inspect, click, drag, key, screenshot |
 | `skill` | perform_progression, perform_melody, pedal, humanize, drum_groove, gain_stage, eq_masking, bus_compress, master_to_target, design_sound |
-| `agent` | accept, reject, accept_step, ab_switch |
+| `agent` | accept, reject, accept_step, ab_switch, undo_last |
 
 Skills are commands too. Each one expands into a batch of primitive commands inside one undo entry, so a skill can be replayed, undone and inspected over MCP like anything else.
 
@@ -1207,6 +1212,19 @@ Optional extras:
 
 Deferred until after the MVP: listening with audio models, automatically applied masking EQ, third-party plugin profiles, and assistant actions in the marketplace.
 
+### 13.8 Assistant panel
+
+The Assistant is a side panel on the right of the main window ([14.1](#141-main-window-layout)). It can collapse to a thin strip or be hidden.
+
+- **Tabs:** Chat holds the conversation. Agent shows the steps the agent is taking and the tools it calls. Changes shows the changeset waiting for review, with a count.
+- **Context:** chips under the tabs show what a request is about, taken from the current selection (for example `Track 2` and `Pattern Test`). Each chip can be removed. In the message box, `@track`, `@pattern` and `@mixer` add more context, and `+` attaches a file or an item.
+- **Proposals:** when the agent changes the project, it answers with a card that lists each change as "where > what: before -> after", for example "Channel rack > 808 HiHat: swing 0% -> 55%". The card has three buttons:
+  - **Apply** accepts the changes ([13.3](#133-changesets-reviewable-agent-edits));
+  - **Preview** plays the changed project against the current one, loudness-matched, for A/B listening;
+  - **Discard** rejects the changes and restores the project exactly.
+- **Marketplace results:** search answers come as cards with each item's name, BPM, key and a Get or Buy button, and a result can be dragged straight onto a Playlist track. The assistant never buys anything: a purchase always starts with the user pressing Buy ([ADR 0013](docs/adr/0013-paid-items-in-the-marketplace.md)).
+- **Footer:** "Undo last AI change", the history of applied changes, the message box, the model picker (local or cloud models) and the session's token usage.
+
 ---
 
 ## 14. GUI and design system
@@ -1215,91 +1233,121 @@ The UI uses egui 0.36 on wgpu with `craft-ui`, the same stack and design languag
 
 ### 14.1 Main window layout
 
-The owner's sketch (2026-10-13) sets the default layout: the Browser down the left side, the Channel Rack with the Sampler window under it, the Playlist on the right, and the Mixer along the bottom. In the app the top bar is a single row; it wraps here only to fit the page.
+The owner's layout sketch (2026-10-13) sets the default layout, shown here with the AI Assistant open. [ADR 0012](docs/adr/0012-window-model.md) sets the window model behind it.
 
 ```
-+--------------------------------------------------------------------------------------------------------------------+
-| (o)(o)(o)  File Edit Add Patterns View Options Tools Help    [1][2][3][4]  [5][6]  [130.000 BPM]  ...              |
-|   ...  [a][b][c][d]  [< Pattern 1 >]  [Line v]                 [W][E][S]   [Undo][Redo]   [AI]                     |
-+-----------------+----------------------------------------------+---------------------------------------------------+
-| 1. BROWSER      | 2. CHANNEL RACK                              | 4. PLAYLIST                                       |
-| ALL  PROJECT    | [+] [All v]     Channel rack        [graph]  |            | 1     5     9     13    17    21     |
-| PLUGINS  SOUNDS | o (o)(o) [1] 808 Kick  [#...|..#.|#...|....] | Pattern 1  | Track 1 [> Pattern 1 ]               |
-|                 | o (o)(o) [2] 808 Clap  [....|#...|....|#...] | Pattern 2  | Track 2      [> Pattern 1 ]          |
-| Current project | o (o)(o) [3] 808 Hihat [..#.|..#.|..#.|..#.] | Pattern 3  | Track 3                              |
-| Recent files    | o (o)(o) [4] 808 Snare [....|#...|....|#...] | Pattern 4  | Track 4                              |
-| Plugin database +----------------------------------------------+            | Track 5                              |
-| Plugin presets  | 3. SAMPLER (floating window)                 |            | Track 6            [> Pattern 1 ]    |
-| Channel presets | pan   vol   pitch   range   track            |            |                                      |
-| Mixer presets   | File: 808 Kick.wav                           |            |                                      |
-| Scores          | Content            Time stretching           |            |                                      |
-| Audio           | Declicking mode    Precomputed effects       |            |                                      |
-| Backup          | Playback                                     |            |                                      |
-| ...             +--------------------------------------------------------------------------------------------------+
-| Templates       | 5. MIXER  Master | Insert 1 | Insert 2 | ... | Insert 10 | ...       | Mixer - Insert 3          |
-| User data       |           meter, pan, fader, route control on each strip             | in, slots 1-10, EQ, out   |
-+-----------------+--------------------------------------------------------------------------------------------------+
++------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+|(o)(o)(o) FILE EDIT ADD PATTERNS VIEW OPTIONS TOOLS HELP [PAT/SONG] |> [] (o) [130.000] [1:01:00 B:S:T] [A][B][C][D] [ --- ] [~~~] [4|852 MB|0]                         |
+|[hint: Track 2 - right-click for options     ] [E] [F][G][H][I][J][->][mic] (none)> >[   Test]+ Shift Cmd Opt [?] | [Marketplace] [AI]                            (logo)|
++----------------------+----------------------------------------------------+-----------------------------------------------------+--------------------------------------+
+|> ^ <- Browser        | +-----------------------------------------------+  |> (U) pen brush del mute slip slice sel zoom         |<) AI Assistant          [<<] _ x     |
+|[ALL] PROJECT PLUGINS.| |> (o)[All v] <)Channel rack (o)[] <- |l| ### x |  |<) Playlist - Arrangement > Test >             _ [] x|[Chat] [Agent] [Changes 2]            |
+|                      | |*oo [1][   808 Kick   ]|....####....####       |  |[piano]  |~  / [p] |< ===(scroll)=== >               |--------------------------------------|
+|  Current project     | |*oo [2][   808 Clap   ]|....####....####       |  |         |+ N C P  |1   5    9   13   17  21  25   29|Context: [Track 2] [Pattern Test] (x) |
+|  Recent files        | |*oo [3][  808 HiHat   ]|....####....####       |  |>Test    |Track 1  |v Test___                        |--------------------------------------|
+|  Plugin database     | |*oo [4][  808 Snare   ]|....####....####       |  |         |      *  ||       |                        |You:                                  |
+|  Plugin presets      | |*oo [5][808 Astronomic]|....####....####       |  |         |-------- |+-------+------------------------| make the hihat swing and add a       |
+|  Channel presets     | |          +                                    |  |         |Track 2  |    v Test####                   | ghost snare before beat 3            |
+|  Mixer presets       | |                <==            >               |  |         |      *  |    |        |                   |                                      |
+|  Scores              | +-----------------------------------------------+  |         |-------- |----+--------+-------------------|AI:                                   |
+|  Audio               |                                                    |         |Track 3  |                                 | Proposed 2 changes:                  |
+|  Backup              |                                                    |         |      *  |                                 | +----------------------------------+ |
+|  Channel envelopes   |                                                    |         |-------- |---------------------------------| | Channel rack > 808 HiHat         | |
+|  Clipboard files     |                                                    |         |Track 4  |                                 | |   swing   0%  ->  55%            | |
+|  Demo projects       |                                                    |         |      *  |                                 | | Channel rack > 808 Snare         | |
+|  Envelopes           |                                                    |         |-------- |---------------------------------| |   + step 8  (vel 40)             | |
+|  Impulses            |                                                    |         |Track 5  |                                 | |                                  | |
+|  Misc                |                                                    |         |      *  |                                 | | [Apply] [Preview >] [Discard]    | |
+|  My projects         |                                                    |         |-------- |---------------------------------| +----------------------------------+ |
+|  Packs               |                                                    |         |Track 6  |                                 |                                      |
+|  Project parts       |                                                    |         |      *  |                                 |You:                                  |
+|  Recorded            |                                                    |         |-------- |---------------------------------| find a dusty rhodes stem, 130 BPM    |
+|  Rendered            |                                                    |         |Track 7  |                                 |                                      |
+|  Sliced audio        |                                                    |         |      *  |                                 |AI:                                   |
+|  Soundfonts          |                                                    |         |-------- |---------------------------------| 3 matches in Marketplace > Stems:    |
+|  Speech              |                                                    |         |Track 8  |                                 | +----------------------------------+ |
+|  Templates           |                                                    |         |      *  |                                 | | > Rhodes Dust  130 Am  [Get]     | |
+|  User data           |                                                    |         |-------- |---------------------------------| | > Keys Haze    128 Am  [Get]     | |
+|  Marketplace  (new)  |                                                    |         |Track 9  |                                 | | > Late Rhodes  130 Cm  [Get]     | |
+|    > Plugins (owned) |                                                    |         |      *  |                                 | | drag result -> Playlist track    | |
+|    > Stems (owned)   |                                                    |         |-------- |---------------------------------| +----------------------------------+ |
+|                      |+--------------------------------------------------+|         |Track 10 |                                 |                                      |
+|                      ||> [ic][ic][ic][ic][ic] + Wide >                   ||         |      *  |                                 |                                      |
+|                      ||C |M |1 |2 |3 |4 |5 |6 |7 |8 |9 |10|11|12|13|     ||         |-------- |---------------------------------|                                      |
+|                      || 3|Ma|In|In|In|In|In|In|In|In|In|In|In|In|In|     ||         |Track 11 |                                 |                                      |
+|                      || 0|st|s |s |s |s |s |s |s |s |s |s |s |s |s |     ||         |      *  |                                 |                                      |
+|                      || 3|er| 1| 2| 3| 4| 5| 6| 7| 8| 9|10|11|12|13|     ||         |-------- |---------------------------------|                                      |
+|                      || 6|* |* |* |* |* |* |* |* |* |* |* |* |* |* |     ||         |Track 12 |                                 |                                      |
+|                      || 9|()|()|()|()|()|()|()|()|()|()|()|()|()|()|     ||         |      *  |                                 |                                      |
+|                      ||12|<>|<>|<>|<>|<>|<>|<>|<>|<>|<>|<>|<>|<>|<>|     ||         |-------- |---------------------------------|                                      |
+|                      ||18|[]|[]|[]|[]|[]|[]|[]|[]|[]|[]|[]|[]|[]|[]|     ||         |Track 13 |                                 |                                      |
+|                      ||21| :| :| :| :| :| :| :| :| :| :| :| :| :| :|     ||         |      *  |                                 |--------------------------------------|
+|                      ||24| :| :| :| :| :| :| :| :| :| :| :| :| :| :|     ||         |-------- |---------------------------------|[Undo last AI change]   History >     |
+|                      ||  | :| :| :| :| :| :| :| :| :| :| :| :| :| :|     ||         |Track 14 |                                 |--------------------------------------|
+|                      ||  |@ |@ |@ |@ |@ |@ |@ |@ |@ |@ |@ |@ |@ |@ |     ||         |      *  |                                 |[+] @track @pattern @mixer            |
+|                      ||  |v |^ |^ |^ |^ |^ |^ |^ |^ |^ |^ |^ |^ |^ |     ||         |-------- |---------------------------------|> Ask or describe a change...  [Send] |
+|TAGS               [Q]|+--------------------------------------------------+|   +     |Track 15 |                                 |model [local v]   usage 12.4k tok     |
++----------------------+----------------------------------------------------+-----------------------------------------------------+--------------------------------------+
 ```
 
-**The top bar,** from left to right:
+**Windows.** The Browser (left) and the AI Assistant (right) are side panels attached to the main window. Between them is the workspace:
 
-| Mark | Control | What it does |
+- **The Channel Rack** floats inside the workspace. It moves, resizes, maximizes to fill the workspace, minimizes and closes, but it stays inside the main window.
+- **Every other window is a free window:** the Playlist, Piano Roll, Mixer, Marketplace and channel windows such as the Sampler. A free window opens inside the workspace and can be moved, resized, maximized, minimized and closed. It can also be detached into its own OS window, to put it on another monitor or make it full screen.
+- **Plugin editors** are always separate windows above the main window ([7.4](#74-plugin-editors)).
+
+**The top bar** has two rows. Letters in the sketch are placeholders for icons.
+
+| Row | Control | What it does |
 |---|---|---|
-| | Menu | File, Edit, Add, Patterns, View, Options, Tools, Help |
-| 1 | Browser | Shows or hides the Browser sidebar |
-| 2 | Channel Rack | Shows or hides the Channel Rack, where channels (stems, samples, instruments and plugins) are created, added and changed |
-| 3 | Piano Roll | Shows or hides the Piano Roll, where notes are drawn and their velocity and volume edited |
-| 4 | Mixer | Shows or hides the Mixer |
-| 5 | Auto scrolling | Scrolls the Playlist and Piano Roll to keep the playhead in view |
-| 6 | One-click record | Starts recording straight away |
-| | Tempo | The tempo in BPM; drag it, type it or use its arrows |
-| a | Typing keyboard to piano | Plays notes from the computer keyboard |
-| b | Recording precount | Counts in before recording starts |
-| c | Loop record | Keeps recording each time the loop repeats |
-| d | Metronome | Clicks on every beat |
-| | Pattern selector | Shows the current pattern. The arrows step through the patterns, and a click opens the full list |
-| | Snap | Line, Cell, None, 1/6 step, 1/4 step, 1/3 step, 1/2 step, 1 step, then beat values from 1/6 beat up ([10.3](#103-playlist)) |
-| W | Layouts | Switches between saved window layouts |
-| E | Export | Renders the project to audio ([6.8](#68-offline-render)) |
-| S | Save | Saves the project |
-| | Undo, Redo | Steps back and forward through the undo history |
-| AI | Assistant | Opens the Assistant panel: chat, Agent Changes and the cost meter ([13](#13-bodo-assistant)) |
+| 1 | Menu | File, Edit, Add, Patterns, View, Options, Tools, Help. Save, export, undo and redo live here and on their shortcuts |
+| 1 | PAT/SONG | Pattern mode loops the current pattern; Song mode plays the Playlist ([6.6](#66-sequencer)) |
+| 1 | Play, Stop, Record | The transport. Space plays and stops from any window |
+| 1 | Tempo | The tempo in BPM; drag it, type it or use its arrows |
+| 1 | Song position | The playhead position. Click `B:S:T` to switch between bars:steps:ticks and minutes:seconds |
+| 1 | A, B, C, D | Typing keyboard to piano, recording precount, loop record, metronome |
+| 1 | Master volume | The `[ --- ]` slider |
+| 1 | Oscilloscope | The `[~~~]` view of the master output |
+| 1 | Performance | CPU load, memory in use, and the dropout (xrun) counter ([6.2](#62-device-layer-bodo-kit-device)) |
+| 2 | Hint bar | Describes the control under the cursor, shows its shortcut, and gives the result of the last command |
+| 2 | E | Layouts: switches between saved window layouts |
+| 2 | F, G, H, I, J | Show or hide the Browser, Channel Rack, Piano Roll, Mixer and Playlist |
+| 2 | Auto scrolling | The `[->]` button: the Playlist and Piano Roll follow the playhead |
+| 2 | One-click audio recording | The `[mic]` button: records audio into the Playlist straight away |
+| 2 | Snap | `(none)` in the sketch: line, cell, none, fractions of a step or beat ([10.3](#103-playlist)) |
+| 2 | Pattern selector | Shows the current pattern; its arrows step through patterns and `+` makes a new one |
+| 2 | Shift, Cmd, Opt | Light up while those modifier keys are held (Ctrl and Alt on Windows and Linux) |
+| 2 | ? | Help |
+| 2 | Marketplace | Opens the Marketplace window ([15.9](#159-marketplace-window)) |
+| 2 | AI | Shows or hides the AI Assistant |
+| 2 | Logo | The Bodo logo |
 
-**The panels:**
+**The panels and windows:**
 
-1. **Browser** (left, full height): project files, plugins, presets and sounds.
-   - Tabs: All, Project, Plugins, Sounds.
+1. **Browser** (left side panel): project files, plugins, presets and sounds.
+   - The header has back and up buttons; the tabs are All, Project, Plugins and Sounds.
    - Top entries: Current project, Recent files, Plugin database, Plugin presets, Channel presets, Mixer presets, Scores.
-   - Folders: Audio, Backup, Channel envelopes, Clipboard files, Demo projects, Envelopes, Impulses, Marketplace ([15](#15-marketplace)), Misc, My projects, Packs, Project parts, Recorded, Rendered, Sliced audio, Soundfonts, Speech, Templates, User data.
-2. **Channel Rack** (top middle): the step sequencer for kick, clap, hi-hat and the other channels ([10.2](#102-channel-rack)).
-   - The header has an add-channel button, a channel filter and the graph editor.
-   - Each row has a mute LED, pan and volume knobs, the target mixer insert, the channel's name button, and 16 steps in groups of four.
-3. **Sampler** (a floating window, placed under the Channel Rack by default): the settings of a sample channel ([10.2](#102-channel-rack)). A channel's name button opens it.
-4. **Playlist** (right): arranges patterns on the timeline into the song ([10.3](#103-playlist)).
-   - A pattern list on its left shows every pattern in its color, with the current pattern highlighted.
-   - Each track header shows the track name and a mute LED.
-   - Each clip shows its pattern's name and color.
-5. **Mixer** (bottom, from the Browser to the right edge): the Master and the inserts. Each strip has its name, a level meter, a pan knob, a fader and the route control. The insert panel on the right shows the selected insert: input, slots 1 to 10, EQ and output ([9.7](#97-mixer-ui)).
+   - Folders: Audio, Backup, Channel envelopes, Clipboard files, Demo projects, Envelopes, Impulses, Misc, My projects, Packs, Project parts, Recorded, Rendered, Sliced audio, Soundfonts, Speech, Templates, User data.
+   - **Marketplace** lists what the user owns: Plugins (owned) and Stems (owned). It is marked "new" when something arrives.
+   - At the bottom: tag filters and search.
+2. **Channel Rack** (floating, top of the workspace): the step sequencer ([10.2](#102-channel-rack)). Each row has a mute LED, pan and volume knobs, the target mixer insert, the channel's name button and 16 steps in groups of four. `+` under the rows adds a channel. A channel's name button opens its channel window, such as the Sampler.
+3. **Mixer** (free window, bottom of the workspace): the Master and the inserts, with vertical names and a dB scale on the left ([9.7](#97-mixer-ui)).
+4. **Playlist** (free window, right of the workspace): arranges patterns on the timeline into the song ([10.3](#103-playlist)).
+   - The header holds the tools: draw (pen), paint (brush), delete, mute, slip, slice, select and zoom. The title shows the arrangement and the current pattern ("Playlist - Arrangement > Test").
+   - The pattern list on the left shows every pattern; `+` at its foot adds one.
+   - Each track header shows the track name and a mute LED. Each clip shows its pattern's name and color.
+5. **AI Assistant** (right side panel): chat, agent progress and the changes waiting for review ([13.8](#138-assistant-panel)).
 
 **What a pattern is:** a reusable musical idea, a page of notes. Drums are drawn in the Channel Rack and melodies in the Piano Roll. A pattern has a name and a color, and the Playlist shows every placed pattern with both.
 
-**Not placed in the sketch yet.** These functions stay; where they go is still to be decided with the owner:
-
-- play and stop buttons, and the Pattern/Song switch ([6.6](#66-sequencer)); Space plays and stops either way;
-- the song position display, the CPU meter and the xrun counter ([6.2](#62-device-layer-bodo-kit-device));
-- the Playlist tool buttons ([10.3](#103-playlist)), whose shortcut keys work either way;
-- the hint bar, which describes the control under the cursor, shows its shortcut and gives the result of the last command.
-
 **Behavior:**
 
-- **Docking:** `craft-ui` docking (Split, Tabs, Stack). Every panel can be docked, tabbed, or floated into its own OS window, for example on a second monitor.
-- **Layouts:** the Layouts button switches between saved layouts. The sketch above is the default, and there are also:
+- **Layouts:** a layout records which windows are open, where, how large, and whether they are detached. The sketch above is the default, and there are also:
   - **Compose:** Channel Rack and Piano Roll large;
   - **Arrange:** Playlist large;
   - **Mix:** Mixer large;
   - **Master:** the master insert, analyzer and reference track.
-  - Custom layouts can be saved too.
-- **Plugin windows** float above the main window ([7.4](#74-plugin-editors)).
+  - Custom layouts can be saved too. Layouts belong to the user, not to the project.
 - **The command palette** (Cmd/Ctrl+K) fuzzy-searches every command, recent actions and the content of the open project.
 
 ### 14.2 Design tokens
@@ -1342,7 +1390,7 @@ The brand accent is still an open question ([21](#21-risks-and-open-questions)).
 
 - **Fonts:** a light UI sans and a monospace font for numbers, both following pixel3d's font choices. Digits are tabular in time displays, meters and value fields.
 - **Sizes:** small 11.5, body 12.5, mono 12, heading 15, transport time display 20 (mono).
-- **Heights:** rows 22 px, section headers 30, top bar 40 (the menu and the toolbar share one row), hint bar 24 if it stays ([14.1](#141-main-window-layout)).
+- **Heights:** rows 22 px, section headers 30, window title bars 26, and a top bar of two 32 px rows: the menu and transport, then the hint bar and window buttons.
 - **Spacing:** item spacing (6, 4), button padding (6, 3).
 - **Radii:** widgets 6, windows and menus 8, cards 8, popups 10, chips 7, key caps 4.
 - **Shadows:** offset (0, 6), blur 18, black at alpha 120 (dark) or 40 (light). Flat surfaces, no glassmorphism.
@@ -1394,7 +1442,7 @@ The brand accent is still an open question ([21](#21-risks-and-open-questions)).
 
 ## 15. Marketplace
 
-A free marketplace for samples, loops, presets, wavetables, impulse responses, templates, MIDI packs, themes and open-source plugins. Nothing is for sale.
+A marketplace for stems, samples, loops, presets, wavetables, impulse responses, templates, MIDI packs, themes and plugins. Most content is free, and creators can also sell stems and plugins ([ADR 0013](docs/adr/0013-paid-items-in-the-marketplace.md)). Bodo's own content is always free.
 
 ### 15.1 Package format (`.bodopack`)
 
@@ -1404,15 +1452,16 @@ A `.bodopack` is a `tar` archive compressed with `zstd`, containing the content 
 [package]
 id = "bodo.factory.808-essentials"
 version = "1.2.0"
-kind = "samples"                 # samples | presets | wavetables | impulses | templates | midi | plugin | theme
+kind = "samples"                 # samples | stems | presets | wavetables | impulses | templates | midi | plugin | theme
 title = "808 Essentials"
 authors = ["Bodo Team"]
-license = "CC0-1.0"              # SPDX. Samples: CC0-1.0 or CC-BY-4.0. Plugins: an OSI license
+license = "CC0-1.0"              # SPDX. Free sounds: CC0-1.0 or CC-BY-4.0; paid sounds: the Bodo content license.
+                                 # Plugins: an OSI license, or any license for closed-source plugins
 tags = ["808", "trap", "drums"]
 
 [[item]]
 path = "kicks/808_kick_long_C.wav"
-kind = "one-shot"                # one-shot | loop | preset | wavetable | ir | template | midi
+kind = "one-shot"                # one-shot | loop | stem | preset | wavetable | ir | template | midi
 tags = ["kick", "808"]
 key = "C"
 blake3 = "<hash>"
@@ -1420,7 +1469,7 @@ preview = "previews/808_kick_long_C.opus"
 lufs = -9.8
 ```
 
-Loops also carry `bpm` and their length in beats. Preset packs say which plugin and version they target.
+Loops and stems also carry `bpm` and their length in beats. Preset packs say which plugin and version they target. Prices are set per item in the seller dashboard, not in the package.
 
 ### 15.2 Index and delivery
 
@@ -1432,7 +1481,7 @@ Loops also carry `bpm` and their length in beats. Preset packs say which plugin 
 
 - **Before download:** each index entry includes an Opus preview of every item (at most 10 s, or one loop), precomputed peaks and features (BPM, key, loudness, tags). The browser can draw waveforms and play previews without downloading the pack.
 - **The preview bus** has its own volume and can be routed to the Master or to a cue output. Loops play synced to the project tempo, and can optionally be transposed to the project key. A preview started during playback begins on the next beat.
-- **Drag to use:** dragging an item into the channel rack, the playlist or a sampler downloads just that file into the content-addressed cache. Installing a whole pack is optional.
+- **Drag to use:** dragging an item into the channel rack, the playlist or a sampler downloads just that file into the content-addressed cache. Installing a whole pack is optional. Paid items preview freely; dragging one the user doesn't own yet offers to buy it.
 
 ### 15.4 Publishing and review
 
@@ -1443,7 +1492,10 @@ Loops also carry `bpm` and their length in beats. Preset packs say which plugin 
    - duplicate and plagiarism detection using audio fingerprints against the existing catalog;
    - malware scanning of any binary;
    - metadata length caps and sanitization.
-3. **Plugins:** the publisher must provide a source repository and tag, under an OSI license. Bodo CI builds the plugin from source on all three platforms (reproducibly where it can), runs clap-validator, pluginval and auval, then signs and notarizes it. **Uploaded binaries are never accepted.**
+3. **Plugins:**
+   - An open-source plugin names a source repository and tag under an OSI license. Bodo CI builds it from source on all three platforms (reproducibly where it can), then signs and notarizes it.
+   - A closed-source plugin arrives as binaries for each platform, signed by an identity-verified seller ([15.8](#158-selling)).
+   - Every plugin passes clap-validator, pluginval, auval and a malware scan before it is listed, and runs in the sandbox bridge by default ([7.3](#73-sandboxing)).
 4. **Curation:** a human curator approves every new publisher and the first version of every package. Later versions from trusted publishers are approved automatically once the checks pass.
 5. **Index signing:** every index entry is countersigned with the Bodo index key. The client verifies the publisher signature, the index signature and the content hash before anything is used. Keys rotate through a signed key list, and a monotonically increasing index version protects against rollback.
 6. **Takedowns:** every item has a report button. There is a documented DMCA process and publisher reputation.
@@ -1464,8 +1516,66 @@ Users can search Freesound from the browser with their own Freesound API token o
 
 - **Stack:** axum and Postgres hold publishers, packages, reviews and reports; R2 holds the blobs.
 - **Workers:** a job queue runs the checks and renders previews, and CI runners build the plugins.
-- **Accounts:** sign-in uses GitHub OAuth or an email magic link.
-- There are no payments, ever.
+- **Accounts:** purchases belong to the Bodo account, the same one Bodo Cloud uses. Sign-in uses GitHub OAuth or an email magic link.
+- **Payments** go through Stripe: Stripe Checkout for buyers and Stripe Connect for seller payouts ([15.8](#158-selling)).
+
+### 15.8 Selling
+
+[ADR 0013](docs/adr/0013-paid-items-in-the-marketplace.md) opens the marketplace to paid items.
+
+- **Who sells:** any approved publisher who verifies their identity and payout account through Stripe Connect.
+- **What:** stems, sample packs, presets and plugins, each at a price the seller sets. Bodo's own content stays free.
+- **Buying:** Buy opens Stripe Checkout in the system browser, so the app never sees card details. The item then appears under Library > Owned and in the Browser's Marketplace folder.
+- **Licenses:** paid sounds use the Bodo content license: buyers may use them in their own music, commercial releases included, but may not resell or redistribute them as sounds. Every plugin shows its license or its price.
+- **Delivery:** owned items download through short-lived links tied to the buyer's account, and are checked like every other item (signatures and hashes).
+- **No copy protection from Bodo.** Plugin sellers may add their own license checks.
+- **The assistant never buys** ([13.8](#138-assistant-panel)).
+- **Still open:** Bodo's commission, sales tax and VAT handling, refunds and payout terms ([21.2](#212-open-questions)).
+
+### 15.9 Marketplace window
+
+A free window ([14.1](#141-main-window-layout)), opened from the Marketplace button in the top bar. Like the Playlist, it can be moved, maximized, detached to its own OS window, and closed.
+
+```
++----------------------------------------------------------------------------------------------------------------------+
+|> Marketplace   [*All*] [Plugins] [Stems]    [Search......................]  [Genre v] [Key v] [BPM v]          _ [] x|
+|----------------------------------------------------------------------------------------------------------------------|
+|BROWSE            | Featured stems                                                  See all >                         |
+|  Featured        | +----------------+  +----------------+  +----------------+  +----------------+                    |
+|  New             | | [ waveform  ]  |  | [ waveform  ]  |  | [ waveform  ]  |  | [ waveform  ]  |                    |
+|  Free            | | Rhodes Dust    |  | Trap Kit 04    |  | Air Vox        |  | Sub Bass 808   |                    |
+|  Open source     | | 130 BPM  Am    |  | 140 BPM  --    |  | 128 BPM  F#m   |  | --- BPM  C     |                    |
+|                  | | > preview      |  | > preview      |  | > preview      |  | > preview      |                    |
+|STEMS             | | [Get] free     |  | [Get] $4       |  | [Get] free     |  | [Owned]        |                    |
+|  Drums           | +----------------+  +----------------+  +----------------+  +----------------+                    |
+|  Keys            |                                                                                                   |
+|  Bass            | Featured plugins                                                See all >                         |
+|  Vocals          | +----------------+  +----------------+  +----------------+  +----------------+                    |
+|  FX              | | [ plugin UI ]  |  | [ plugin UI ]  |  | [ plugin UI ]  |  | [ plugin UI ]  |                    |
+|                  | | OpenVerb       |  | TapeSat        |  | Granulite      |  | EQ Eight+      |                    |
+|LIBRARY           | | Reverb | VST3  |  | Satur. | CLAP  |  | Synth | VST3   |  | EQ | CLAP      |                    |
+|  Owned           | | MIT license    |  | GPL-3.0        |  | $19            |  | Apache-2.0     |                    |
+|  Installed       | | [Install]      |  | [Install]      |  | [Buy]          |  | [Installed]    |                    |
+|  Updates (2)     | +----------------+  +----------------+  +----------------+  +----------------+                    |
+|                  |                                                                                                   |
+|SELL              |                                                                                                   |
+|  Upload stems    |                                                                                                   |
+|  Publish plugin  |                                                                                                   |
+|                  |                                                                                                   |
+|----------------------------------------------------------------------------------------------------------------------|
+| Now previewing: Rhodes Dust   |> [====|=========]  0:04 / 0:16   [drag to Playlist]  [Add to Browser]                |
++----------------------------------------------------------------------------------------------------------------------+
+```
+
+- **Header:** All, Plugins and Stems tabs, search, and Genre, Key and BPM filters.
+- **Left side:**
+  - Browse: Featured, New, Free, Open source;
+  - Stems: Drums, Keys, Bass, Vocals, FX;
+  - Library: Owned, Installed, Updates;
+  - Sell: Upload stems, Publish plugin.
+- **Stem cards:** a waveform, name, BPM, key, a preview button, and Get with the price or "free", or Owned.
+- **Plugin cards:** a screenshot, name, category, format, the license or the price, and Install, Buy or Installed.
+- **The preview bar** at the bottom shows what is playing, with play and position, "drag to Playlist" and "Add to Browser". Previews follow [15.3](#153-instant-preview).
 
 ---
 
@@ -1477,10 +1587,10 @@ Bodo Hub is a small app (under 20 MB), built with egui and the same design syste
 |---|---|
 | Home | Recent projects with waveform thumbnails, templates, new project |
 | Installs | Several Bodo versions side by side (stable, beta, nightly); velopack delta updates; roll back to the previous version; release notes |
-| Marketplace | Full browsing with previews. Shares the `bodo-market` crate and its cache with the DAW |
+| Marketplace | Full browsing with previews, purchases and the user's library. Shares the `bodo-market` crate and its cache with the DAW |
 | Plugins | Scan status, blocklist, default sandbox mode, plugin folders |
 | Audio setup | Device, sample rate, buffer, loopback latency test, MIDI devices |
-| Account | Optional Bodo Cloud sign-in (OAuth PKCE or device code), subscription and usage; BYOK key management in the keychain; detection of local models (Ollama on port 11434, LM Studio on port 1234) |
+| Account | Optional Bodo Cloud sign-in (OAuth PKCE or device code), subscription and usage, purchases and seller payouts; BYOK key management in the keychain; detection of local models (Ollama on port 11434, LM Studio on port 1234) |
 | Learn | Docs, tutorials, shortcuts |
 
 The Hub starts `bodo --project <path>`. A running DAW receives the request and opens the file in its existing window. The DAW also runs without the Hub, which is entirely optional.
@@ -1635,7 +1745,7 @@ Milestones are ordered by dependency and have no dates. Each one ships only when
 | M5 | Plugin hosting | CLAP, then VST3, AU, LV2; scanner; bridge and sandbox modes; editors; state and presets | A top-50 compatibility list loads, renders and restores state on every platform; a deliberately crashing test plugin never takes Bodo down in bridged mode |
 | M6 | Bodo Kit SDK and stock plugins v1 | Plugin API, exporters, `xtask kit new`, docs site; Sampler, Wave, Drum, SFZ, EQ, Comp, Limiter, Reverb, Delay, Saturate, Analyzer, Utility | Every bundle passes clap-validator, pluginval and auval; Kit 0.1 published with examples |
 | M7 | Bodo Assistant | `bodo-llm`, full `bodo-mcp`, perception, changesets, Agent Changes panel, skills v1 | The criteria in [13.7](#137-assistant-mvp-and-exit-criteria) |
-| M8 | Ecosystem (public beta) | Marketplace (client, index, review pipeline, previews), Bodo Hub, Bodo Cloud gateway, DAWproject, the remaining stock plugins | Install, preview and use a pack in under 10 s on broadband; the subscription flow works end to end; DAWproject round-trips with reference files |
+| M8 | Ecosystem (public beta) | Marketplace (client, index, review pipeline, previews, payments and payouts), Bodo Hub, Bodo Cloud gateway, DAWproject, the remaining stock plugins | Install, preview and use a pack in under 10 s on broadband; the subscription flow and buying an item work end to end; DAWproject round-trips with reference files |
 | M9 | 1.0 | Performance pass, accessibility, localization, documentation, installers and notarization, opt-in crash reports | No known data-loss bugs; a 72-hour soak test passes; the performance gates in 14.6 hold |
 
 The basic MCP server ships in M2 on purpose. Once it exists, external agents can drive and test Bodo while the rest is built, and every later milestone gets agent-driven end-to-end tests for free.
@@ -1662,7 +1772,8 @@ The basic MCP server ships in M2 on purpose. Once it exists, external agents can
 | cpal gaps (JACK duplex, WASAPI exclusive) | Medium | `rtaudio` fallback; direct `wasapi`, `jack` and `pipewire` crates where needed |
 | No cross-process GUI embedding on macOS and Wayland | Low | Floating editor windows, the same approach Bitwig takes |
 | Clean room and trade dress | Medium | Workflow only: Bodo's own names, visuals and icons; no decompiling; contributors agree to the policy in `AGENTS.md` |
-| Marketplace copyright abuse | Medium | Fingerprint checks, curator review, DMCA process, plugins built from source |
+| Marketplace copyright abuse | Medium | Fingerprint checks, curator review, DMCA process, open-source plugins built from source, closed-source plugins only from verified sellers, signed and sandboxed |
+| Selling digital goods: sales tax, refunds, chargebacks, fraud | Medium | Stripe Checkout and Connect; a merchant-of-record service if running sales tax ourselves is too heavy; settled before M8 |
 | Trademarks ("VST", "Bodo") | Medium | Check Steinberg's logo terms; run a trademark search for "Bodo" before the public beta |
 | Assistant quality on small local models | Medium | The `small` tool profile, deterministic skills that do the heavy lifting, constrained decoding |
 | LLM cost surprises | Low | The cost meter, caps per session and per day, and a preview of the expected cost |
@@ -1676,7 +1787,7 @@ The basic MCP server ships in M2 on purpose. Once it exists, external agents can
 5. Minimum OS versions (proposed: macOS 13, Windows 10 22H2, glibc 2.31 or later).
 6. Which free grand piano library ships with Bodo SFZ (license review needed).
 7. Whether a video track belongs in 1.x.
-8. **Paid plugins in the marketplace.** The owner may want to sell plugins through the marketplace later. Today the marketplace is free and accepts only open-source plugins ([section 15](#15-marketplace), ADR 0010), so this needs a new ADR first. Bodo Kit's MIT/Apache license already lets anyone, Bodo included, sell plugins built with it.
+8. **Marketplace business terms** ([ADR 0013](docs/adr/0013-paid-items-in-the-marketplace.md)): Bodo's commission on sales; who handles sales tax and VAT (Bodo with Stripe Tax, or a merchant-of-record service); the refund policy; seller payout terms; and a legal review of the content license for paid sounds. Decide before M8.
 9. **AI plugin authoring.** A planned bridge that lets people build their own plugins (VST3, CLAP, AU) with AI agents, on top of Bodo Kit and the MCP server. It builds on M6 (Kit SDK) and M7 (assistant); its scope and milestone are open.
 
 ---
