@@ -2134,6 +2134,9 @@ name = "xtask"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "bodo-kit-audio",
+ "bodo-kit-core",
+ "bodo-kit-dsp",
  "cargo_metadata",
  "proc-macro2",
  "syn 3.0.9",

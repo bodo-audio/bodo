@@ -5,6 +5,7 @@
 
 mod ci;
 mod deny;
+mod factory;
 mod layers;
 mod text;
 mod unsafe_audit;
@@ -21,6 +22,7 @@ Commands:
   unsafe-audit  Check that unsafe code stays in ffi modules of FFI crates and is documented
   deny          Check first-party licenses, then dependency licenses, bans, advisories and sources
   text          Check text style in tracked files (no em-dashes)
+  factory       Synthesize the factory content (the Bodo Drums kit) into assets/factory
   help          Show this message";
 
 fn main() -> ExitCode {
@@ -31,6 +33,7 @@ fn main() -> ExitCode {
         Some("unsafe-audit") => unsafe_audit::run(),
         Some("deny") => deny::run(),
         Some("text") => text::run(),
+        Some("factory") => factory::run(),
         None | Some("help" | "-h" | "--help") => {
             println!("{USAGE}");
             return ExitCode::SUCCESS;
