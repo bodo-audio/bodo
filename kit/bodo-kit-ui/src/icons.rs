@@ -292,4 +292,40 @@ icons! {
         "M10 17.5a1.5 1.5 0 0 1 1.5 -1.5h1a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1 -1.5 1.5h-1a1.5 1.5 0 0 1 -1.5 -1.5z",
         "M17 17.5a1.5 1.5 0 0 1 1.5 -1.5h1a1.5 1.5 0 0 1 1.5 1.5v1a1.5 1.5 0 0 1 -1.5 1.5h-1a1.5 1.5 0 0 1 -1.5 -1.5z",
     ];
+    /// A drum seen from the side, with two sticks: a drum insert.
+    DRUM = "drum", false, [
+        "M4 10a8 3 0 1 0 16 0a8 3 0 1 0 -16 0",
+        "M4 10v6c0 1.7 3.6 3 8 3s8 -1.3 8 -3v-6",
+        "M14 3l-3 5",
+        "M10 3l3 5",
+    ];
+    /// An acoustic guitar: a guitar insert.
+    GUITAR = "guitar", false, [
+        "M10.5 21c-2.8 0 -5 -2.2 -5 -5c0 -1.3 .5 -2.3 1.3 -3c-.2 -1.9 1.3 -3.5 3.2 -3.5c.9 0 1.7 .3 2.3 .9l4.7 -4.7",
+        "M10.5 21c2.8 0 5 -2.2 5 -5c0 -1.3 -.5 -2.3 -1.3 -3",
+        "M15.5 4.5l2 -2l2 2l-2 2z",
+        "M9.5 15.5m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0",
+    ];
+    /// Headphones: a monitoring insert.
+    HEADPHONES = "headphones", false, [
+        "M4 15v-3a8 8 0 0 1 16 0v3",
+        "M4 15a2 2 0 0 1 2 -2h1v7h-1a2 2 0 0 1 -2 -2z",
+        "M20 15a2 2 0 0 0 -2 -2h-1v7h1a2 2 0 0 0 2 -2z",
+    ];
+    /// Three nodes joined by lines: the mixer's routing graph.
+    ROUTING = "routing", false, [
+        "M6 6m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0",
+        "M6 18m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0",
+        "M18 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0",
+        "M7.7 7.1l8.6 3.8",
+        "M7.7 16.9l8.6 -3.8",
+    ];
+    /// Two arrows chasing each other round a dot: loop recording.
+    LOOP_RECORD = "loop-record", false, [
+        "M4 12a8 8 0 0 1 13.7 -5.6",
+        "M18 3v4h-4",
+        "M20 12a8 8 0 0 1 -13.7 5.6",
+        "M6 21v-4h4",
+        "M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0 -4 0",
+    ];
 }
