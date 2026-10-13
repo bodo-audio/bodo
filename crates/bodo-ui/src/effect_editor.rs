@@ -62,7 +62,7 @@ pub fn open(app: &mut BodoApp, ctx: Option<&egui::Context>, insert: InsertId, sl
         editor.state.minimized = false;
     } else {
         let n = editors.open.len() as f32;
-        let frame = [0.30 + 0.02 * (n % 5.0), 0.12 + 0.03 * (n % 5.0), 0.30, 0.44];
+        let frame = [0.28 + 0.02 * (n % 5.0), 0.12 + 0.03 * (n % 5.0), 0.36, 0.44];
         editors.open.push(EffectEditor { insert, instance, state: WindowState::at(true, frame) });
     }
     if let Some(ctx) = ctx {
@@ -106,12 +106,14 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
             true,
             app,
             |app, ui| header(app, ui, number, slot, &state),
-            |app, ui| match info {
-                Some(info) => body(app, ui, number, slot, &state, info),
-                None => {
-                    ui.add_space(rem(0.64));
-                    ui.label(t("This plugin's own editor opens once plugin hosting arrives; until then it passes audio through."));
-                }
+            |app, ui| {
+                egui::Frame::NONE.inner_margin(egui::Margin::symmetric(rem(0.64) as i8, 0)).show(ui, |ui| match info {
+                    Some(info) => body(app, ui, number, slot, &state, info),
+                    None => {
+                        ui.add_space(rem(0.64));
+                        ui.label(t("This plugin's own editor opens once plugin hosting arrives; until then it passes audio through."));
+                    }
+                });
             },
         );
         editor.state = window;
@@ -181,7 +183,7 @@ fn body(app: &mut BodoApp, ui: &mut Ui, number: usize, slot: usize, state: &bodo
         for spec in info.params {
             let value = state.param(spec.id).map_or(spec.default, |v| spec.clamp(v));
             ui.vertical(|ui| {
-                ui.set_width(rem(5.76));
+                ui.set_width(rem(6.72));
                 param(app, ui, number, slot, info, spec, value);
             });
         }

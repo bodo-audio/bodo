@@ -103,7 +103,7 @@ pub(super) fn show(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>) {
 fn row(ui: &mut Ui, label: &str, add: impl FnOnce(&mut Ui)) {
     ui.horizontal(|ui| {
         let label = tr(label);
-        ui.add_sized(vec2(rem(6.24), rem(1.44)), egui::Label::new(RichText::new(label).size(size::SMALL).color(Tokens::get().text_dim)).truncate());
+        ui.add_sized(vec2(rem(7.68), rem(1.44)), egui::Label::new(RichText::new(label).size(size::SMALL).color(Tokens::get().text_dim)).truncate());
         add(ui);
     });
 }

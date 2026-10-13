@@ -245,10 +245,26 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     }
     app.hint(&meter, "The master output level");
     ui.add_space(rem(0.3));
-    oscilloscope(app, ui);
-    ui.add_space(rem(0.8));
 
-    // Performance: CPU load, dropouts, and the memory in use, measured once a second.
+    // The performance readout keeps its room; the oscilloscope takes what is left, up to its full width, so a longer
+    // menu bar (in Turkish, say) or a long readout never pushes the readout off the bar.
+    let (perf_text, color) = performance(app, ui);
+    let needed =
+        egui::WidgetText::from(perf_text.clone()).into_galley(ui, Some(egui::TextWrapMode::Extend), f32::INFINITY, egui::TextStyle::Body).size().x;
+    let room = ui.available_width() - needed - rem(0.8) - ui.spacing().item_spacing.x * 2.0;
+    if room >= rem(2.4) {
+        oscilloscope(app, ui, room.min(rem(5.76)));
+        ui.add_space(rem(0.8));
+    }
+    let perf = ui.add(egui::Label::new(perf_text.color(color)).truncate().sense(Sense::hover()));
+    let audio_status = app.audio.status().to_owned();
+    app.hint(&perf, tf!("Audio: {status}", status = audio_status));
+}
+
+/// The performance readout and its color: CPU load, dropouts, the mix's latency and the memory in use, measured once
+/// a second, or that there is no sound.
+fn performance(app: &mut BodoApp, ui: &mut Ui) -> (RichText, egui::Color32) {
+    let tk = Tokens::get();
     let status = app.audio.stream_status();
     let memory = app.services.memory.and_then(|measure| {
         let id = egui::Id::new("bodo-memory");
@@ -280,18 +296,16 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
         format!("{}{latency}{memory}", t("No sound"))
     };
     let color = if !app.audio.is_on() || status.xruns > 0 { tk.warn } else { tk.text_dim };
-    let perf = ui.add(egui::Label::new(RichText::new(text).monospace().size(size::SMALL).color(color)).sense(Sense::hover()));
-    let audio_status = app.audio.status().to_owned();
-    app.hint(&perf, tf!("Audio: {status}", status = audio_status));
+    (RichText::new(text).monospace().size(size::SMALL), color)
 }
 
 /// How many frames of the master the oscilloscope shows: about 20 ms at 48 kHz.
 const SCOPE_FRAMES: usize = 1024;
 
-/// The oscilloscope: the master output's latest frames, mixed to mono, as a line.
-fn oscilloscope(app: &mut BodoApp, ui: &mut Ui) {
+/// The oscilloscope, `width` points wide: the master output's latest frames, mixed to mono, as a line.
+fn oscilloscope(app: &mut BodoApp, ui: &mut Ui, width: f32) {
     let tk = Tokens::get();
-    let (rect, response) = ui.allocate_exact_size(vec2(rem(5.76), rem(1.44)), Sense::hover());
+    let (rect, response) = ui.allocate_exact_size(vec2(width, rem(1.44)), Sense::hover());
     let painter = ui.painter().with_clip_rect(rect);
     painter.rect_filled(rect, rem(0.24), tk.field);
     let mut frames = vec![0.0f32; SCOPE_FRAMES];
