@@ -262,3 +262,61 @@ fn the_loop_wraps_exactly_at_its_end() {
     assert_eq!(onsets(&out), [0, beat, 2 * beat, 3 * beat]);
     assert_eq!(audio.faults(), 0);
 }
+
+/// A tone into insert 1, which reaches the master only through its send to insert 2, with a Utility in slot 1 of
+/// insert 1 that inverts polarity, and the automation `lanes` makes from insert 1, insert 2 and the Utility's instance.
+fn slotted(lanes: impl FnOnce(InsertId, InsertId, PluginInstanceId) -> Vec<AutomationLane>) -> Project {
+    use bodo_model::channel::{PluginFormat, PluginRef, SandboxMode};
+    use bodo_model::mixer::ParamValue;
+    let mut b = Builder::new();
+    let sample = b.sample("tone.wav");
+    let (one, two) = (b.insert(0), b.insert(1));
+    let channel = b.sampler(sample, Some(one), SamplerParams { root_key: 60, ..SamplerParams::default() });
+    let pattern = b.pattern(Some(3840), &[(channel, 60, 0, 3840)]);
+    b.clip(pattern, 0, 3840, 0);
+    b.route(one, two, 1.0);
+    let instance = PluginInstanceId::from_u128(b.id());
+    let mut mixer = (*b.project.mixer).clone();
+    let strip = Arc::make_mut(mixer.inserts.get_mut(&one).unwrap());
+    strip.slots[0].plugin = Some(PluginRef {
+        instance,
+        format: PluginFormat::Native,
+        uid: "bodo.utility".into(),
+        state: Arc::from(Vec::new()),
+        sandbox: SandboxMode::InProcess,
+    });
+    strip.slots[0].params = vec![ParamValue { id: 3, value: 1.0 }];
+    strip.to_master = false;
+    b.project.mixer = Arc::new(mixer);
+    for lane in lanes(one, two, instance) {
+        automation_clip(&mut b, lane, 0, 3840);
+    }
+    b.build()
+}
+
+#[test]
+fn slots_effect_parameters_and_sends_follow_automation() {
+    use bodo_model::automation::SlotParam;
+    let dir = temp_dir("slot-automation");
+    write_tone(&dir);
+    let hold = |target, value| lane(target, &[(0, value, CurveShape::Hold)]);
+    // The second half of the bar, well after every ramp has settled.
+    let level = |project: &Project| {
+        let out = render(project, &dir, 3840, 256);
+        energy(&out[0], 48_000, 90_000)
+    };
+    let plain = level(&slotted(|_, _, _| Vec::new()));
+    assert!(plain > 1e-3, "the inverted tone plays: {plain}");
+    // Half wet: the inverted and the dry signal cancel.
+    let half = level(&slotted(|one, _, _| vec![hold(ParamTarget::Slot(one, 0, SlotParam::Mix), 0.5)]));
+    assert!(half < plain * 1e-6, "{half} vs {plain}");
+    // The slot switched off: the dry signal plays, as loud as the inverted one.
+    let off = level(&slotted(|one, _, _| vec![hold(ParamTarget::Slot(one, 0, SlotParam::Enabled), 0.0)]));
+    assert!((off / plain - 1.0).abs() < 1e-3, "{off} vs {plain}");
+    // The Utility's gain at the bottom of its range, -60 dB: a thousandth of the amplitude, a millionth of the energy.
+    let quiet = level(&slotted(|_, _, instance| vec![hold(ParamTarget::Plugin(instance, 0), 0.0)]));
+    assert!((quiet / plain - 1e-6).abs() < 1e-7, "{quiet} vs {plain}");
+    // The send to insert 2 at zero: nothing reaches the master.
+    let unsent = level(&slotted(|one, two, _| vec![hold(ParamTarget::Route(RouteKey { from: RouteSource::Insert(one), to: two }), 0.0)]));
+    assert!(unsent < plain * 1e-6, "{unsent} vs {plain}");
+}

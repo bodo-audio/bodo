@@ -7,7 +7,7 @@
 use std::sync::Arc;
 
 use bodo_kit_core::Tick;
-use bodo_model::automation::{AutoPoint, AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget};
+use bodo_model::automation::{AutoPoint, AutomationLane, ChannelParam, CurveShape, InsertParam, ParamTarget, SlotParam};
 use bodo_model::channel::ChannelKind;
 use bodo_model::mixer::{RouteKey, RouteSource};
 use bodo_model::playlist::{ClipOffset, ClipSource};
@@ -35,12 +35,15 @@ struct RouteSpec {
     to: InsertRef,
 }
 
-/// What a lane controls: an insert or channel parameter, or a route's send level.
+/// What a lane controls: an insert or channel parameter, an FX slot or its effect's parameter, or a route's send
+/// level.
 #[derive(Debug, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct TargetSpec {
     /// An insert, with param "volume" (its fader), "pan" or "stereoSep".
     insert: Option<InsertRef>,
+    /// With `insert`: an FX slot, 1 to 10, with param "mix", "enabled", or a parameter of its effect by name or id.
+    slot: Option<usize>,
     /// A channel, with param "volume", "pan", "pitch", "cc:N" (a MIDI CC, 0 to 127), "pitchBend" or "pressure".
     channel: Option<ChannelRef>,
     /// A route, whose send level the lane controls.
@@ -225,6 +228,26 @@ fn resolve(ctx: &Ctx<'_>, target: &Target) -> Result<ParamTarget, CommandError> 
     let unknown = |what: &str, allowed: &str| {
         CommandError::invalid(format!("`{param}` is not a parameter of {what}")).with_hint(format!("use one of {allowed}"))
     };
+    if let Some(number) = spec.slot {
+        let (Some(insert), None, None) = (&spec.insert, &spec.channel, &spec.route) else {
+            return Err(CommandError::invalid("a slot belongs to an insert: give insert and slot"));
+        };
+        let id = ctx.insert(Some(insert))?;
+        let index = super::fx::slot_index(number)?;
+        let slot = ctx.project.mixer.insert(id).and_then(|i| i.slots.get(index).cloned()).unwrap_or_default();
+        let param = spec.param.as_deref().map(str::trim).unwrap_or("mix");
+        return match param.to_ascii_lowercase().as_str() {
+            "mix" => Ok(ParamTarget::Slot(id, index as u8, SlotParam::Mix)),
+            "enabled" => Ok(ParamTarget::Slot(id, index as u8, SlotParam::Enabled)),
+            _ => {
+                let (Some(plugin), Some(info)) = (slot.plugin.as_ref(), super::fx::effect_in(&slot)) else {
+                    return Err(unknown("an FX slot without a native effect", "mix or enabled"));
+                };
+                let spec = super::fx::param(info, &Value::String(param.to_owned()))?;
+                Ok(ParamTarget::Plugin(plugin.instance, spec.id))
+            }
+        };
+    }
     match (&spec.insert, &spec.channel, &spec.route) {
         (Some(insert), None, None) => {
             let id = ctx.insert(Some(insert))?;
@@ -290,8 +313,12 @@ fn describe(project: &Project, target: &ParamTarget) -> String {
             };
             format!("{from} send to {}", insert(key.to))
         }
-        ParamTarget::Slot(id, slot, _) => format!("{} slot {}", insert(*id), slot + 1),
-        ParamTarget::Plugin(..) => String::from("Plugin parameter"),
+        ParamTarget::Slot(id, slot, SlotParam::Mix) => format!("{} slot {} mix", insert(*id), slot + 1),
+        ParamTarget::Slot(id, slot, SlotParam::Enabled) => format!("{} slot {} on", insert(*id), slot + 1),
+        ParamTarget::Plugin(instance, param) => match effect_param(project, *instance, *param) {
+            Some((id, _, info, spec)) => format!("{} {} {}", insert(id), info.name, spec.name),
+            None => String::from("Plugin parameter"),
+        },
         ParamTarget::Tempo => String::from("Tempo"),
     }
 }
@@ -313,9 +340,34 @@ fn current(project: &Project, target: &ParamTarget) -> f32 {
         }),
         ParamTarget::Route(key) => project.mixer.routes.get(key).map_or(1.0, |r| r.send_level),
         ParamTarget::Tempo => project.tempo.bpm_at(Tick::ZERO) as f32,
-        ParamTarget::Slot(..) | ParamTarget::Plugin(..) => 0.5,
+        ParamTarget::Slot(id, slot, param) => project.mixer.insert(*id).and_then(|i| i.slots.get(usize::from(*slot))).map_or(1.0, |s| match param {
+            SlotParam::Mix => s.mix,
+            SlotParam::Enabled => f32::from(u8::from(s.enabled)),
+        }),
+        // Effect parameters are automated as normalized values already.
+        ParamTarget::Plugin(instance, param) => {
+            return effect_param(project, *instance, *param)
+                .map_or(0.5, |(_, slot, _, spec)| spec.to_normalized(slot.param(spec.id).map_or(spec.default, |v| spec.clamp(v))));
+        }
     };
     target.normalized_of(real)
+}
+
+/// The insert, slot, effect and parameter a native effect's parameter `param` of plugin `instance` is, if any.
+///
+/// Complexity: O(i * s) in inserts and slots.
+fn effect_param(
+    project: &Project,
+    instance: bodo_model::PluginInstanceId,
+    param: u32,
+) -> Option<(bodo_model::InsertId, &bodo_model::mixer::FxSlot, &'static bodo_mix::fx::EffectInfo, &'static bodo_mix::fx::ParamSpec)> {
+    let mixer = &project.mixer;
+    let strips = std::iter::once(&mixer.master).chain(mixer.inserts.values());
+    let (id, slot) =
+        strips.flat_map(|i| i.slots.iter().map(move |s| (i.id, s))).find(|(_, s)| s.plugin.as_ref().is_some_and(|p| p.instance == instance))?;
+    let info = super::fx::effect_in(slot)?;
+    let spec = info.params.iter().find(|p| p.id == param)?;
+    Some((id, slot, info, spec))
 }
 
 /// The points `specs` describe, checked and sorted by time.

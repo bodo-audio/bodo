@@ -21,7 +21,7 @@ use crate::registry::{Effects, NoParams, Registry};
 use crate::session::Ctx;
 
 /// The slot `number` (1 to 10) as an index.
-fn slot_index(number: usize) -> Result<usize, CommandError> {
+pub(super) fn slot_index(number: usize) -> Result<usize, CommandError> {
     if (1..=FX_SLOTS).contains(&number) {
         Ok(number - 1)
     } else {
@@ -38,12 +38,12 @@ fn effect(text: &str) -> Result<&'static EffectInfo, CommandError> {
 }
 
 /// The native effect in `slot`, if any.
-fn effect_in(slot: &FxSlot) -> Option<&'static EffectInfo> {
+pub(super) fn effect_in(slot: &FxSlot) -> Option<&'static EffectInfo> {
     slot.plugin.as_ref().filter(|p| p.format == PluginFormat::Native).and_then(|p| find(&p.uid))
 }
 
 /// The parameter of `info` that `name` names: its id, or its name ignoring case.
-fn param<'a>(info: &'a EffectInfo, name: &Value) -> Result<&'a ParamSpec, CommandError> {
+pub(super) fn param<'a>(info: &'a EffectInfo, name: &Value) -> Result<&'a ParamSpec, CommandError> {
     let found = match name {
         Value::Number(n) => n.as_u64().and_then(|id| info.params.iter().find(|p| u64::from(p.id) == id)),
         Value::String(s) => {

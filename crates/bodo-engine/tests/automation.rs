@@ -109,6 +109,30 @@ fn targets_name_every_kind_of_parameter() {
 }
 
 #[test]
+fn slots_and_effect_parameters_take_automation() {
+    let mut session = fixture();
+    run(&mut session, "fx.load", json!({ "insert": 3, "slot": 2, "effect": "Filter", "params": { "Cutoff": 2000 } }));
+    run(&mut session, "fx.set_mix", json!({ "insert": 3, "slot": 2, "mix": 0.4 }));
+    let mix = run(&mut session, "automation.create_for", json!({ "target": { "insert": 3, "slot": 2 } }));
+    assert_eq!(mix["name"], "Insert 3 slot 2 mix");
+    assert_eq!(points(&session, "Insert 3 slot 2 mix")[0].1, 0.4, "a lane starts at the current value");
+    let cutoff = run(&mut session, "automation.create_for", json!({ "target": { "insert": 3, "slot": 2, "param": "cutoff" } }));
+    assert_eq!(cutoff["name"], "Insert 3 Filter Cutoff");
+    let instance = session.project().mixer.inserts[&session.project().mixer.order[2]].slots[1].plugin.as_ref().unwrap().instance;
+    assert_eq!(lane_of(session.project(), "Insert 3 Filter Cutoff").target, ParamTarget::Plugin(instance, 1));
+    // 2 kHz on a logarithmic 20 Hz to 20 kHz knob sits two thirds of the way along.
+    assert!((points(&session, "Insert 3 Filter Cutoff")[0].1 - 2.0 / 3.0).abs() < 1e-3);
+    let on = run(&mut session, "automation.create_for", json!({ "target": { "insert": 3, "slot": 2, "param": "enabled" } }));
+    assert_eq!(on["name"], "Insert 3 slot 2 on");
+    assert_eq!(
+        error(&mut session, "automation.create_for", json!({ "target": { "insert": 3, "slot": 5, "param": "cutoff" } })),
+        ErrorCode::InvalidParams
+    );
+    assert_eq!(error(&mut session, "automation.create_for", json!({ "target": { "channel": "Kick", "slot": 1 } })), ErrorCode::InvalidParams);
+    session.project().validate().unwrap();
+}
+
+#[test]
 fn points_stay_sorted_through_every_edit() {
     let mut session = fixture();
     run(&mut session, "automation.create_for", json!({ "target": { "insert": 1 }, "name": "Ride" }));
