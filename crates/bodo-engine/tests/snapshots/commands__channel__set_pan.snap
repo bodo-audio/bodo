@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "HiHat",
+    "pan": 0.25
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000419",
+    "pan": 0.25
+  },
+  "undo": "Set HiHat pan"
+}

@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "error": {
+    "code": "rejected",
+    "hint": "save first with project.save, or pass discardChanges: true",
+    "message": "the project has unsaved changes, so starting a new project would lose them"
+  },
+  "params": {
+    "template": "basic"
+  }
+}

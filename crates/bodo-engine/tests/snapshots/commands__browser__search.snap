@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "query": "kick"
+  },
+  "result": {
+    "count": 1,
+    "sounds": [
+      {
+        "folder": "Packs/Bodo Drums",
+        "name": "Kick",
+        "path": "factory:Packs/Bodo Drums/Kick.wav"
+      }
+    ]
+  },
+  "undo": null
+}

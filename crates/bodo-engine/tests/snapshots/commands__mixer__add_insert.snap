@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Drum bus"
+  },
+  "result": {
+    "id": "ins_0000000000000000000000041P",
+    "insert": 17,
+    "name": "Drum bus"
+  },
+  "undo": "Add insert Drum bus"
+}

@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Intro",
+    "pattern": "pattern:1"
+  },
+  "result": {
+    "name": "Intro",
+    "pattern": "pat_00000000000000000000000413"
+  },
+  "undo": null
+}

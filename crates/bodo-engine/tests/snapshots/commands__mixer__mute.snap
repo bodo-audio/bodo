@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 4
+  },
+  "result": {
+    "insert": 4,
+    "muted": true
+  },
+  "undo": "Mute Insert 4"
+}

@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Kick",
+    "sample": "factory:Packs/Bodo Drums/Kick.wav"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "insert": 6,
+    "name": "Kick 2",
+    "sample": "smp_00000000000000000000000414"
+  },
+  "undo": "Add channel Kick 2"
+}

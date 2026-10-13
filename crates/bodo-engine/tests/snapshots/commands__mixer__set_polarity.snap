@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 1,
+    "on": true
+  },
+  "result": {
+    "insert": 1,
+    "inverted": true
+  },
+  "undo": "Set Insert 1 polarity"
+}

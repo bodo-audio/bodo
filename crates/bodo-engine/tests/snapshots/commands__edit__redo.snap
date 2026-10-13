@@ -1,0 +1,12 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "canRedo": false,
+    "redone": null
+  },
+  "undo": null
+}

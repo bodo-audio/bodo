@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "length": "4 bars"
+  },
+  "result": {
+    "resized": 1
+  },
+  "undo": "Resize clip"
+}

@@ -1,0 +1,26 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channels": [
+      "Kick",
+      "Snare"
+    ]
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041E",
+    "channels": [
+      "ch_00000000000000000000000415",
+      "ch_0000000000000000000000041B"
+    ],
+    "clips": [
+      "clip_0000000000000000000000041N"
+    ],
+    "insert": "ins_00000000000000000000000402",
+    "notes": [],
+    "track": "trk_0000000000000000000000040M"
+  },
+  "undo": null
+}

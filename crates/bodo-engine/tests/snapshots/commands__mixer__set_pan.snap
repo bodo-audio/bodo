@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 2,
+    "pan": -0.2
+  },
+  "result": {
+    "insert": 2,
+    "pan": -0.20000000298023224
+  },
+  "undo": "Set Insert 2 pan"
+}

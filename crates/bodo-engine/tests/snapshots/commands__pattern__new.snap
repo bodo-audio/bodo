@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Verse"
+  },
+  "result": {
+    "name": "Verse 2",
+    "pattern": "pat_0000000000000000000000041P"
+  },
+  "undo": "New pattern Verse 2"
+}

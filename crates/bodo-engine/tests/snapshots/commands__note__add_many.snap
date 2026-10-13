@@ -1,0 +1,30 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick",
+    "notes": [
+      {
+        "key": "C4",
+        "length": "1 beat",
+        "start": "1:1:0"
+      },
+      {
+        "key": 64,
+        "start": 960,
+        "velocity": 0.6
+      }
+    ]
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "notes": [
+      2,
+      3
+    ],
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Add 2 notes to Kick"
+}

@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 3,
+    "separation": 0.5
+  },
+  "result": {
+    "insert": 3,
+    "separation": 0.5
+  },
+  "undo": "Set Insert 3 stereo separation"
+}

@@ -1,0 +1,12 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "canUndo": true,
+    "undone": "Route to insert 5"
+  },
+  "undo": null
+}

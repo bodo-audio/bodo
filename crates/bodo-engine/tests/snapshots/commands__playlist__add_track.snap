@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "name": "Drums"
+  },
+  "result": {
+    "name": "Drums 2",
+    "position": 17,
+    "track": "trk_0000000000000000000000041P"
+  },
+  "undo": "Add track Drums 2"
+}

@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "notes": [
+      0
+    ],
+    "velocity": 0.5
+  },
+  "result": {
+    "edited": 1,
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Edit note"
+}

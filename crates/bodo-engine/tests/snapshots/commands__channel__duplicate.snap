@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "name": "Kick 2"
+  },
+  "undo": "Duplicate Kick"
+}

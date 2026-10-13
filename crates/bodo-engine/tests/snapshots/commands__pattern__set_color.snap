@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "color": "#60a5fa"
+  },
+  "result": {
+    "color": "#60a5fa",
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Set pattern color"
+}

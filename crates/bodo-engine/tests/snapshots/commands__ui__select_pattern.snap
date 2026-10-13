@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "offset": 1
+  },
+  "result": {
+    "name": "Outro",
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": null
+}

@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 16
+  },
+  "result": {
+    "channelsToMaster": 0,
+    "removed": "ins_0000000000000000000000040H"
+  },
+  "undo": "Remove insert Insert 16"
+}

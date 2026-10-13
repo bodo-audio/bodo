@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "pattern": "pattern:1"
+  },
+  "result": {
+    "clipsRemoved": 1,
+    "deleted": "pat_00000000000000000000000413"
+  },
+  "undo": "Delete pattern Intro"
+}

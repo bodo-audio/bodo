@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "length": "2 steps",
+    "notes": [
+      0
+    ]
+  },
+  "result": {
+    "pattern": "pat_0000000000000000000000041G",
+    "resized": 1
+  },
+  "undo": "Resize note"
+}

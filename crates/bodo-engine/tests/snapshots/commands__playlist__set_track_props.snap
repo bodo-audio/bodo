@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "muted": false,
+    "name": "Drums",
+    "track": 1
+  },
+  "result": {
+    "locked": false,
+    "muted": false,
+    "name": "Drums",
+    "track": "trk_0000000000000000000000040K"
+  },
+  "undo": null
+}

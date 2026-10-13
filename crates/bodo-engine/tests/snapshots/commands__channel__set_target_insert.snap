@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick",
+    "insert": 5
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "insert": 5
+  },
+  "undo": "Route Kick to insert 5"
+}

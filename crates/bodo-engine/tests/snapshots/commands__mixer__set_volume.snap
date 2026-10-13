@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "db": -3.0,
+    "insert": 1
+  },
+  "result": {
+    "db": -3.0,
+    "insert": 1
+  },
+  "undo": "Set Insert 1 volume"
+}

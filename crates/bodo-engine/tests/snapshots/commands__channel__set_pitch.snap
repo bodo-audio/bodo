@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "cents": -100,
+    "channel": "Snare"
+  },
+  "result": {
+    "cents": -100.0,
+    "channel": "ch_0000000000000000000000041B"
+  },
+  "undo": "Set Snare pitch"
+}

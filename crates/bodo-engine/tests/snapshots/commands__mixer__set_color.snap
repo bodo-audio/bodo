@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "color": "#f87171",
+    "insert": 1
+  },
+  "result": {
+    "color": "#f87171",
+    "insert": 1
+  },
+  "undo": "Set insert color"
+}

@@ -1,0 +1,20 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "pattern": "pattern:1",
+    "start": "1:1:0",
+    "track": 1
+  },
+  "result": {
+    "clip": "clip_0000000000000000000000041P",
+    "length": 3840,
+    "pattern": "pat_00000000000000000000000413",
+    "start": "1:1:0",
+    "ticks": 0,
+    "track": "trk_0000000000000000000000040K"
+  },
+  "undo": "Place Intro at 1:1:0"
+}

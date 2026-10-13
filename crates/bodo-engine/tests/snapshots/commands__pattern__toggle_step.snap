@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Clap",
+    "step": 5
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000417",
+    "on": true,
+    "pattern": "pat_0000000000000000000000041G",
+    "step": 5
+  },
+  "undo": "Add step"
+}

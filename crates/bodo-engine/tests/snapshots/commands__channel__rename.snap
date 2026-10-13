@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick",
+    "name": "Big Kick"
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "name": "Big Kick"
+  },
+  "undo": "Rename channel to Big Kick"
+}

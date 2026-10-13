@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "HiHat",
+    "swing": 0.55
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000419",
+    "swing": 0.550000011920929
+  },
+  "undo": "Set HiHat swing"
+}

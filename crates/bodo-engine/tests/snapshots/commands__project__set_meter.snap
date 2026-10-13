@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "denominator": 4,
+    "numerator": 3
+  },
+  "result": {
+    "meter": "3/4"
+  },
+  "undo": "Set meter to 3/4"
+}

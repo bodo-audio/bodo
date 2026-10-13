@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "insert": 1,
+    "on": true
+  },
+  "result": {
+    "insert": 1,
+    "swapped": true
+  },
+  "undo": "Swap Insert 1 left and right"
+}

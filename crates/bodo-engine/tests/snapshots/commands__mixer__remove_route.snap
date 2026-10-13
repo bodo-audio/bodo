@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": "insert:1",
+    "to": "insert:5"
+  },
+  "result": {
+    "removed": true
+  },
+  "undo": "Remove route"
+}

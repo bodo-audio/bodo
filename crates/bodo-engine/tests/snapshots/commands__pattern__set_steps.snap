@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Kick",
+    "steps": "x... x... x... x..."
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "pattern": "pat_0000000000000000000000041G",
+    "steps": "x...x...x...x..."
+  },
+  "undo": "Set steps"
+}

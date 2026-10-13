@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "author": "hasan-muzak",
+    "title": "First Beat"
+  },
+  "result": {
+    "author": "hasan-muzak",
+    "title": "First Beat"
+  },
+  "undo": "Edit project information"
+}

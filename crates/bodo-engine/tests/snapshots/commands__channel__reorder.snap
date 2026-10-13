@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Snare",
+    "to": 1
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041B",
+    "position": 1
+  },
+  "undo": "Move Snare"
+}

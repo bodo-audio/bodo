@@ -24,6 +24,7 @@ bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
 # Bodo DAW
 bodo-control = { path = "crates/bodo-control" }
+bodo-engine = { path = "crates/bodo-engine" }
 bodo-io = { path = "crates/bodo-io" }
 bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
@@ -53,6 +54,7 @@ midly = { version = "0.5.3", default-features = false, features = ["std"] }
 # Data, errors and logging
 blake3 = "1.8.7"
 imbl = { version = "7.0.2", features = ["serde"] }
+schemars = "1.2.3"
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 thiserror = "2.0.21"
@@ -73,6 +75,7 @@ syn = { version = "3.0.9", features = ["full", "visit", "parsing"] }
 toml = "1.1.8"
 
 # Testing
+insta = { version = "1.49.0", features = ["json"] }
 proptest = "1.12.0"
 
 [workspace.lints.rust]

@@ -1,0 +1,18 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "keys": 2,
+    "notes": [
+      0
+    ],
+    "ticks": 240
+  },
+  "result": {
+    "moved": 1,
+    "pattern": "pat_0000000000000000000000041G"
+  },
+  "undo": "Move note"
+}

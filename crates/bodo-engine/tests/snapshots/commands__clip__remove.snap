@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "clips": []
+  },
+  "result": {
+    "removed": 1
+  },
+  "undo": "Delete clip"
+}

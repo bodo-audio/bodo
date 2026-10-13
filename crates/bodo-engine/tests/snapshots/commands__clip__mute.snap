@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "muted": true
+  },
+  "result": {
+    "changed": 1
+  },
+  "undo": "Mute clip"
+}

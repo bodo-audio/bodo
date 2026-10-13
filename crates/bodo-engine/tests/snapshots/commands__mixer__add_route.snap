@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": "insert:1",
+    "level": 0.7,
+    "to": "insert:5"
+  },
+  "result": {
+    "from": {
+      "id": "ins_00000000000000000000000402",
+      "type": "insert"
+    },
+    "level": 0.699999988079071,
+    "sidechain": false,
+    "to": 5
+  },
+  "undo": "Route to insert 5"
+}

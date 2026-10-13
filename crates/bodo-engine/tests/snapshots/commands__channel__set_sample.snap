@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Snare",
+    "sample": "factory:Packs/Bodo Drums/Rim.wav"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041B",
+    "sample": "smp_0000000000000000000000041P"
+  },
+  "undo": "Load Rim into Snare"
+}

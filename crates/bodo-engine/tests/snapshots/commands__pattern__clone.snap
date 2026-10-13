@@ -1,0 +1,12 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {},
+  "result": {
+    "name": "Outro 2",
+    "pattern": "pat_0000000000000000000000041P"
+  },
+  "undo": "Clone Outro"
+}

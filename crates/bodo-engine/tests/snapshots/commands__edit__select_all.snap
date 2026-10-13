@@ -1,0 +1,26 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "what": "clips"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041E",
+    "channels": [
+      "ch_0000000000000000000000041E"
+    ],
+    "clips": [
+      "clip_0000000000000000000000041H",
+      "clip_0000000000000000000000041J",
+      "clip_0000000000000000000000041K",
+      "clip_0000000000000000000000041M",
+      "clip_0000000000000000000000041N"
+    ],
+    "insert": "ins_00000000000000000000000402",
+    "notes": [],
+    "track": "trk_0000000000000000000000040M"
+  },
+  "undo": null
+}

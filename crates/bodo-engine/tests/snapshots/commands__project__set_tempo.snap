@@ -1,0 +1,13 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "bpm": 128.0
+  },
+  "result": {
+    "bpm": 128.0
+  },
+  "undo": "Set tempo to 128 BPM"
+}

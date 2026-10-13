@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "start": "5:1:0",
+    "track": 2
+  },
+  "result": {
+    "by": -3840,
+    "moved": 1
+  },
+  "undo": "Move clip"
+}

@@ -1,0 +1,15 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "at": "2:1:0"
+  },
+  "result": {
+    "mode": "song",
+    "playing": false,
+    "position": "2:1:0"
+  },
+  "undo": null
+}

@@ -1,0 +1,14 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "track": "track:16"
+  },
+  "result": {
+    "clipsRemoved": 0,
+    "removed": "trk_00000000000000000000000412"
+  },
+  "undo": "Remove track Track 16"
+}

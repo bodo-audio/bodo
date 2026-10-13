@@ -1,0 +1,16 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "from": "insert:1",
+    "level": 0.5,
+    "to": "insert:5"
+  },
+  "result": {
+    "level": 0.5,
+    "tap": "postFader"
+  },
+  "undo": null
+}
