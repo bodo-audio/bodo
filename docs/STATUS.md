@@ -142,21 +142,62 @@ There are now 123 commands in [`agents/commands.md`](agents/commands.md).
 - **Playback tool** scrubbing doesn't play audio clips at varying speed.
 - **Snapshot tolerance:** the interface snapshots allow 400 differing pixels, enough to hide a small regression; a tighter check per region would catch more.
 
-## Interface gaps against the spec
+## M4: Mixer (done on macOS, 2026-10-13)
 
-The owner noted on 2026-10-13 that much of section 14's interface is still missing. This list tracks what is not built yet, with the milestone that plans it.
+Started and finished 2026-10-13, together with every interface gap the owner asked to close before M4 ends. Every check passes on macOS; CI on Linux and Windows runs once these commits are pushed.
 
-- **Top bar:** loop record, the oscilloscope, auto scrolling (`[->]`), one-click audio recording (`[mic]`), and memory in the performance readout. The Marketplace (M8) and AI (M7) buttons are placeholders.
-- **Browser:** the Plugins tab, the folder list of section 14.1 (recent files, plugin database, presets, scores, recorded, rendered and the rest), back and up buttons, tag filters, the Marketplace section, and previewing a sound by clicking it.
-- **Channel Rack:** the header (options menu, channel group filter, swing knob, graph editor and view buttons), the per-step graph editor, channel groups, reordering by dragging, colors, and a channel's MIDI input in its own menu (it is in the audio settings now).
-- **Channel windows:** the Sampler window of section 10.2 and every other channel window.
-- **Playlist:** track groups, a time selection apart from the loop, consolidating clips to audio, and curve tension handles on automation points.
+| Item | State | Where |
+|---|---|---|
+| Full strip | Done | every control of section 9.2 in the order of 9.3: input sum, polarity, swap, 10 slots with enable and latency-compensated dry/wet, the 3-band strip EQ, stereo separation, pan with the project's pan law, a fader smoothed per sample, a 5 ms mute ramp, track latency, outputs ([ADR 0025](adr/0025-the-mixer-strip-as-graph-nodes.md)) |
+| Routes, sends and sidechains | Done | channel multi-targets, insert routes at the PreFx, PreFader or PostFader tap, sidechain routes into slots, route exclusively, direct hardware outputs |
+| Slots and effects | Done | native effects (Utility, Filter, Delay, Ducker) with parameter descriptors, presets, automation and generic editors ([ADR 0026](adr/0026-native-effects-in-fx-slots.md)) |
+| Delay compensation | Done | per-edge delays, sidechain alignment, positive and negative track latency, PDC bypass, total latency in the mixer, the top bar and `inspect_mixer` |
+| Solo set | Done | the soloed inserts, their feeders and what they feed; the rest keep running at zero gain |
+| Cycle rejection | Done | a route that closes a loop is refused with the loop's path |
+| Metering | Done | peak meters and clip lights on every insert, CPU per insert, the master's correlation and an oscilloscope |
+| Disk recording | Done | real PreFx and PostFx taps, FLAC and Wave64, loop recording that makes a take per pass ([ADR 0027](adr/0027-recording-formats-loop-recording-and-stems.md)) |
+| Stem export | Done | `render.export_stems`, `bodo-cli render --stems`, and File > Export, which renders on a background thread with progress and cancel |
+| Mixer window | Done | strips with the route control, the insert panel, Wide, Compact and Extra compact views, the routing graph, group editing ([ADR 0031](adr/0031-the-mixer-window.md)) |
+| Graph executor | Done | ADR 0015's deferred 5 ms crossfade on graph changes, buffer reuse and CPU time per node |
+
+There are now 175 commands in [`agents/commands.md`](agents/commands.md).
+
+### Exit criteria
+
+| Criterion | State |
+|---|---|
+| PDC null tests pass on random graphs | Met. `delay_compensation_nulls_on_random_graphs` in `crates/bodo-mix/tests/mixer.rs` builds random inserts, routes at random taps and slots with random latencies, and nulls against the graph without latency at -100 dBFS or below |
+| Cycle rejection returns the path | Met. `routes_that_close_a_loop_are_refused_with_the_path` in `crates/bodo-engine/tests/commands.rs`; the error JSON carries the loop, for audio and sidechain routes |
+| Stems sum to the mix (null at -100 dBFS or below) | Met. `stems_sum_to_the_mix` in `crates/bodo-mix/tests/mixer.rs`, and `stems_sum_back_to_the_mix` in `apps/bodo-cli/tests/render.rs` through the command line |
+
+### The interface gaps, closed
+
+The owner noted on 2026-10-13 that much of section 14's interface was missing, and asked that no gap remain at the end of M4. Each line of the list kept here during M3 is now built:
+
+- **Top bar:** loop record, the oscilloscope, auto scrolling, one-click audio recording, memory, CPU and latency in the performance readout.
+- **Browser:** the Plugins tab and Plugin database, the library folders of section 14.1 in a Bodo folder in Documents, Recent files, presets (plugin, channel, mixer) and scores, back and up, tag filters, the Marketplace section, and previewing a sound by clicking it ([ADR 0029](adr/0029-the-user-library-presets-and-preview.md)).
+- **Channel Rack:** the header (options menu, group filter, swing knob, graph editor, view buttons), the per-step graph editor, channel groups, reordering by dragging, colors, and MIDI input in a channel's menu ([ADR 0030](adr/0030-groups-solo-and-commands-that-render.md)).
+- **Channel windows:** the full Sampler window of section 10.2 and a window for every other channel kind ([ADR 0028](adr/0028-the-sampler-and-channel-windows.md)).
+- **Playlist:** track groups, track solo, a time selection apart from the loop, consolidating clips to audio, and curve tension handles.
 - **Piano roll:** following the playhead, a note properties dialog, and showing or hiding ghost notes.
-- **Mixer (M4):** the insert panel, FX slots, sends and routing, meters on every insert, solo and the strip EQ.
-- **Windows:** detaching into OS windows, saving custom layouts, the native macOS menu, and editable shortcuts.
-- **Later panels:** the AI Assistant (M7), the Marketplace window (M8) and plugin editors (M5 and M6).
-- **Accessibility and localization (14.7):** screen readers see the controls through AccessKit, but full keyboard navigation, UI scaling, the high-contrast theme, color-blind-safe options and translated strings are still to come.
+- **Mixer:** the insert panel, FX slots, sends and routing, meters on every insert, solo and the strip EQ.
+- **Windows:** detaching into OS windows, saved layouts, the native macOS menu and editable shortcuts ([ADR 0032](adr/0032-detached-windows-layouts-menus-and-shortcuts.md)).
+- **Accessibility and localization (14.7):** full keyboard navigation, screen-reader names and values, an interface size from 75% to 200% with Auto following the screen's width, a high-contrast theme, color-blind-safe meters and clips, and every interface string through translation with a complete Turkish catalog ([ADR 0033](adr/0033-keyboard-sizes-contrast-and-translations.md)).
 
-## M4 to M9
+Three panels of section 14.1 belong to later milestones by definition and arrive with their features: the AI Assistant (M7), the Marketplace window (M8), and editors for external plugins (M5; native effects already have editors).
+
+### Deferred
+
+- **Automation timing** is still read once per block ([ADR 0024](adr/0024-automation-swing-and-the-song-loop.md)); CC, pitch bend, pressure and tempo lanes are heard once instruments and the tempo follower arrive (M5, M6).
+- **Plugins in other formats** (CLAP, VST3, AU) pass audio through, and instrument channels are silent, until plugin hosting (M5).
+- **Stems** are taken where each insert enters the master, so they equal the mix when the master is at its defaults.
+- **Meters and CPU** are not reported over MCP: the editing session doesn't own the audio engine.
+- **Text the engine writes** (command errors, undo labels of agent edits) and default names in new projects stay English.
+- **Context menus** open only with the pointer; everything in them is also in the menus or the palette.
+- **Live MIDI** is quantized to the audio buffer, and only notes reach MIDI Out ports.
+- **Keep on disk** streams only samples played as the file holds them; processed samples load into memory.
+- **Consolidating clips** renders on the interface thread; it is short for a few clips, but a long selection pauses the window.
+
+## M5 to M9
 
 Not started.
