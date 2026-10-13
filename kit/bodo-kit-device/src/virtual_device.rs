@@ -4,6 +4,10 @@
 //! denormal flushing, the real-time checks and dropout counting all behave the same. [`VirtualDevice`] renders one
 //! buffer at a time on the caller's thread; [`open_virtual`](crate::open_virtual) runs it on its own thread, either
 //! paced like real hardware or as fast as possible.
+//!
+//! A loopback can play the outputs straight back into the inputs after a delay, as a cable from an output to an input
+//! would, and the device can report any input and output latency. Together they measure a whole recording round trip
+//! without hardware.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -11,6 +15,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use bodo_kit_core::SampleRate;
+use bodo_kit_core::queue::{Producer, spsc};
 
 use crate::driver::{AudioCallback, Driver, StreamStatus};
 use crate::{AudioStream, DeviceError, StreamInner};
@@ -34,16 +39,32 @@ pub struct VirtualConfig {
     pub buffer_frames: u32,
     /// Output channels.
     pub output_channels: usize,
-    /// Input channels. Virtual input is silent.
+    /// Input channels. They are silent unless `loopback` feeds them.
     pub input_channels: usize,
     /// How callbacks are spaced when the device runs on its own thread.
     pub pacing: Pacing,
+    /// Feeds output channel `n` back to input channel `n` after this many frames, or `None` for silent inputs. The
+    /// delay is at least one buffer, as it is on real hardware, so smaller values are raised to `buffer_frames`.
+    pub loopback: Option<u32>,
+    /// The input latency the stream reports, in frames.
+    pub input_latency: u32,
+    /// The output latency the stream reports, in frames.
+    pub output_latency: u32,
 }
 
 impl Default for VirtualConfig {
-    /// 48 kHz, 128 frames, stereo out, no input, paced in real time.
+    /// 48 kHz, 128 frames, stereo out, no input, paced in real time, no loopback and no reported latency.
     fn default() -> Self {
-        Self { sample_rate: SampleRate::HZ_48000, buffer_frames: 128, output_channels: 2, input_channels: 0, pacing: Pacing::RealTime }
+        Self {
+            sample_rate: SampleRate::HZ_48000,
+            buffer_frames: 128,
+            output_channels: 2,
+            input_channels: 0,
+            pacing: Pacing::RealTime,
+            loopback: None,
+            input_latency: 0,
+            output_latency: 0,
+        }
     }
 }
 
@@ -52,6 +73,8 @@ pub struct VirtualDevice<C> {
     driver: Driver<C>,
     buffer: Vec<f32>,
     channels: usize,
+    /// Where rendered output goes back in as input, and how many input channels there are.
+    loopback: Option<(Producer<f32>, usize)>,
 }
 
 impl<C> std::fmt::Debug for VirtualDevice<C> {
@@ -68,19 +91,44 @@ impl<C: AudioCallback> VirtualDevice<C> {
         let channels = config.output_channels.max(1);
         let output_map: Vec<usize> = (0..config.output_channels).collect();
         let input_map: Vec<usize> = (0..config.input_channels).collect();
-        Self {
-            driver: Driver::new(callback, config.sample_rate, channels, &output_map, input_map, None),
-            buffer: vec![0.0; config.buffer_frames as usize * channels],
-            channels,
-        }
+        let inputs = config.input_channels;
+        let (input_queue, loopback) = match config.loopback {
+            Some(delay) if inputs > 0 => {
+                // The queue holds the delay plus one buffer in flight; it starts with the delay's worth of silence.
+                let delay = delay.max(config.buffer_frames) as usize;
+                let (mut producer, consumer) = spsc((delay + 2 * config.buffer_frames as usize) * inputs);
+                for _ in 0..delay * inputs {
+                    producer.push_or_drop(0.0);
+                }
+                (Some((consumer, inputs)), Some((producer, inputs)))
+            }
+            _ => (None, None),
+        };
+        let driver = Driver::new(callback, config.sample_rate, channels, &output_map, input_map, input_queue);
+        driver.stats.input_latency.store(config.input_latency, Ordering::Relaxed);
+        driver.stats.output_latency.store(config.output_latency, Ordering::Relaxed);
+        Self { driver, buffer: vec![0.0; config.buffer_frames as usize * channels], channels, loopback }
     }
 
     /// Renders one buffer and returns it, interleaved.
     ///
     /// RT-safe as long as the callback is.
     pub fn render(&mut self) -> &[f32] {
-        self.driver.render(&mut self.buffer, self.channels, false);
+        self.render_buffer(false);
         &self.buffer
+    }
+
+    /// Renders one buffer, reporting it late when `late` is set, and feeds the loopback.
+    ///
+    /// RT-safe as long as the callback is. Complexity: O(frames * channels).
+    fn render_buffer(&mut self, late: bool) {
+        self.driver.render(&mut self.buffer, self.channels, late);
+        let Some((producer, inputs)) = self.loopback.as_mut() else { return };
+        for frame in self.buffer.chunks(self.channels) {
+            for input in 0..*inputs {
+                producer.push_or_drop(frame.get(input).copied().unwrap_or(0.0));
+            }
+        }
     }
 
     /// The counters so far.
@@ -105,7 +153,7 @@ pub(crate) fn spawn<C: AudioCallback>(config: VirtualConfig, callback: C) -> Res
             let mut deadline = Instant::now() + period;
             while !thread_stop.load(Ordering::Relaxed) {
                 let late = config.pacing == Pacing::RealTime && Instant::now() > deadline + period;
-                device.driver.render(&mut device.buffer, device.channels, late);
+                device.render_buffer(late);
                 if config.pacing == Pacing::RealTime {
                     let now = Instant::now();
                     if deadline > now {

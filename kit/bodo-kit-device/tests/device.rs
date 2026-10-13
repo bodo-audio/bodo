@@ -175,3 +175,28 @@ fn a_thread_joins_the_device_workgroup() {
     let joined = std::thread::spawn(move || group.join().is_some()).join().unwrap();
     assert!(joined, "the OS let the thread join");
 }
+
+#[test]
+fn a_loopback_plays_the_output_back_into_the_input_after_its_delay() {
+    for delay in [128u32, 1000] {
+        let config = VirtualConfig { input_channels: 2, loopback: Some(delay), input_latency: 7, output_latency: 11, ..config(128) };
+        let mut position = 0usize;
+        // A single click at frame 300 on the left output; the left input comes back out on the right output.
+        let mut device = VirtualDevice::new(config, move |block: &mut Block<'_>| {
+            for frame in 0..block.frames {
+                let heard = block.input.channel(0).get(frame).copied().unwrap_or(0.0);
+                block.output.channel_mut(0)[frame] = if position + frame == 300 { 1.0 } else { 0.0 };
+                block.output.channel_mut(1)[frame] = heard;
+            }
+            position += block.frames;
+        });
+        let mut right = Vec::new();
+        for _ in 0..20 {
+            right.extend(device.render().chunks(2).map(|frame| frame[1]));
+        }
+        let click = right.iter().position(|s| *s > 0.5).unwrap();
+        assert_eq!(click, 300 + delay as usize, "the click comes back {delay} frames later");
+        let status = device.status();
+        assert_eq!((status.input_latency.0, status.output_latency.0), (7, 11));
+    }
+}
