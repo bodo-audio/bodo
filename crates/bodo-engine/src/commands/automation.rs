@@ -636,7 +636,8 @@ pub(super) fn register(r: &mut Registry) {
         Effects::UNDOABLE,
         place_clip,
     )
-    .example(json!({ "channel": "Insert 1 volume", "start": "5:1:0", "track": 2 }));
+    .example(json!({ "channel": "Insert 1 volume", "start": "5:1:0", "track": 2 }))
+    .merge(super::whole);
     r.edit(
         "automation.set_points",
         "Edit automation",

@@ -84,6 +84,7 @@ Example:
 Places another clip of an automation channel on the playlist; every clip of the channel plays its one lane.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
@@ -683,6 +684,7 @@ Example:
 Places a clip of an audio clip channel on a playlist track; it lasts the whole sample by default.
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|

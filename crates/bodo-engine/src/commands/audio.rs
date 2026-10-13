@@ -361,7 +361,8 @@ pub(super) fn register(r: &mut Registry) {
         Effects::UNDOABLE,
         place_audio,
     )
-    .example(json!({ "track": 3, "channel": "Crash", "start": "2:1:0" }));
+    .example(json!({ "track": 3, "channel": "Crash", "start": "2:1:0" }))
+    .merge(super::whole);
     r.edit(
         "clip.place_sound",
         "Place sound",
