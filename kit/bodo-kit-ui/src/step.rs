@@ -36,6 +36,7 @@ pub struct StepRow<'a> {
     gap: f32,
     group_gap: f32,
     palette: Option<Palette>,
+    names: Option<Box<dyn Fn(usize) -> String + 'a>>,
 }
 
 /// What a row did this frame.
@@ -50,7 +51,13 @@ pub struct StepRowResponse {
 impl<'a> StepRow<'a> {
     /// A row named `label` (its steps are announced as `<label> step <n>`) showing `steps`.
     pub fn new(label: impl Into<String>, steps: &'a [bool]) -> Self {
-        Self { label: label.into(), steps, paint_id: None, step_size: vec2(16.0, 22.0), gap: 2.0, group_gap: 4.0, palette: None }
+        Self { label: label.into(), steps, paint_id: None, step_size: vec2(16.0, 22.0), gap: 2.0, group_gap: 4.0, palette: None, names: None }
+    }
+
+    /// Announces step `n` (counted from 1) as `name(n)` instead of `<label> step <n>`, such as in another language.
+    pub fn step_names(mut self, name: impl Fn(usize) -> String + 'a) -> Self {
+        self.names = Some(Box::new(name));
+        self
     }
 
     /// Shares painting with every row given the same id, so a drag continues across rows. Without it, a row paints
@@ -110,7 +117,11 @@ impl<'a> StepRow<'a> {
             let id = row_id.with(index);
             let step = ui.interact(rect, id, Sense::click());
             let label = &self.label;
-            step.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, enabled, on, format!("{label} step {}", index + 1)));
+            let names = self.names.as_ref();
+            step.widget_info(|| {
+                let name = names.map_or_else(|| format!("{label} step {}", index + 1), |name| name(index + 1));
+                WidgetInfo::selected(WidgetType::Checkbox, enabled, on, name)
+            });
             if pressed && step.is_pointer_button_down_on() {
                 // A new gesture: the pressed step decides what to paint.
                 let value = !secondary && !on;

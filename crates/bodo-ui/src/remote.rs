@@ -245,8 +245,8 @@ pub fn call(app: &mut BodoApp, method: &str, params: &Value, list: &[Element]) -
         if let Some(answer) = answer {
             if app.session.revision() != before {
                 let tool = params.get("tool").and_then(Value::as_str).unwrap_or(method);
-                let undo = app.session.undo_labels().last().unwrap_or("a change").to_owned();
-                app.set_status(format!("Agent ({tool}): {undo}"), false);
+                let undo = app.session.undo_labels().last().map_or_else(|| String::from(crate::i18n::t("a change")), crate::i18n::tr);
+                app.set_status(tf!("Agent ({tool}): {step}", tool = tool, step = undo), false);
             }
             return answer;
         }

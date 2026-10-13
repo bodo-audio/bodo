@@ -22,7 +22,7 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use super::{Grid, KEYS};
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
@@ -70,46 +70,46 @@ impl Lane {
     pub const CONTROLLERS: [Self; 8] =
         [Self::PitchBend, Self::Pressure, Self::Cc(1), Self::Cc(7), Self::Cc(10), Self::Cc(11), Self::Cc(64), Self::Cc(74)];
 
-    /// Its name.
+    /// Its name, in English.
     pub fn label(self) -> String {
         match self {
-            Self::Velocity => String::from("Velocity"),
-            Self::Release => String::from("Release velocity"),
-            Self::FinePitch => String::from("Fine pitch"),
-            Self::Pan => String::from("Pan"),
-            Self::ModX => String::from("Mod X"),
-            Self::ModY => String::from("Mod Y"),
-            Self::NotePitch => String::from("Note pitch (MPE)"),
-            Self::NotePressure => String::from("Note pressure (MPE)"),
-            Self::NoteTimbre => String::from("Note timbre (MPE)"),
-            Self::PitchBend => String::from("Pitch bend"),
-            Self::Pressure => String::from("Channel pressure"),
+            Self::Velocity => String::from(en("Velocity")),
+            Self::Release => String::from(en("Release velocity")),
+            Self::FinePitch => String::from(en("Fine pitch")),
+            Self::Pan => String::from(en("Pan")),
+            Self::ModX => String::from(en("Mod X")),
+            Self::ModY => String::from(en("Mod Y")),
+            Self::NotePitch => String::from(en("Note pitch (MPE)")),
+            Self::NotePressure => String::from(en("Note pressure (MPE)")),
+            Self::NoteTimbre => String::from(en("Note timbre (MPE)")),
+            Self::PitchBend => String::from(en("Pitch bend")),
+            Self::Pressure => String::from(en("Channel pressure")),
             Self::Cc(n) => match n {
-                1 => String::from("CC 1 Mod wheel"),
-                7 => String::from("CC 7 Volume"),
-                10 => String::from("CC 10 Pan"),
-                11 => String::from("CC 11 Expression"),
-                64 => String::from("CC 64 Sustain"),
-                74 => String::from("CC 74 Brightness"),
+                1 => String::from(en("CC 1 Mod wheel")),
+                7 => String::from(en("CC 7 Volume")),
+                10 => String::from(en("CC 10 Pan")),
+                11 => String::from(en("CC 11 Expression")),
+                64 => String::from(en("CC 64 Sustain")),
+                74 => String::from(en("CC 74 Brightness")),
                 n => format!("CC {n}"),
             },
         }
     }
 
-    /// A name short enough for the lane's corner.
+    /// A name short enough for the lane's corner, in English.
     fn short(self) -> String {
         match self {
-            Self::Velocity => String::from("Vel"),
-            Self::Release => String::from("Rel"),
-            Self::FinePitch => String::from("Fine"),
-            Self::Pan => String::from("Pan"),
-            Self::ModX => String::from("Mod X"),
-            Self::ModY => String::from("Mod Y"),
-            Self::NotePitch => String::from("N.Pitch"),
-            Self::NotePressure => String::from("N.Press"),
-            Self::NoteTimbre => String::from("N.Timb"),
-            Self::PitchBend => String::from("Bend"),
-            Self::Pressure => String::from("Press"),
+            Self::Velocity => String::from(en("Vel")),
+            Self::Release => String::from(en("Rel")),
+            Self::FinePitch => String::from(en("Fine")),
+            Self::Pan => String::from(en("Pan")),
+            Self::ModX => String::from(en("Mod X")),
+            Self::ModY => String::from(en("Mod Y")),
+            Self::NotePitch => String::from(en("N.Pitch")),
+            Self::NotePressure => String::from(en("N.Press")),
+            Self::NoteTimbre => String::from(en("N.Timb")),
+            Self::PitchBend => String::from(en("Bend")),
+            Self::Pressure => String::from(en("Press")),
             Self::Cc(n) => format!("CC {n}"),
         }
     }
@@ -627,7 +627,7 @@ fn lane_menu(app: &mut BodoApp, ui: &mut Ui, label: Rect) {
     ui.painter().text(
         label.center_top() + vec2(rem(0.0), rem(0.8)),
         Align2::CENTER_CENTER,
-        lane.short(),
+        crate::i18n::tr(&lane.short()),
         FontId::proportional(size::SMALL),
         tk.text_dim,
     );
@@ -636,7 +636,7 @@ fn lane_menu(app: &mut BodoApp, ui: &mut Ui, label: Rect) {
             if choice == Lane::NotePitch || choice == Lane::PitchBend {
                 ui.separator();
             }
-            if ui.selectable_label(choice == lane, choice.label()).clicked() {
+            if ui.selectable_label(choice == lane, crate::i18n::tr(&choice.label())).clicked() {
                 app.view.piano.lane = choice;
             }
         }

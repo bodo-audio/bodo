@@ -344,7 +344,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     if let Some(action) = app.view.dialogs.unsaved.clone() {
         let mut choice = None;
         modal(ctx, t("Unsaved changes"), |ui| {
-            ui.label(format!("Save the changes to {} first?", app.title().trim_end_matches(" *")));
+            ui.label(tf!("Save the changes to {project} first?", project = app.title().trim_end_matches(" *")));
             ui.add_space(rem(0.64));
             ui.horizontal(|ui| {
                 if ui.button(t("Save")).clicked() {
@@ -376,9 +376,9 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
 
     if let Some(rename) = app.view.dialogs.rename.clone() {
         let (title, mut text) = match &rename {
-            Rename::Pattern(name) => ("Rename pattern", name.clone()),
-            Rename::Channel(_, name) => ("Rename channel", name.clone()),
-            Rename::Insert(_, name) => ("Rename insert", name.clone()),
+            Rename::Pattern(name) => (t("Rename pattern"), name.clone()),
+            Rename::Channel(_, name) => (t("Rename channel"), name.clone()),
+            Rename::Insert(_, name) => (t("Rename insert"), name.clone()),
         };
         let mut done = None;
         modal(ctx, title, |ui| {
@@ -450,10 +450,10 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
     }
 
     if let Some(mut dialog) = app.view.dialogs.layout_name.take() {
-        let title = if dialog.renaming.is_some() { "Rename layout" } else { "Save layout" };
+        let title = if dialog.renaming.is_some() { t("Rename layout") } else { t("Save layout") };
         let mut done = None;
         modal(ctx, title, |ui| {
-            ui.label(if dialog.renaming.is_some() { "The layout's new name:" } else { "Save the windows as they are now, under the name:" });
+            ui.label(if dialog.renaming.is_some() { t("The layout's new name:") } else { t("Save the windows as they are now, under the name:") });
             let field = ui.add(egui::TextEdit::singleline(&mut dialog.text).desired_width(rem(19.2)).hint_text(t("Layout name")));
             field.request_focus();
             crate::control::record(ui, &field, "Layout name", "text", None);
@@ -462,7 +462,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
             }
             let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.horizontal(|ui| {
-                let label = if dialog.renaming.is_some() { "Rename" } else { "Save" };
+                let label = if dialog.renaming.is_some() { t("Rename") } else { t("Save") };
                 if ui.button(label).clicked() || enter {
                     done = Some(true);
                 }
@@ -492,7 +492,7 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
         egui::Window::new(t("About Bodo")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
             let tk = Tokens::get();
             ui.label(RichText::new("bodo").size(rem(2.24)).color(tk.accent).strong());
-            ui.label(format!("Version {}", env!("CARGO_PKG_VERSION")));
+            ui.label(tf!("Version {version}", version = env!("CARGO_PKG_VERSION")));
             ui.label(t("A free, open-source digital audio workstation written in Rust."));
             ui.label(t("Licensed under the GNU GPL, version 3 or later."));
             ui.add_space(rem(0.48));
@@ -723,7 +723,7 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
         let hosts = bodo_kit_device::hosts();
         egui::Grid::new("bodo-audio").num_columns(2).spacing(vec2(rem(0.96), rem(0.48))).show(ui, |ui| {
             ui.label(t("Driver"));
-            let host_label = draft.host.clone().unwrap_or_else(|| String::from("Default"));
+            let host_label = draft.host.clone().unwrap_or_else(|| String::from(t("Default")));
             egui::ComboBox::from_id_salt("bodo-audio-host").selected_text(host_label).width(rem(17.6)).show_ui(ui, |ui| {
                 if ui.selectable_label(draft.host.is_none(), t("Default")).clicked() {
                     draft.host = None;
@@ -741,7 +741,7 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
             ui.end_row();
             ui.label(t("Output"));
             let devices = bodo_kit_device::devices(draft.host.as_deref()).unwrap_or_default();
-            let output_label = draft.output.clone().unwrap_or_else(|| String::from("Default"));
+            let output_label = draft.output.clone().unwrap_or_else(|| String::from(t("Default")));
             egui::ComboBox::from_id_salt("bodo-audio-output").selected_text(output_label).width(rem(17.6)).show_ui(ui, |ui| {
                 if ui.selectable_label(draft.output.is_none(), t("Default")).clicked() {
                     draft.output = None;
@@ -754,13 +754,13 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
             });
             ui.end_row();
             ui.label(t("Input"));
-            let input_label = draft.input.clone().unwrap_or_else(|| String::from("Default"));
+            let input_label = draft.input.clone().unwrap_or_else(|| String::from(t("Default")));
             egui::ComboBox::from_id_salt("bodo-audio-input").selected_text(input_label).width(rem(17.6)).show_ui(ui, |ui| {
                 if ui.selectable_label(draft.input.is_none(), t("Default")).clicked() {
                     draft.input = None;
                 }
                 for device in devices.iter().filter(|d| d.input_channels >= 1) {
-                    let label = format!("{} ({} in)", device.name, device.input_channels);
+                    let label = tf!("{device} ({count} in)", device = device.name, count = device.input_channels);
                     if ui.selectable_label(draft.input.as_deref() == Some(device.name.as_str()), label).clicked() {
                         draft.input = Some(device.name.clone());
                     }
@@ -769,17 +769,21 @@ fn audio_settings(app: &mut BodoApp, ctx: &egui::Context) {
             ui.end_row();
             ui.label(t("Buffer"));
             let frames = draft.buffer_frames.unwrap_or(256);
-            egui::ComboBox::from_id_salt("bodo-audio-buffer").selected_text(format!("{frames} frames")).width(rem(17.6)).show_ui(ui, |ui| {
-                for size in [64u32, 128, 256, 512, 1024, 2048] {
-                    let ms = f64::from(size) / f64::from(app.session.project().settings.sample_rate.hz()) * 1000.0;
-                    if ui.selectable_label(frames == size, format!("{size} frames ({ms:.1} ms)")).clicked() {
-                        draft.buffer_frames = Some(size);
+            egui::ComboBox::from_id_salt("bodo-audio-buffer").selected_text(tf!("{frames} frames", frames = frames)).width(rem(17.6)).show_ui(
+                ui,
+                |ui| {
+                    for size in [64u32, 128, 256, 512, 1024, 2048] {
+                        let ms = f64::from(size) / f64::from(app.session.project().settings.sample_rate.hz()) * 1000.0;
+                        if ui.selectable_label(frames == size, tf!("{frames} frames ({ms} ms)", frames = size, ms = format!("{ms:.1}"))).clicked() {
+                            draft.buffer_frames = Some(size);
+                        }
                     }
-                }
-            });
+                },
+            );
             ui.end_row();
         });
-        ui.label(RichText::new(app.audio.status()).color(Tokens::get().text_dim).size(size::SMALL));
+        let status = app.audio.status();
+        ui.label(RichText::new(crate::i18n::lookup(status).unwrap_or(status)).color(Tokens::get().text_dim).size(size::SMALL));
         ui.add_space(rem(0.48));
         midi_settings(app, ui, &mut draft);
         ui.add_space(rem(0.48));
@@ -826,8 +830,8 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
     egui::Grid::new("bodo-midi-inputs").num_columns(3).spacing(vec2(rem(0.96), rem(0.48))).show(ui, |ui| {
         for port in &ports {
             let mut on = draft.midi_inputs.as_ref().is_none_or(|names| names.contains(port));
-            let suffix = if open.contains(port) { "" } else { " (closed)" };
-            if ui.checkbox(&mut on, format!("{port}{suffix}")).changed() {
+            let label = if open.contains(port) { port.clone() } else { tf!("{port} (closed)", port = port) };
+            if ui.checkbox(&mut on, label).changed() {
                 let mut names = draft.midi_inputs.clone().unwrap_or_else(|| ports.clone());
                 names.retain(|name| name != port);
                 if on {
@@ -844,7 +848,7 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
                 .map(|c| c.as_ref())
                 .collect();
             let shown = if bound.is_empty() {
-                String::from("Selected channel")
+                String::from(t("Selected channel"))
             } else {
                 bound.iter().map(|c| c.name.as_str()).collect::<Vec<_>>().join(", ")
             };
@@ -865,11 +869,11 @@ fn midi_settings(app: &mut BodoApp, ui: &mut egui::Ui, draft: &mut crate::audio:
             });
             let listening = bound.first().and_then(|c| c.midi_in.as_ref()).and_then(|b| b.channel);
             ui.add_enabled_ui(!bound.is_empty(), |ui| {
-                let text = listening.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {}", n + 1));
+                let text = listening.map_or_else(|| String::from(t("Any MIDI channel")), |n| tf!("MIDI channel {number}", number = n + 1));
                 egui::ComboBox::from_id_salt(("bodo-midi-channel", port)).selected_text(text).width(rem(10.4)).show_ui(ui, |ui| {
                     let choices = std::iter::once(None).chain((1..=16u8).map(Some));
                     for choice in choices {
-                        let label = choice.map_or_else(|| String::from("Any MIDI channel"), |n| format!("MIDI channel {n}"));
+                        let label = choice.map_or_else(|| String::from(t("Any MIDI channel")), |n| tf!("MIDI channel {number}", number = n));
                         if ui.selectable_label(listening.map(|n| n + 1) == choice, label).clicked() {
                             for channel in &bound {
                                 let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": port, "midiChannel": choice }));

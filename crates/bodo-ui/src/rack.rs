@@ -18,7 +18,7 @@ use egui::{Pos2, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 use crate::browser::SoundPayload;
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{self, Tokens, rem, size};
 use crate::windows::{self, WindowKind, icon_button};
 use crate::{BodoApp, control, dialogs, topbar};
@@ -56,8 +56,8 @@ impl GroupFilter {
 
     fn label(&self) -> String {
         match self {
-            Self::All => String::from("All channels"),
-            Self::Unsorted => String::from("Unsorted"),
+            Self::All => String::from(t("All channels")),
+            Self::Unsorted => String::from(t("Unsorted")),
             Self::Group(name) => name.clone(),
         }
     }
@@ -81,13 +81,23 @@ impl StepParam {
     /// Every parameter, in the menu's order.
     pub const ALL: [Self; 4] = [Self::Velocity, Self::Pitch, Self::Pan, Self::Release];
 
-    /// Its name.
+    /// Its name, in English.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Velocity => "Velocity",
-            Self::Pitch => "Pitch",
-            Self::Pan => "Pan",
-            Self::Release => "Release",
+            Self::Velocity => en("Velocity"),
+            Self::Pitch => en("Pitch"),
+            Self::Pan => en("Pan"),
+            Self::Release => en("Release"),
+        }
+    }
+
+    /// The graph editor's hint while it edits this parameter, in English.
+    fn hint(self) -> &'static str {
+        match self {
+            Self::Velocity => en("Drag across the bars to set each step's velocity"),
+            Self::Pitch => en("Drag across the bars to set each step's pitch"),
+            Self::Pan => en("Drag across the bars to set each step's pan"),
+            Self::Release => en("Drag across the bars to set each step's release"),
         }
     }
 
@@ -216,7 +226,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<Pat
         }
         if let GroupFilter::Group(name) = app.view.rack.filter.clone() {
             ui.separator();
-            if ui.button(format!("Rename {name}...")).clicked() {
+            if ui.button(tf!("Rename {name}...", name = name)).clicked() {
                 app.view.rack.naming = Some(Naming { renaming: Some(name.clone()), text: name });
             }
         }
@@ -229,7 +239,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<Pat
     let mut swing = ids.first().and_then(|c| project.channels.get(c)).map_or(0.0, |c| c.swing);
     let knob = ui.add(Knob::new(&mut swing, 0.0..=1.0).default(0.0).diameter(rem(1.6)).label(t("Swing")).format(|v| format!("{:.0}%", v * 100.0)));
     control::record(ui, &knob, "Channel rack swing", "knob", None);
-    app.hint(&knob, format!("Swing for the channels shown: {:.0}%", swing * 100.0));
+    app.hint(&knob, tf!("Swing for the channels shown: {percent}%", percent = format!("{:.0}", swing * 100.0)));
     if knob.changed() && !ids.is_empty() {
         app.run_gesture(&knob, "channel.set_swing", json!({ "channels": ids, "swing": swing }));
     }
@@ -260,7 +270,7 @@ fn options_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
         let selected: Vec<ChannelId> = shown(app, project).into_iter().filter(|c| app.session.editor().channels.contains(c)).collect();
         let calls: Vec<Call> = selected.iter().map(|c| Call::new("channel.duplicate", json!({ "channel": c }))).collect();
         if !calls.is_empty() {
-            let _ = app.session.batch(&calls, Some("Clone channels"));
+            let _ = app.session.batch(&calls, Some(en("Clone channels")));
         }
         ui.close();
     }
@@ -269,8 +279,8 @@ fn options_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
         ui.close();
     }
     ui.separator();
-    for every in [2, 4, 8] {
-        if ui.button(format!("Fill each {every} steps")).clicked() {
+    for (every, label) in FILLS {
+        if ui.button(t(label)).clicked() {
             fill(app, project, pattern, &chosen, Some(every));
             ui.close();
         }
@@ -299,10 +309,13 @@ fn group_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, ids: &[ChannelI
         if !ids.is_empty() {
             let _ = app.run("edit.select", json!({ "channels": ids }));
         }
-        app.view.rack.naming = Some(Naming { renaming: None, text: String::from("Group") });
+        app.view.rack.naming = Some(Naming { renaming: None, text: String::from(t("Group")) });
         ui.close();
     }
 }
+
+/// The ways to fill steps, every second, fourth or eighth step, with their names, which also name the undo step.
+const FILLS: [(usize, &str); 3] = [(2, en("Fill each 2 steps")), (4, en("Fill each 4 steps")), (8, en("Fill each 8 steps"))];
 
 /// Turns on every `every`th step of `channels` and turns the others off, or clears them all with `None`, as one undo
 /// step. Without a current pattern, it makes one first.
@@ -318,11 +331,8 @@ fn fill(app: &mut BodoApp, project: &Project, pattern: Option<PatternId>, channe
         .map(|c| Call::new("pattern.set_steps", json!({ "channel": c, "steps": text })))
         .collect();
     if !calls.is_empty() {
-        let label = match every {
-            Some(n) => format!("Fill each {n} steps"),
-            None => String::from("Clear steps"),
-        };
-        let _ = app.session.batch(&calls, Some(&label));
+        let label = every.and_then(|n| FILLS.iter().find(|(every, _)| *every == n)).map_or(en("Clear steps"), |(_, label)| *label);
+        let _ = app.session.batch(&calls, Some(label));
     }
 }
 
@@ -334,7 +344,7 @@ fn plays_steps(channel: &Channel) -> bool {
 /// The dialog that names a new group or renames one.
 fn naming_dialog(app: &mut BodoApp, ctx: &egui::Context) {
     let Some(naming) = app.view.rack.naming.as_mut() else { return };
-    let title = if naming.renaming.is_some() { "Rename group" } else { "New group" };
+    let title = if naming.renaming.is_some() { t("Rename group") } else { t("New group") };
     let mut done = None;
     egui::Modal::new(egui::Id::new("bodo-rack-naming")).show(ctx, |ui| {
         ui.label(RichText::new(title).strong());
@@ -386,9 +396,9 @@ fn body(app: &mut BodoApp, ui: &mut Ui, project: &Arc<Project>, pattern: Option<
             ui.horizontal(|ui| {
                 ui.add_space(rem(0.96));
                 let text = if project.rack_order.is_empty() {
-                    "No channels yet. Drag a sound here from the browser, or press +."
+                    t("No channels yet. Drag a sound here from the browser, or press +.")
                 } else {
-                    "No channels in this group. Choose another in the header, or move channels here from the options menu."
+                    t("No channels in this group. Choose another in the header, or move channels here from the options menu.")
                 };
                 ui.label(RichText::new(text).color(tk.text_faint));
             });
@@ -458,9 +468,9 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
             ui.add_space(rem(0.64));
             // Mute: the LED is lit while the channel plays.
             let mut on = !channel.muted;
-            let led = ui.add(Led::new(&mut on).label(format!("{name} on")));
+            let led = ui.add(Led::new(&mut on).label(tf!("{name} on", name = name)));
             control::record(ui, &led, &format!("{name} on"), "led", Some(!channel.muted));
-            app.hint(&led, format!("{name}: click to mute or unmute"));
+            app.hint(&led, tf!("{name}: click to mute or unmute", name = name));
             if led.changed() {
                 let _ = app.run("channel.mute", json!({ "channel": id, "muted": !on }));
             }
@@ -476,9 +486,9 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
             name_button(app, ui, project, channel, compact);
             if !plays_steps(channel) {
                 let text = if matches!(channel.kind, ChannelKind::AudioClip { .. }) {
-                    "Audio clip: place it on the playlist"
+                    t("Audio clip: place it on the playlist")
                 } else {
-                    "Automation clip: edit it on the playlist"
+                    t("Automation clip: edit it on the playlist")
                 };
                 let label = ui.label(RichText::new(text).size(size::SMALL).color(Tokens::get().text_faint));
                 control::record(ui, &label, &format!("{name} kind"), "label", None);
@@ -493,7 +503,10 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
                     .collect(),
                 None => vec![false; steps],
             };
-            let step_row = StepRow::new(name.clone(), &on).paint_id(paint_id).step_size(step_size);
+            let step_row = StepRow::new(name.clone(), &on)
+                .paint_id(paint_id)
+                .step_size(step_size)
+                .step_names(|n| tf!("{name} step {number}", name = name, number = n));
             let offsets: Vec<f32> = (0..on.len()).map(|i| step_row.offset(i)).collect();
             let shown = step_row.show(ui);
             app.view.rack.steps_left = Some(shown.response.rect.left());
@@ -510,7 +523,7 @@ fn row(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel, pat
                 );
             }
             if shown.response.hovered() || ui.rect_contains_pointer(shown.response.rect) {
-                app.view.hint = Some(format!("{name} steps: click to toggle, drag to paint, right-drag to clear"));
+                app.view.hint = Some(tf!("{name} steps: click to toggle, drag to paint, right-drag to clear", name = name));
             }
             if !shown.edits.is_empty() {
                 paint(app, id, pattern, &shown.edits);
@@ -527,19 +540,23 @@ fn knobs(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, compact: bool) {
     let (id, name) = (channel.id, channel.name.as_str());
     let diameter = if compact { 14.0 } else { 18.0 };
     let mut pan = channel.pan;
-    let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(diameter).label(format!("{name} pan")));
+    let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(diameter).label(tf!("{name} pan", name = name)));
     control::record(ui, &knob, &format!("{name} pan"), "knob", None);
-    app.hint(&knob, format!("{name} pan: {}; right-click to automate it", bodo_kit_ui::knob::format_pan(pan)));
+    app.hint(&knob, tf!("{name} pan: {value}; right-click to automate it", name = name, value = bodo_kit_ui::knob::format_pan(pan)));
     if knob.changed() {
         app.run_gesture(&knob, "channel.set_pan", json!({ "channel": id, "pan": pan }));
     }
     knob.context_menu(|ui| automate_menu(app, ui, id, "pan"));
     let mut volume = channel.volume;
     let knob = ui.add(
-        Knob::new(&mut volume, 0.0..=2.0).default(1.0).diameter(diameter).label(format!("{name} volume")).format(|v| format!("{:.0}%", v * 100.0)),
+        Knob::new(&mut volume, 0.0..=2.0)
+            .default(1.0)
+            .diameter(diameter)
+            .label(tf!("{name} volume", name = name))
+            .format(|v| format!("{:.0}%", v * 100.0)),
     );
     control::record(ui, &knob, &format!("{name} volume"), "knob", None);
-    app.hint(&knob, format!("{name} volume: {:.0}%; right-click to automate it", volume * 100.0));
+    app.hint(&knob, tf!("{name} volume: {percent}%; right-click to automate it", name = name, percent = format!("{:.0}", volume * 100.0)));
     if knob.changed() {
         app.run_gesture(&knob, "channel.set_volume", json!({ "channel": id, "volume": volume }));
     }
@@ -584,10 +601,12 @@ fn insert_picker(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Ch
     let text = if number == 0 { String::from("M") } else { number.to_string() };
     let button = ui.add(egui::Button::new(RichText::new(text).monospace().size(size::SMALL).color(tk.text_dim)).min_size(vec2(rem(2.08), rem(1.44))));
     control::record(ui, &button, &format!("{} insert", channel.name), "button", None);
-    app.hint(
-        &button,
-        format!("{} plays into {}; click to choose", channel.name, if number == 0 { String::from("the master") } else { format!("insert {number}") }),
-    );
+    let hint = if number == 0 {
+        tf!("{name} plays into the master; click to choose", name = channel.name)
+    } else {
+        tf!("{name} plays into insert {number}; click to choose", name = channel.name, number = number)
+    };
+    app.hint(&button, hint);
     egui::Popup::menu(&button).show(|ui| {
         egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
             if ui.selectable_label(number == 0, t("Master")).clicked() {
@@ -636,8 +655,12 @@ fn name_button(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chan
     control::record(ui, &response, &channel.name, "channel", Some(selected));
     // Audio clip and automation channels have no notes: double-clicking one makes it the playlist's clip source.
     let plays_notes = plays_steps(channel);
-    let double = if plays_notes { "double-click for the piano roll" } else { "double-click to draw it on the playlist" };
-    app.hint(&response, format!("{}: click to select, {double}, drag to move, right-click for more", channel.name));
+    let hint = if plays_notes {
+        tf!("{name}: click to select, double-click for the piano roll, drag to move, right-click for more", name = channel.name)
+    } else {
+        tf!("{name}: click to select, double-click to draw it on the playlist, drag to move, right-click for more", name = channel.name)
+    };
+    app.hint(&response, hint);
     if response.drag_started() {
         app.view.rack.dragging = Some(channel.id);
     }
@@ -683,8 +706,8 @@ fn channel_menu(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
     if plays_notes {
         ui.menu_button(t("Fill steps"), |ui| {
             let pattern = app.session.editor().pattern;
-            for every in [2, 4, 8] {
-                if ui.button(format!("Each {every} steps")).clicked() {
+            for (every, label) in [(2, en("Each 2 steps")), (4, en("Each 4 steps")), (8, en("Each 8 steps"))] {
+                if ui.button(t(label)).clicked() {
                     fill(app, project, pattern, &[channel.id], Some(every));
                     ui.close();
                 }
@@ -735,14 +758,14 @@ fn midi_menu(app: &mut BodoApp, ui: &mut Ui, channel: &Channel) {
     }
     for port in ports {
         let on_port = bound.is_some_and(|b| b.port == port);
-        ui.menu_button(if on_port { format!("{port} (in use)") } else { port.clone() }, |ui| {
+        ui.menu_button(if on_port { tf!("{port} (in use)", port = port) } else { port.clone() }, |ui| {
             if ui.selectable_label(on_port && bound.is_some_and(|b| b.channel.is_none()), t("Every MIDI channel")).clicked() {
                 let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": port, "midiChannel": null }));
                 ui.close();
             }
             for n in 1..=16u8 {
                 let on = on_port && bound.is_some_and(|b| b.channel == Some(n - 1));
-                if ui.selectable_label(on, format!("MIDI channel {n}")).clicked() {
+                if ui.selectable_label(on, tf!("MIDI channel {number}", number = n)).clicked() {
                     let _ = app.run("channel.set_midi_in", json!({ "channel": channel.id, "port": port, "midiChannel": n }));
                     ui.close();
                 }
@@ -783,9 +806,9 @@ fn graph_editor(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
     let label_rect = Rect::from_min_max(pos2(rect.left() + 8.0, rect.top() + 6.0), pos2(left - 8.0, rect.top() + 28.0));
     ui.scope_builder(egui::UiBuilder::new().max_rect(label_rect), |ui| {
         let param = app.view.rack.graph_param;
-        let combo = egui::ComboBox::from_id_salt("bodo-rack-graph-param").width(rem(8.0)).selected_text(param.label()).show_ui(ui, |ui| {
+        let combo = egui::ComboBox::from_id_salt("bodo-rack-graph-param").width(rem(8.0)).selected_text(t(param.label())).show_ui(ui, |ui| {
             for choice in StepParam::ALL {
-                if ui.selectable_label(choice == param, choice.label()).clicked() {
+                if ui.selectable_label(choice == param, t(choice.label())).clicked() {
                     app.view.rack.graph_param = choice;
                 }
             }
@@ -839,7 +862,7 @@ fn graph_editor(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Opti
 
     let response = ui.interact(area, ui.id().with("rack-graph"), Sense::click_and_drag());
     control::record(ui, &response, "Graph editor", "graph", None);
-    app.hint(&response, format!("Drag across the bars to set each step's {}", param.label().to_lowercase()));
+    app.hint(&response, param.hint());
     let (pointer, pressed, down) = ui.input(|i| (i.pointer.latest_pos(), i.pointer.primary_pressed(), i.pointer.primary_down()));
     let Some(pointer) = pointer else { return };
     if pressed && area.contains(pointer) && (response.hovered() || response.is_pointer_button_down_on()) {

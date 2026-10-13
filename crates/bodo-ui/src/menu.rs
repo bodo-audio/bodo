@@ -193,8 +193,8 @@ fn file(app: &BodoApp) -> Menu {
 }
 
 fn edit(app: &BodoApp) -> Menu {
-    let undo = app.session.undo_labels().last().map(|l| tf!("Undo {step}", step = l));
-    let redo = app.session.redo_labels().next().map(|l| tf!("Redo {step}", step = l));
+    let undo = app.session.undo_labels().last().map(|l| tf!("Undo {step}", step = crate::i18n::tr(l)));
+    let redo = app.session.redo_labels().next().map(|l| tf!("Redo {step}", step = crate::i18n::tr(l)));
     Menu {
         title: "Edit",
         items: vec![

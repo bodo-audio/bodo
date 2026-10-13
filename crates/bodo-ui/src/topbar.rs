@@ -8,7 +8,7 @@ use bodo_kit_ui::icons;
 use egui::{Align, FontId, Layout, Rect, RichText, Sense, Ui, UiBuilder, vec2};
 use serde_json::json;
 
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{self, Tokens, rem, size};
 use crate::windows::{WindowKind, icon_button, painted_button};
 use crate::{BodoApp, Snap, control, dialogs, menu};
@@ -133,7 +133,7 @@ fn transport(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
     let transport = *app.session.transport();
     let song = transport.mode == PlayMode::Song;
-    let response = text_toggle(ui, if song { "SONG" } else { "PAT" }, song, "Play mode");
+    let response = text_toggle(ui, if song { t("SONG") } else { t("PAT") }, song, "Play mode");
     app.hint(&response, "Pattern mode loops the current pattern; Song mode plays the playlist");
     if response.clicked() {
         let _ = app.run("transport.set_mode", json!({ "mode": if song { "pattern" } else { "song" } }));
@@ -330,11 +330,11 @@ fn record_button(app: &mut BodoApp, ui: &mut Ui, recording: bool) {
         icons::PLAYER_RECORD.paint(painter, Rect::from_center_size(rect.center(), vec2(rem(1.12), rem(1.12))), color);
     });
     let hint = if counting {
-        "Counting in: recording starts after this bar"
+        en("Counting in: recording starts after this bar")
     } else if recording {
-        "Recording: click to stop; the takes land on the playlist"
+        en("Recording: click to stop; the takes land on the playlist")
     } else {
-        "Record: plays and records the armed mixer inserts and the notes you play"
+        en("Record: plays and records the armed mixer inserts and the notes you play")
     };
     app.hint(&record, hint);
     if record.clicked() {
@@ -351,9 +351,9 @@ fn one_click_recording(app: &mut BodoApp, ui: &mut Ui) {
     app.hint(
         &mic,
         if recording {
-            "Recording: click to stop; the take lands on the playlist"
+            en("Recording: click to stop; the take lands on the playlist")
         } else {
-            "One-click audio recording: arm an insert and record into the playlist"
+            en("One-click audio recording: arm an insert and record into the playlist")
         },
     );
     if !mic.clicked() {

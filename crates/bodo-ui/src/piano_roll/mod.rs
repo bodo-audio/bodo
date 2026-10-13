@@ -29,10 +29,10 @@ use egui::{Align2, FontId, Rect, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use serde_json::{Value, json};
 
 pub use self::lanes::Lane;
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::playlist::Tool;
 use crate::theme::{self, Tokens, rem, size};
-use crate::windows::{self, WindowKind, icon_button};
+use crate::windows::{self, WindowKind, icon_button_as};
 use crate::{BodoApp, control};
 
 /// The keyboard's width.
@@ -47,24 +47,49 @@ const SPLIT: f32 = rem(0.4);
 /// The tools the piano roll has: the playlist's, less Slip.
 pub const TOOLS: [Tool; 8] = [Tool::Draw, Tool::Paint, Tool::Delete, Tool::Mute, Tool::Slice, Tool::Select, Tool::Zoom, Tool::Playback];
 
-/// Chord qualities the stamp lays down, with the names the menu shows.
+/// Chord qualities the stamp lays down, with the names the menu shows, in English.
 pub const STAMPS: [(&str, &str); 15] = [
-    ("", "Major"),
-    ("m", "Minor"),
-    ("7", "Dominant 7th"),
-    ("maj7", "Major 7th"),
-    ("m7", "Minor 7th"),
-    ("dim", "Diminished"),
-    ("aug", "Augmented"),
-    ("sus2", "Suspended 2nd"),
-    ("sus4", "Suspended 4th"),
-    ("add9", "Added 9th"),
-    ("6", "Major 6th"),
-    ("m6", "Minor 6th"),
-    ("9", "Dominant 9th"),
-    ("m9", "Minor 9th"),
-    ("m7b5", "Half-diminished"),
+    ("", en("Major")),
+    ("m", en("Minor")),
+    ("7", en("Dominant 7th")),
+    ("maj7", en("Major 7th")),
+    ("m7", en("Minor 7th")),
+    ("dim", en("Diminished")),
+    ("aug", en("Augmented")),
+    ("sus2", en("Suspended 2nd")),
+    ("sus4", en("Suspended 4th")),
+    ("add9", en("Added 9th")),
+    ("6", en("Major 6th")),
+    ("m6", en("Minor 6th")),
+    ("9", en("Dominant 9th")),
+    ("m9", en("Minor 9th")),
+    ("m7b5", en("Half-diminished")),
 ];
+
+/// The names of the scale kinds in [`ScaleKind::ALL`]'s order, as [`ScaleKind::name`] gives them, which are also the keys
+/// of their translations.
+const SCALE_NAMES: [&str; 14] = [
+    en("major"),
+    en("minor"),
+    en("harmonic minor"),
+    en("melodic minor"),
+    en("dorian"),
+    en("phrygian"),
+    en("lydian"),
+    en("mixolydian"),
+    en("locrian"),
+    en("major pentatonic"),
+    en("minor pentatonic"),
+    en("blues"),
+    en("whole tone"),
+    en("chromatic"),
+];
+
+/// Scale kind `kind`'s name in the interface's language.
+fn scale_name(kind: ScaleKind) -> &'static str {
+    let english = ScaleKind::ALL.iter().position(|k| *k == kind).and_then(|i| SCALE_NAMES.get(i)).copied().unwrap_or(kind.name());
+    crate::i18n::lookup(english).unwrap_or(english)
+}
 
 /// The piano roll's tool, zoom, scroll, lanes, scale, stamp and the gesture in progress.
 #[derive(Debug)]
@@ -138,16 +163,16 @@ pub(crate) fn set_tool(app: &mut BodoApp, id: &str) -> Result<Value, String> {
 
 fn tool_hint(tool: Tool) -> &'static str {
     match tool {
-        Tool::Draw => {
-            "Draw (P): click to add a note or the stamp's chord, drag to move or resize, right-click to delete; Alt turns snap off; double-click a ghost note to edit its channel"
-        }
-        Tool::Paint => "Paint (B): drag to lay down notes along the path; right-drag deletes",
-        Tool::Delete => "Delete (D): click or drag over notes to delete them",
-        Tool::Mute => "Mute (T): click or drag over notes to mute or unmute them",
-        Tool::Slice => "Slice (C): drag a line to cut the notes it crosses; Shift slants it",
-        Tool::Select => "Select (E): drag a box to select notes; Shift adds or removes",
-        Tool::Zoom => "Zoom (Z): drag a box to zoom to it, click to zoom in, right-click to zoom out",
-        Tool::Playback => "Playback (Y): hold to play the pattern from the pointer; drag to scrub",
+        Tool::Draw => en(
+            "Draw (P): click to add a note or the stamp's chord, drag to move or resize, right-click to delete; Alt turns snap off; double-click a ghost note to edit its channel",
+        ),
+        Tool::Paint => en("Paint (B): drag to lay down notes along the path; right-drag deletes"),
+        Tool::Delete => en("Delete (D): click or drag over notes to delete them"),
+        Tool::Mute => en("Mute (T): click or drag over notes to mute or unmute them"),
+        Tool::Slice => en("Slice (C): drag a line to cut the notes it crosses; Shift slants it"),
+        Tool::Select => en("Select (E): drag a box to select notes; Shift adds or removes"),
+        Tool::Zoom => en("Zoom (Z): drag a box to zoom to it, click to zoom in, right-click to zoom out"),
+        Tool::Playback => en("Playback (Y): hold to play the pattern from the pointer; drag to scrub"),
         Tool::Slip => "",
     }
 }
@@ -192,7 +217,8 @@ fn targets(app: &BodoApp, pattern: &Pattern, channel: ChannelId) -> Vec<u32> {
 
 fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<&Pattern>, channel: Option<ChannelId>) {
     for tool in TOOLS {
-        let button = icon_button(ui, tool.icon(), &format!("Piano roll tool {}", tool.label()), app.view.piano.tool == tool);
+        let label = format!("Piano roll tool {}", tool.label());
+        let button = icon_button_as(ui, tool.icon(), &label, t(crate::shortcuts::tool_title(tool)), app.view.piano.tool == tool);
         let hint = crate::shortcuts::tool_hint(app, ui.ctx(), tool, tool_hint(tool));
         app.hint(&button, hint);
         if button.clicked() {
@@ -215,7 +241,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, pattern: Option<&Pa
     if ghosts.clicked() {
         app.view.piano.ghosts = !app.view.piano.ghosts;
     }
-    let name = channel.and_then(|c| project.channels.get(&c)).map(|c| c.name.clone()).unwrap_or_else(|| String::from("No channel"));
+    let name = channel.and_then(|c| project.channels.get(&c)).map(|c| c.name.clone()).unwrap_or_else(|| String::from(t("No channel")));
     let combo = egui::ComboBox::from_id_salt("bodo-piano-channel").width(rem(7.2)).selected_text(name).show_ui(ui, |ui| {
         for id in project.rack_order.iter() {
             if let Some(c) = project.channels.get(id)
@@ -240,7 +266,7 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
     let menu = ui.menu_button(t("Tools"), |ui| {
         ui.set_min_width(rem(14.4));
         let mut item = |ui: &mut Ui, label: &str, id: &'static str, params: Value| {
-            if ui.button(label).clicked() {
+            if ui.button(crate::i18n::lookup(label).unwrap_or(label)).clicked() {
                 chosen = Some((id, params));
                 ui.close();
             }
@@ -249,15 +275,15 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         item(ui, "Quantize starts and ends", "note.quantize", json!({ "notes": notes, "grid": step, "ends": true }));
         item(ui, "Un-humanize", "note.unhumanize", json!({ "notes": notes }));
         item(ui, "Humanize", "note.humanize", json!({ "notes": notes }));
-        let (root, kind) = scale.map_or(("C", "major"), |s| (s.root.name(), s.kind.name()));
-        let params = json!({ "pattern": pattern.id, "channel": channel, "root": root, "scale": kind, "step": step, "seed": seed });
-        item(ui, &format!("Randomize in {root} {kind}"), "note.randomize", params);
+        let (root, kind) = scale.map_or(("C", ScaleKind::Major), |s| (s.root.name(), s.kind));
+        let params = json!({ "pattern": pattern.id, "channel": channel, "root": root, "scale": kind.name(), "step": step, "seed": seed });
+        item(ui, &tf!("Randomize in {root} {scale}", root = root, scale = scale_name(kind)), "note.randomize", params);
         ui.separator();
         item(ui, "Legato", "note.legato", json!({ "notes": notes }));
         item(ui, "Chop to the snap", "note.chop", json!({ "notes": notes, "length": step }));
         item(ui, "Glue", "note.glue", json!({ "notes": notes }));
         ui.menu_button(t("Articulate"), |ui| {
-            for (label, amount) in [("Staccato", 0.25), ("Half", 0.5), ("Tenuto", 0.9), ("Full length", 1.0)] {
+            for (label, amount) in [(en("Staccato"), 0.25), (en("Half"), 0.5), (en("Tenuto"), 0.9), (en("Full length"), 1.0)] {
                 item(ui, label, "note.articulate", json!({ "notes": notes, "amount": amount }));
             }
         });
@@ -265,12 +291,12 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         item(ui, "Strum down", "note.strum", json!({ "notes": notes, "direction": "down" }));
         ui.menu_button(t("Arpeggiate"), |ui| {
             for (label, order) in [
-                ("Up", "up"),
-                ("Down", "down"),
-                ("Up and down", "upDown"),
-                ("Down and up", "downUp"),
-                ("Random", "random"),
-                ("As played", "asPlayed"),
+                (en("Up"), "up"),
+                (en("Down"), "down"),
+                (en("Up and down"), "upDown"),
+                (en("Down and up"), "downUp"),
+                (en("Random"), "random"),
+                (en("As played"), "asPlayed"),
             ] {
                 item(ui, label, "note.arpeggiate", json!({ "notes": notes, "order": order, "rate": step }));
             }
@@ -283,7 +309,7 @@ fn note_tools_menu(app: &mut BodoApp, ui: &mut Ui, pattern: &Pattern, channel: C
         match scale {
             Some(scale) => {
                 let params = json!({ "notes": notes, "root": scale.root.name(), "scale": scale.kind.name() });
-                item(ui, &format!("Limit to {} {}", scale.root.name(), scale.kind.name()), "note.limit_to_scale", params);
+                item(ui, &tf!("Limit to {root} {scale}", root = scale.root.name(), scale = scale_name(scale.kind)), "note.limit_to_scale", params);
             }
             None => {
                 ui.add_enabled(false, egui::Button::new(t("Limit to scale"))).on_disabled_hover_text(t("Choose a scale first"));
@@ -320,7 +346,7 @@ fn stamp_menu(app: &mut BodoApp, ui: &mut Ui) {
         app.view.piano.stamp = None;
     }
     for (quality, name) in STAMPS {
-        if ui.selectable_label(current == Some(quality), name).clicked() {
+        if ui.selectable_label(current == Some(quality), t(name)).clicked() {
             app.view.piano.stamp = Some(quality);
         }
     }
@@ -344,7 +370,7 @@ fn scale_menu(app: &mut BodoApp, ui: &mut Ui) {
     });
     ui.separator();
     for kind in ScaleKind::ALL {
-        if ui.selectable_label(current.is_some_and(|s| s.kind == kind), kind.name()).clicked() {
+        if ui.selectable_label(current.is_some_and(|s| s.kind == kind), scale_name(kind)).clicked() {
             app.view.piano.scale = Some(Scale::new(root, kind));
         }
     }
@@ -355,8 +381,8 @@ fn chips(app: &mut BodoApp, ui: &mut Ui) {
     let tk = Tokens::get();
     let chip = |ui: &mut Ui, text: String| ui.add(egui::Button::new(egui::RichText::new(text).size(size::SMALL).color(tk.accent)).frame(false));
     if let Some(quality) = app.view.piano.stamp {
-        let name = STAMPS.iter().find(|(q, _)| *q == quality).map_or(quality, |(_, n)| n);
-        let response = chip(ui, format!("Stamp: {name}"));
+        let name = STAMPS.iter().find(|(q, _)| *q == quality).map_or(quality, |(_, n)| t(n));
+        let response = chip(ui, tf!("Stamp: {name}", name = name));
         control::record(ui, &response, "Piano roll stamp", "chip", None);
         app.hint(&response, "Draw lays down this chord; click to draw single notes again");
         if response.clicked() {
@@ -364,7 +390,7 @@ fn chips(app: &mut BodoApp, ui: &mut Ui) {
         }
     }
     if let Some(scale) = app.view.piano.scale {
-        let response = chip(ui, format!("{} {}", scale.root.name(), scale.kind.name()));
+        let response = chip(ui, format!("{} {}", scale.root.name(), scale_name(scale.kind)));
         control::record(ui, &response, "Piano roll scale", "chip", None);
         app.hint(&response, "The highlighted scale; click to turn the highlight off");
         if response.clicked() {
@@ -730,5 +756,18 @@ fn playhead(app: &BodoApp, painter: &egui::Painter, area: Rect, grid: &Grid) {
     let x = grid.x(app.session.transport().position.0 as f64);
     if x >= area.left() && x <= area.right() {
         painter.with_clip_rect(area).vline(x, area.y_range(), Stroke::new(1.5, Tokens::get().playhead));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scale_names_follow_the_scale_kinds() {
+        assert_eq!(ScaleKind::ALL.len(), SCALE_NAMES.len());
+        for (kind, name) in ScaleKind::ALL.iter().zip(SCALE_NAMES) {
+            assert_eq!(kind.name(), name);
+        }
     }
 }

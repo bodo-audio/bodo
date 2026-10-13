@@ -12,6 +12,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 use bodo_engine::{Env, Session, locate_factory};
+use bodo_ui::i18n::t;
 use bodo_ui::{BodoApp, PREFS_KEY, Prefs, Services};
 
 #[cfg(target_os = "macos")]
@@ -147,14 +148,14 @@ fn save_dialog(suggestion: &str) -> rfd::FileDialog {
 
 fn services() -> Services {
     Services {
-        pick_open: Some(Box::new(|| rfd::FileDialog::new().add_filter("Bodo project", &["bodo"]).pick_file())),
-        pick_save: Some(Box::new(|name: &str| save_dialog(name).add_filter("Bodo project", &["bodo"]).save_file())),
+        pick_open: Some(Box::new(|| rfd::FileDialog::new().add_filter(t("Bodo project"), &["bodo"]).pick_file())),
+        pick_save: Some(Box::new(|name: &str| save_dialog(name).add_filter(t("Bodo project"), &["bodo"]).save_file())),
         pick_samples: Some(Box::new(|| {
-            rfd::FileDialog::new().add_filter("Audio", &bodo_engine::samples::AUDIO_EXTENSIONS).pick_files().unwrap_or_default()
+            rfd::FileDialog::new().add_filter(t("Audio"), &bodo_engine::samples::AUDIO_EXTENSIONS).pick_files().unwrap_or_default()
         })),
         pick_folder: Some(Box::new(|| rfd::FileDialog::new().pick_folder())),
-        pick_midi: Some(Box::new(|| rfd::FileDialog::new().add_filter("MIDI file", &["mid", "midi"]).pick_file())),
-        pick_midi_save: Some(Box::new(|name: &str| save_dialog(name).add_filter("MIDI file", &["mid"]).save_file())),
+        pick_midi: Some(Box::new(|| rfd::FileDialog::new().add_filter(t("MIDI file"), &["mid", "midi"]).pick_file())),
+        pick_midi_save: Some(Box::new(|name: &str| save_dialog(name).add_filter(t("MIDI file"), &["mid"]).save_file())),
         memory: Some(bodo_ui::resident_memory),
     }
 }

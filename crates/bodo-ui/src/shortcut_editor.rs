@@ -154,7 +154,7 @@ fn row(ui: &mut Ui, ctx: &egui::Context, binding: &Binding, listening: Option<&s
         let default = binding.default.as_deref().map_or_else(|| String::from("none"), |d| shortcuts::display(ctx, d));
         let reset = ui.add(egui::Button::new(RichText::new(t("Reset")).size(size::SMALL)).small());
         control::record(ui, &reset, &format!("Reset shortcut {}", binding.id), "button", None);
-        if reset.on_hover_text(format!("Bodo's keys: {default}")).clicked() {
+        if reset.on_hover_text(tf!("Bodo's keys: {keys}", keys = default)).clicked() {
             change = Some(Change::Reset(Some(binding.id.clone())));
         }
     } else {

@@ -111,6 +111,6 @@ pub(crate) fn recover(app: &mut BodoApp, path: &Path) {
             app.session.recover(project);
             app.set_status("Recovered; save it to keep it", false);
         }
-        Err(error) => app.set_status(format!("Could not recover: {error}"), true),
+        Err(error) => app.set_status(tf!("Could not recover: {error}", error = error), true),
     }
 }

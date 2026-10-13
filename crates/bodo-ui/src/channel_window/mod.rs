@@ -21,7 +21,7 @@ use egui::{Rect, RichText, Ui, vec2};
 use serde_json::{Value, json};
 
 pub use self::sampler::SamplerTab;
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{Tokens, rem, size};
 use crate::windows::{WindowState, show_frame};
 use crate::{BodoApp, control};
@@ -86,12 +86,12 @@ pub(crate) fn show_all(app: &mut BodoApp, ctx: &egui::Context, workspace: Rect, 
     for mut window in windows {
         let Some(channel) = project.channels.get(&window.channel).cloned() else { continue };
         let (icon, kind) = match &channel.kind {
-            ChannelKind::Sampler(_) => (icons::WAVE_SINE, "Sampler"),
-            ChannelKind::Instrument { .. } => (icons::PIANO, "Instrument"),
-            ChannelKind::AudioClip { .. } => (icons::FILE_MUSIC, "Audio clip"),
-            ChannelKind::Automation(_) => (icons::ADJUSTMENTS_HORIZONTAL, "Automation"),
-            ChannelKind::Layer { .. } => (icons::COPY, "Layer"),
-            ChannelKind::MidiOut { .. } => (icons::EXTERNAL_LINK, "MIDI Out"),
+            ChannelKind::Sampler(_) => (icons::WAVE_SINE, en("Sampler")),
+            ChannelKind::Instrument { .. } => (icons::PIANO, en("Instrument")),
+            ChannelKind::AudioClip { .. } => (icons::FILE_MUSIC, en("Audio clip")),
+            ChannelKind::Automation(_) => (icons::ADJUSTMENTS_HORIZONTAL, en("Automation")),
+            ChannelKind::Layer { .. } => (icons::COPY, en("Layer")),
+            ChannelKind::MidiOut { .. } => (icons::EXTERNAL_LINK, en("MIDI Out")),
         };
         let title = format!("{kind} - {}", channel.name);
         // A tab chosen in the title bar shows from the next frame on.
@@ -154,9 +154,9 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
     ui.horizontal(|ui| {
         let mut pan = channel.pan;
         labeled(ui, "Pan", |ui| {
-            let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(rem(2.08)).label(format!("{name} window pan")));
+            let knob = ui.add(bodo_kit_ui::knob::pan(&mut pan).diameter(rem(2.08)).label(tf!("{name} window pan", name = name)));
             control::record(ui, &knob, &format!("{name} window pan"), "knob", None);
-            app.hint(&knob, format!("Pan: {}", bodo_kit_ui::knob::format_pan(pan)));
+            app.hint(&knob, tf!("Pan: {value}", value = bodo_kit_ui::knob::format_pan(pan)));
             if knob.changed() {
                 app.run_gesture(&knob, "channel.set_pan", json!({ "channel": id, "pan": pan }));
             }
@@ -167,11 +167,11 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
                 Knob::new(&mut volume, 0.0..=2.0)
                     .default(1.0)
                     .diameter(rem(2.08))
-                    .label(format!("{name} window volume"))
+                    .label(tf!("{name} window volume", name = name))
                     .format(|v| format!("{:.0}%", v * 100.0)),
             );
             control::record(ui, &knob, &format!("{name} window volume"), "knob", None);
-            app.hint(&knob, format!("Volume: {:.0}%", volume * 100.0));
+            app.hint(&knob, tf!("Volume: {percent}%", percent = format!("{:.0}", volume * 100.0)));
             if knob.changed() {
                 app.run_gesture(&knob, "channel.set_volume", json!({ "channel": id, "volume": volume }));
             }
@@ -188,11 +188,11 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
                     .default(0.0)
                     .origin(0.0)
                     .diameter(rem(2.08))
-                    .label(format!("{name} window pitch"))
-                    .format(|v| format!("{v:+.2} st")),
+                    .label(tf!("{name} window pitch", name = name))
+                    .format(|v| format!("{v:+.2} {}", t("st"))),
             );
             control::record(ui, &knob, &format!("{name} window pitch"), "knob", None);
-            app.hint(&knob, format!("Pitch: {semitones:+.2} semitones, up to {range} either way"));
+            app.hint(&knob, tf!("Pitch: {semitones} semitones, up to {range} either way", semitones = format!("{semitones:+.2}"), range = range));
             if knob.changed() {
                 app.run_gesture(&knob, "channel.set_pitch", json!({ "channel": id, "cents": (semitones * 100.0).round() }));
             }
@@ -200,7 +200,8 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
         if let ChannelKind::Sampler(params) = &channel.kind {
             labeled(ui, "Range", |ui| {
                 let mut pitch_range = params.pitch_range;
-                let drag = ui.add(egui::DragValue::new(&mut pitch_range).range(1.0..=48.0).speed(0.2).fixed_decimals(0).suffix(" st"));
+                let drag =
+                    ui.add(egui::DragValue::new(&mut pitch_range).range(1.0..=48.0).speed(0.2).fixed_decimals(0).suffix(format!(" {}", t("st"))));
                 control::record(ui, &drag, &format!("{name} pitch range"), "number", None);
                 app.hint(&drag, "How far the pitch knob reaches, in semitones either way");
                 if drag.changed() {
@@ -217,7 +218,7 @@ fn header(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) 
 /// The mixer insert the channel plays into.
 fn insert_combo(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel) {
     let number = channel.target.and_then(|t| bodo_engine::insert_number(project, t)).unwrap_or(0);
-    let shown = if number == 0 { String::from("Master") } else { format!("Insert {number}") };
+    let shown = if number == 0 { String::from(t("Master")) } else { tf!("Insert {number}", number = number) };
     let combo = egui::ComboBox::from_id_salt(("channel-window-insert", channel.id)).width(rem(7.68)).selected_text(shown).show_ui(ui, |ui| {
         if ui.selectable_label(number == 0, t("Master")).clicked() {
             let _ = app.run("channel.set_target_insert", json!({ "channel": channel.id, "insert": 0 }));
@@ -232,22 +233,28 @@ fn insert_combo(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Cha
     app.hint(&combo.response, "The mixer insert this channel plays into");
 }
 
-/// `add` above a small caption.
+/// `add` above a small caption, English, shown translated.
 fn labeled(ui: &mut Ui, caption: &str, add: impl FnOnce(&mut Ui)) {
     ui.vertical(|ui| {
         ui.set_min_width(rem(3.52));
         add(ui);
-        ui.label(RichText::new(caption).size(size::SMALL).color(Tokens::get().text_dim));
+        ui.label(RichText::new(shown(caption)).size(size::SMALL).color(Tokens::get().text_dim));
     });
 }
 
-/// A section heading.
+/// A section heading, English, shown translated.
 fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(rem(0.32));
-    ui.label(RichText::new(text).size(size::BODY).strong().color(Tokens::get().text));
+    ui.label(RichText::new(shown(text)).size(size::BODY).strong().color(Tokens::get().text));
 }
 
-/// What a sampler control edits: the channel and the name of the control, for labels and hints.
+/// English `text` in the interface's language.
+fn shown(text: &str) -> &str {
+    crate::i18n::lookup(text).unwrap_or(text)
+}
+
+/// What a sampler control edits: the channel and the name of the control, for labels and hints, in English. The
+/// control channel names the control in English; people see it translated.
 struct Field<'a> {
     channel: &'a Channel,
     label: &'a str,
@@ -257,6 +264,11 @@ struct Field<'a> {
 impl Field<'_> {
     fn element(&self) -> String {
         format!("{} {}", self.channel.name, self.label)
+    }
+
+    /// The control's name for screen readers and its tooltip: the channel's and the control's, translated.
+    fn spoken(&self) -> String {
+        format!("{} {}", self.channel.name, shown(self.label))
     }
 }
 
@@ -275,9 +287,9 @@ fn sampler_knob(
     let mut value = value;
     labeled(ui, field.label, |ui| {
         let element = field.element();
-        let knob = ui.add(Knob::new(&mut value, range).default(default).diameter(rem(2.08)).label(element.clone()).format(format));
+        let knob = ui.add(Knob::new(&mut value, range).default(default).diameter(rem(2.08)).label(field.spoken()).format(format));
         control::record(ui, &knob, &element, "knob", None);
-        app.hint(&knob, format!("{}: {}", field.hint, format(value)));
+        app.hint(&knob, format!("{}: {}", shown(field.hint), format(value)));
         if knob.changed() {
             app.run_gesture(&knob, "sampler.set", with_channel(field.channel, params(value)));
         }
@@ -287,7 +299,7 @@ fn sampler_knob(
 /// A checkbox for a sampler setting.
 fn sampler_check(app: &mut BodoApp, ui: &mut Ui, field: Field<'_>, value: bool, params: impl FnOnce(bool) -> Value) {
     let mut value = value;
-    let check = ui.checkbox(&mut value, field.label);
+    let check = ui.checkbox(&mut value, shown(field.label));
     control::record(ui, &check, &field.element(), "checkbox", Some(value));
     app.hint(&check, field.hint);
     if check.changed() {
@@ -298,9 +310,9 @@ fn sampler_check(app: &mut BodoApp, ui: &mut Ui, field: Field<'_>, value: bool, 
 /// A list of choices for a sampler setting: `options` pairs each choice's label with the params it sends.
 fn sampler_combo(app: &mut BodoApp, ui: &mut Ui, field: Field<'_>, current: &str, options: Vec<(&str, Value)>) {
     let mut chosen = None;
-    let combo = egui::ComboBox::from_id_salt(field.element()).width(rem(8.8)).selected_text(current).show_ui(ui, |ui| {
+    let combo = egui::ComboBox::from_id_salt(field.element()).width(rem(8.8)).selected_text(shown(current)).show_ui(ui, |ui| {
         for (label, params) in options {
-            if ui.selectable_label(label == current, label).clicked() {
+            if ui.selectable_label(label == current, shown(label)).clicked() {
                 chosen = Some(params);
             }
         }

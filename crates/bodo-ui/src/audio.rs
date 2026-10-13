@@ -222,7 +222,7 @@ impl Audio {
         Self {
             running: None,
             prefs: AudioPrefs::default(),
-            status: String::from("Audio is off"),
+            status: String::from(crate::i18n::en("Audio is off")),
             seen_revision: None,
             sent_mode: None,
             meter: Arc::new(Meter::default()),
@@ -257,7 +257,7 @@ impl Audio {
             let (mut engine, audio) = match bodo_mix::engine(project, &session.sample_roots(), config) {
                 Ok(pair) => pair,
                 Err(error) => {
-                    self.status = format!("The audio engine could not start: {error}");
+                    self.status = tf!("The audio engine could not start: {error}", error = error);
                     return;
                 }
             };
@@ -301,7 +301,7 @@ impl Audio {
                 }
                 Err(error) => {
                     tracing::warn!(%error, "no audio device");
-                    self.status = format!("No sound: {error}");
+                    self.status = tf!("No sound: {error}", error = error);
                 }
             }
         }
@@ -462,7 +462,7 @@ impl Audio {
         }
         let Some(running) = self.running.as_mut() else { return };
         if let Some(error) = running.preview.poll() {
-            self.status = format!("Could not preview: {error}");
+            self.status = tf!("Could not preview: {error}", error = error);
         }
         let mut reopen = false;
         for event in events {
@@ -486,9 +486,10 @@ impl Audio {
                     let armed = mixer.inserts.values().chain(std::iter::once(&mixer.master)).any(|insert| insert.armed);
                     let compensation = Compensation::from_status(&running.stream.status());
                     self.status = match armed.then(|| running.engine.start_recording(session.project(), &recording_folder(session), compensation)) {
-                        None => String::from("Recording notes"),
-                        Some(Ok(count)) => format!("Recording {count} insert{}", if count == 1 { "" } else { "s" }),
-                        Some(Err(error)) => format!("Not recording audio: {error}"),
+                        None => String::from(crate::i18n::t("Recording notes")),
+                        Some(Ok(1)) => String::from(crate::i18n::t("Recording 1 insert")),
+                        Some(Ok(count)) => tf!("Recording {count} inserts", count = count),
+                        Some(Err(error)) => tf!("Not recording audio: {error}", error = error),
                     };
                     running.take = take_target(session);
                     running.engine.record();
@@ -538,8 +539,9 @@ impl Audio {
             && let Some(done) = running.engine.finish_recording()
         {
             self.status = match done.map_err(|e| e.to_string()).and_then(|takes| place_takes(session, &takes)) {
-                Ok(count) => format!("Recorded {count} take{}", if count == 1 { "" } else { "s" }),
-                Err(error) => format!("The recording could not be placed: {error}"),
+                Ok(1) => String::from(crate::i18n::t("Recorded 1 take")),
+                Ok(count) => tf!("Recorded {count} takes", count = count),
+                Err(error) => tf!("The recording could not be placed: {error}", error = error),
             };
         }
         let project = session.project();
@@ -553,7 +555,7 @@ impl Audio {
         self.stream_status = running.stream.status();
         if self.stream_status.disconnected {
             self.running = None;
-            self.status = String::from("The audio device went away; open Options > Audio settings to reconnect");
+            self.status = String::from(crate::i18n::t("The audio device went away; open Options > Audio settings to reconnect"));
             return;
         }
         let (left, right) = self.meter.take();
@@ -579,7 +581,7 @@ fn add_take(session: &mut Session, target: TakeTarget, notes: &[bodo_mix::Record
     if calls.is_empty() {
         return;
     }
-    if let Err(error) = session.batch(&calls, Some("Record MIDI")) {
+    if let Err(error) = session.batch(&calls, Some(crate::i18n::en("Record MIDI"))) {
         tracing::warn!(%error, "the MIDI recording could not be added");
     }
 }

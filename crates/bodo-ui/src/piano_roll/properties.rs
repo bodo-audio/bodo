@@ -53,7 +53,7 @@ impl Editing {
 
 /// A row of the dialog: its label, and the control `add` puts beside it, recorded for tests and agents as `name`.
 fn row(ui: &mut Ui, label: &str, name: &str, add: impl FnOnce(&mut Ui) -> egui::Response) {
-    ui.label(label);
+    ui.label(crate::i18n::lookup(label).unwrap_or(label));
     let response = add(ui);
     control::record(ui, &response, name, "field", None);
     ui.end_row();
@@ -74,7 +74,7 @@ pub(super) fn dialog(app: &mut BodoApp, ctx: &egui::Context, project: &Project, 
         slot => slot.insert(Editing::of(&note)),
     };
     egui::Modal::new(egui::Id::new("bodo-note-properties")).show(ctx, |ui| {
-        ui.label(RichText::new(format!("Note {}", key_name(editing.key))).strong());
+        ui.label(RichText::new(tf!("Note {key}", key = key_name(editing.key))).strong());
         ui.add_space(rem(0.32));
         egui::Grid::new("bodo-note-properties-grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             row(ui, "Key", "Note key", |ui| ui.add(egui::DragValue::new(&mut editing.key).range(0..=127).custom_formatter(|v, _| key_name(v as u8))));

@@ -27,7 +27,10 @@ pub type Field = (String, String, bool);
 #[derive(Clone, Debug)]
 struct Entry {
     id: String,
+    /// The title in the interface's language.
     title: String,
+    /// The title in English, which a search matches too.
+    english: String,
     summary: String,
     shortcut: Option<String>,
     required: Vec<String>,
@@ -49,8 +52,9 @@ fn entries(app: &BodoApp, ctx: &egui::Context) -> Vec<Entry> {
             let fields = bodo_engine::docs::params_table(spec).into_iter().map(|(name, _, required, _)| (name, required)).collect();
             Entry {
                 id: spec.id.to_owned(),
-                title: spec.title.to_owned(),
-                summary: spec.summary.to_owned(),
+                title: crate::i18n::tr(spec.title),
+                english: spec.title.to_owned(),
+                summary: crate::i18n::tr(spec.summary),
                 shortcut: crate::shortcuts::command_keys(app, spec.id, spec.shortcut).map(|s| crate::shortcuts::display(ctx, &s)),
                 required,
                 fields,
@@ -59,8 +63,9 @@ fn entries(app: &BodoApp, ctx: &egui::Context) -> Vec<Entry> {
         .collect();
     out.extend(BodoApp::ui_commands().iter().map(|(id, title, summary)| Entry {
         id: (*id).to_owned(),
-        title: (*title).to_owned(),
-        summary: (*summary).to_owned(),
+        title: crate::i18n::tr(title),
+        english: (*title).to_owned(),
+        summary: crate::i18n::tr(summary),
         shortcut: crate::shortcuts::command_keys(app, id, None).map(|s| crate::shortcuts::display(ctx, &s)),
         required: Vec::new(),
         fields: Vec::new(),
@@ -130,8 +135,10 @@ pub(crate) fn show(app: &mut BodoApp, ctx: &egui::Context) {
                 }
                 let field = ui.add(egui::TextEdit::singleline(&mut state.query).hint_text(t("Type a command")).desired_width(f32::INFINITY));
                 field.request_focus();
-                let mut found: Vec<(i32, Entry)> =
-                    entries(app, ctx).into_iter().filter_map(|e| score(&state.query, &format!("{} {}", e.title, e.id)).map(|s| (s, e))).collect();
+                let mut found: Vec<(i32, Entry)> = entries(app, ctx)
+                    .into_iter()
+                    .filter_map(|e| score(&state.query, &format!("{} {} {}", e.title, e.english, e.id)).map(|s| (s, e)))
+                    .collect();
                 found.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
                 found.truncate(12);
                 if ui.input(|i| i.key_pressed(Key::ArrowDown)) {

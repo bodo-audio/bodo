@@ -14,7 +14,7 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, Ui, pos2, vec2};
 use serde_json::json;
 
 use super::{Field, canvas, heading, labeled, sampler_check, sampler_combo, sampler_knob, with_channel};
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
@@ -30,10 +30,13 @@ pub enum SamplerTab {
 
 /// The tab buttons, in the title bar.
 pub(super) fn tabs(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, tab: &mut SamplerTab) {
-    for (choice, label) in [(SamplerTab::Sample, "Sample"), (SamplerTab::Envelopes, "Envelopes")] {
-        let button = ui.selectable_label(*tab == choice, label);
+    for (choice, label, hint) in [
+        (SamplerTab::Sample, en("Sample"), en("Show the Sampler's sample settings")),
+        (SamplerTab::Envelopes, en("Envelopes"), en("Show the Sampler's envelope settings")),
+    ] {
+        let button = ui.selectable_label(*tab == choice, t(label));
         control::record(ui, &button, &format!("{} tab {label}", channel.name), "tab", Some(*tab == choice));
-        app.hint(&button, format!("Show the Sampler's {} settings", label.to_lowercase()));
+        app.hint(&button, hint);
         if button.clicked() {
             *tab = choice;
         }
@@ -58,7 +61,7 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
         let name = params
             .sample
             .and_then(|s| project.samples.get(&s))
-            .map_or_else(|| String::from("No sample"), |s| bodo_engine::samples::display_name(&s.path));
+            .map_or_else(|| String::from(t("No sample")), |s| bodo_engine::samples::display_name(&s.path));
         ui.label(egui::RichText::new(name).size(size::BODY));
         let load = ui.button(t("Load..."));
         control::record(ui, &load, &format!("{} load sample", channel.name), "button", None);
@@ -104,9 +107,9 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
     heading(ui, "Playback");
     ui.horizontal_wrapped(|ui| {
         let loop_label = match params.loop_mode {
-            LoopMode::Off => "No loop",
-            LoopMode::Forward => "Loop",
-            LoopMode::PingPong => "Ping-pong loop",
+            LoopMode::Off => en("No loop"),
+            LoopMode::Forward => en("Loop"),
+            LoopMode::PingPong => en("Ping-pong loop"),
         };
         sampler_combo(
             app,
@@ -114,16 +117,16 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
             field(channel, "Loop", "How the sample loops between the loop markers"),
             loop_label,
             vec![
-                ("No loop", json!({ "loopMode": "off" })),
-                ("Loop", json!({ "loopMode": "forward" })),
-                ("Ping-pong loop", json!({ "loopMode": "pingPong" })),
+                (en("No loop"), json!({ "loopMode": "off" })),
+                (en("Loop"), json!({ "loopMode": "forward" })),
+                (en("Ping-pong loop"), json!({ "loopMode": "pingPong" })),
             ],
         );
         let declick = match params.declick {
-            Declick::Off => "No declicking",
-            Declick::Transient => "Transient",
-            Declick::Generic => "Generic",
-            Declick::Smooth => "Smooth",
+            Declick::Off => en("No declicking"),
+            Declick::Transient => en("Transient"),
+            Declick::Generic => en("Generic"),
+            Declick::Smooth => en("Smooth"),
         };
         sampler_combo(
             app,
@@ -131,10 +134,10 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
             field(channel, "Declicking", "Short fades at the start and end of notes against clicks"),
             declick,
             vec![
-                ("No declicking", json!({ "declick": "off" })),
-                ("Transient", json!({ "declick": "transient" })),
-                ("Generic", json!({ "declick": "generic" })),
-                ("Smooth", json!({ "declick": "smooth" })),
+                (en("No declicking"), json!({ "declick": "off" })),
+                (en("Transient"), json!({ "declick": "transient" })),
+                (en("Generic"), json!({ "declick": "generic" })),
+                (en("Smooth"), json!({ "declick": "smooth" })),
             ],
         );
         sampler_check(
@@ -158,13 +161,13 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
 
     heading(ui, "Time stretching");
     ui.horizontal_wrapped(|ui| {
-        let mode = if params.stretch.mode == SamplerStretchMode::Stretch { "Stretch" } else { "Resample" };
+        let mode = if params.stretch.mode == SamplerStretchMode::Stretch { en("Stretch") } else { en("Resample") };
         sampler_combo(
             app,
             ui,
             field(channel, "Stretch mode", "Resample changes length and pitch together, like tape; Stretch changes them apart"),
             mode,
-            vec![("Resample", json!({ "stretch": { "mode": "resample" } })), ("Stretch", json!({ "stretch": { "mode": "stretch" } }))],
+            vec![(en("Resample"), json!({ "stretch": { "mode": "resample" } })), (en("Stretch"), json!({ "stretch": { "mode": "stretch" } }))],
         );
         sampler_knob(
             app,
@@ -173,7 +176,7 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
             params.stretch.pitch_cents / 100.0,
             -24.0..=24.0,
             0.0,
-            |v| format!("{v:+.1} st"),
+            |v| format!("{v:+.1} {}", t("st")),
             |v| json!({ "stretch": { "pitchCents": (v * 100.0).round() } }),
         );
         sampler_knob(
@@ -193,7 +196,7 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
                     .range(0.0..=1024.0)
                     .speed(0.1)
                     .fixed_decimals(2)
-                    .custom_formatter(|v, _| if v <= 0.0 { String::from("Off") } else { format!("{v:.2} beats") }),
+                    .custom_formatter(|v, _| if v <= 0.0 { String::from(t("Off")) } else { tf!("{beats} beats", beats = format!("{v:.2}")) }),
             );
             control::record(ui, &drag, &format!("{} time", channel.name), "number", None);
             app.hint(&drag, "Fit the played part to this many beats at the project's tempo; off uses the multiplier");
@@ -207,12 +210,12 @@ fn sample_tab(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Chann
     let fx = params.effects;
     ui.horizontal_wrapped(|ui| {
         for (label, hint, value, key) in [
-            ("Trim", "Cut silence from both ends", fx.trim, "trim"),
-            ("Remove DC", "Remove any DC offset", fx.remove_dc, "removeDc"),
-            ("Normalize", "Bring the peak to full scale", fx.normalize, "normalize"),
-            ("Reverse polarity", "Invert the waveform", fx.reverse_polarity, "reversePolarity"),
-            ("Swap stereo", "Swap left and right", fx.swap_stereo, "swapStereo"),
-            ("Fade stereo", "Move the sound from left to right over its length", fx.fade_stereo, "fadeStereo"),
+            (en("Trim"), en("Cut silence from both ends"), fx.trim, "trim"),
+            (en("Remove DC"), en("Remove any DC offset"), fx.remove_dc, "removeDc"),
+            (en("Normalize"), en("Bring the peak to full scale"), fx.normalize, "normalize"),
+            (en("Reverse polarity"), en("Invert the waveform"), fx.reverse_polarity, "reversePolarity"),
+            (en("Swap stereo"), en("Swap left and right"), fx.swap_stereo, "swapStereo"),
+            (en("Fade stereo"), en("Move the sound from left to right over its length"), fx.fade_stereo, "fadeStereo"),
         ] {
             sampler_check(app, ui, field(channel, label, hint), value, |v| json!({ "effects": { key: v } }));
         }
@@ -285,6 +288,16 @@ impl Marker {
             Marker::LoopEnd => "loop end marker",
         }
     }
+
+    fn hint(self) -> &'static str {
+        match self {
+            Marker::Start => en("Drag the start marker"),
+            Marker::End => en("Drag the end marker"),
+            Marker::Offset => en("Drag the start offset marker"),
+            Marker::LoopStart => en("Drag the loop start marker"),
+            Marker::LoopEnd => en("Drag the loop end marker"),
+        }
+    }
 }
 
 /// The waveform of the sample as it plays, with its markers to drag and its slices or regions.
@@ -329,7 +342,12 @@ fn waveform(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel
         }
         let slices = preview.zones.len();
         if slices > 0 {
-            let note = format!("{slices} {} from {}", if params.load_regions { "regions" } else { "slices" }, key_name(params.root_key));
+            let key = key_name(params.root_key);
+            let note = if params.load_regions {
+                tf!("{count} regions from {key}", count = slices, key = key)
+            } else {
+                tf!("{count} slices from {key}", count = slices, key = key)
+            };
             painter.text(rect.right_top() + vec2(-rem(0.48), rem(0.32)), Align2::RIGHT_TOP, note, FontId::proportional(size::SMALL), tk.text_dim);
         }
     } else {
@@ -363,7 +381,7 @@ fn waveform(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: &Channel
         let label = format!("{} {}", channel.name, marker.label());
         let response = ui.interact(handle.expand(3.0), ui.id().with(("sampler-marker", channel.id, marker as u8)), Sense::drag());
         control::record(ui, &response, &label, "marker", None);
-        app.hint(&response, format!("Drag the {}", marker.label()));
+        app.hint(&response, marker.hint());
         if response.hovered() || response.dragged() {
             ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
@@ -398,16 +416,16 @@ fn triangle(handle: Rect, top: bool) -> Vec<Pos2> {
 
 fn envelopes_tab(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &SamplerParams) {
     heading(ui, "Volume envelope");
-    envelope(app, ui, channel, "Volume", "envelope", params.envelope, None);
+    envelope(app, ui, channel, &VOLUME, "envelope", params.envelope, None);
 
     heading(ui, "Filter");
     ui.horizontal_wrapped(|ui| {
         let kind = match params.filter.kind {
-            FilterKind::Off => "No filter",
-            FilterKind::LowPass => "Low pass",
-            FilterKind::HighPass => "High pass",
-            FilterKind::BandPass => "Band pass",
-            FilterKind::Notch => "Notch",
+            FilterKind::Off => en("No filter"),
+            FilterKind::LowPass => en("Low pass"),
+            FilterKind::HighPass => en("High pass"),
+            FilterKind::BandPass => en("Band pass"),
+            FilterKind::Notch => en("Notch"),
         };
         sampler_combo(
             app,
@@ -415,11 +433,11 @@ fn envelopes_tab(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &Sam
             field(channel, "Filter type", "The filter every voice goes through"),
             kind,
             vec![
-                ("No filter", json!({ "filter": { "kind": "off" } })),
-                ("Low pass", json!({ "filter": { "kind": "lowPass" } })),
-                ("High pass", json!({ "filter": { "kind": "highPass" } })),
-                ("Band pass", json!({ "filter": { "kind": "bandPass" } })),
-                ("Notch", json!({ "filter": { "kind": "notch" } })),
+                (en("No filter"), json!({ "filter": { "kind": "off" } })),
+                (en("Low pass"), json!({ "filter": { "kind": "lowPass" } })),
+                (en("High pass"), json!({ "filter": { "kind": "highPass" } })),
+                (en("Band pass"), json!({ "filter": { "kind": "bandPass" } })),
+                (en("Notch"), json!({ "filter": { "kind": "notch" } })),
             ],
         );
         sampler_knob(
@@ -459,20 +477,20 @@ fn envelopes_tab(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &Sam
         app,
         ui,
         channel,
-        "Filter",
+        &FILTER,
         "filterEnvelope",
         params.filter_envelope.adsr,
-        Some((params.filter_envelope.enabled, params.filter_envelope.amount, 8.0, "oct")),
+        Some((params.filter_envelope.enabled, params.filter_envelope.amount, 8.0, t("oct"))),
     );
     heading(ui, "Pitch envelope");
     envelope(
         app,
         ui,
         channel,
-        "Pitch",
+        &PITCH,
         "pitchEnvelope",
         params.pitch_envelope.adsr,
-        Some((params.pitch_envelope.enabled, params.pitch_envelope.amount, 48.0, "st")),
+        Some((params.pitch_envelope.enabled, params.pitch_envelope.amount, 48.0, t("st"))),
     );
 
     heading(ui, "Arpeggiator");
@@ -481,9 +499,9 @@ fn envelopes_tab(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &Sam
     heading(ui, "Keys");
     ui.horizontal(|ui| {
         for (label, value, key, hint) in [
-            ("Root key", params.root_key, "rootKey", "The key that plays the sample at its own pitch; slices start here"),
-            ("Lowest key", params.key_range.0, "lowKey", "The lowest key the sampler plays"),
-            ("Highest key", params.key_range.1, "highKey", "The highest key the sampler plays"),
+            (en("Root key"), params.root_key, "rootKey", en("The key that plays the sample at its own pitch; slices start here")),
+            (en("Lowest key"), params.key_range.0, "lowKey", en("The lowest key the sampler plays")),
+            (en("Highest key"), params.key_range.1, "highKey", en("The highest key the sampler plays")),
         ] {
             let mut number = f32::from(value);
             labeled(ui, label, |ui| {
@@ -507,9 +525,60 @@ fn round3(v: f32) -> f32 {
     (v * 1000.0).round() / 1000.0
 }
 
+/// What an envelope's controls are called, in English: its name for the control channel, its knobs' captions, and
+/// for a filter or pitch envelope, the hints of its switch and amount.
+struct EnvelopeText {
+    name: &'static str,
+    attack: &'static str,
+    decay: &'static str,
+    release: &'static str,
+    sustain: &'static str,
+    on_hint: &'static str,
+    amount_hint: &'static str,
+}
+
+const VOLUME: EnvelopeText = EnvelopeText {
+    name: "Volume",
+    attack: en("Volume attack"),
+    decay: en("Volume decay"),
+    release: en("Volume release"),
+    sustain: en("Volume sustain"),
+    on_hint: "",
+    amount_hint: "",
+};
+
+const FILTER: EnvelopeText = EnvelopeText {
+    name: "Filter",
+    attack: en("Filter attack"),
+    decay: en("Filter decay"),
+    release: en("Filter release"),
+    sustain: en("Filter sustain"),
+    on_hint: en("Let the envelope move the filter"),
+    amount_hint: en("How far the envelope moves the filter: {amount}"),
+};
+
+const PITCH: EnvelopeText = EnvelopeText {
+    name: "Pitch",
+    attack: en("Pitch attack"),
+    decay: en("Pitch decay"),
+    release: en("Pitch release"),
+    sustain: en("Pitch sustain"),
+    on_hint: en("Let the envelope move the pitch"),
+    amount_hint: en("How far the envelope moves the pitch: {amount}"),
+};
+
 /// An envelope: its curve with points to drag, and knobs for its times and sustain. A filter or pitch envelope also
 /// has its switch and amount, `(enabled, amount, range, unit)`.
-fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: &str, adsr: AdsrParams, modulation: Option<(bool, f32, f32, &str)>) {
+fn envelope(
+    app: &mut BodoApp,
+    ui: &mut Ui,
+    channel: &Channel,
+    text: &EnvelopeText,
+    key: &str,
+    adsr: AdsrParams,
+    modulation: Option<(bool, f32, f32, &str)>,
+) {
+    let name = text.name;
     let tk = Tokens::get();
     let enabled = modulation.is_none_or(|(on, ..)| on);
     if let Some((on, amount, range, unit)) = modulation {
@@ -518,7 +587,7 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
             let check = ui.checkbox(&mut on, t("On"));
             let element = format!("{} {} envelope on", channel.name, name.to_lowercase());
             control::record(ui, &check, &element, "checkbox", Some(on));
-            app.hint(&check, format!("Let the envelope move the {}", name.to_lowercase()));
+            app.hint(&check, text.on_hint);
             if check.changed() {
                 let _ = app.run("sampler.set", with_channel(channel, json!({ key: { "enabled": on } })));
             }
@@ -529,7 +598,7 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
                 name.to_lowercase()
             )));
             control::record(ui, &knob, &format!("{} {} amount", channel.name, name.to_lowercase()), "knob", None);
-            app.hint(&knob, format!("How far the envelope moves the {}: {value:+.1} {unit}", name.to_lowercase()));
+            app.hint(&knob, crate::i18n::t(text.amount_hint).replace("{amount}", &format!("{value:+.1} {unit}")));
             if knob.changed() {
                 app.run_gesture(&knob, "sampler.set", with_channel(channel, json!({ key: { "amount": (value * 10.0).round() / 10.0 } })));
             }
@@ -571,9 +640,9 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
         app.hint(
             &response,
             match stage {
-                "attack" => "Drag sideways to set the attack",
-                "decay" => "Drag sideways to set the decay, up and down for the sustain level",
-                _ => "Drag sideways to set the release",
+                "attack" => en("Drag sideways to set the attack"),
+                "decay" => en("Drag sideways to set the decay, up and down for the sustain level"),
+                _ => en("Drag sideways to set the release"),
             },
         );
         if response.dragged()
@@ -591,13 +660,15 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
         }
     }
     ui.horizontal(|ui| {
-        for (label, seconds, stage) in [("Attack", adsr.attack.0, "attack"), ("Decay", adsr.decay.0, "decay"), ("Release", adsr.release.0, "release")]
-        {
-            let text = format!("{name} {}", label.to_lowercase());
+        for (caption, hint, seconds, stage) in [
+            (text.attack, en("Attack"), adsr.attack.0, "attack"),
+            (text.decay, en("Decay"), adsr.decay.0, "decay"),
+            (text.release, en("Release"), adsr.release.0, "release"),
+        ] {
             sampler_knob(
                 app,
                 ui,
-                field(channel, &text, label),
+                field(channel, caption, hint),
                 seconds_knob(seconds as f32),
                 0.0..=1.0,
                 0.0,
@@ -605,11 +676,10 @@ fn envelope(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, name: &str, key: 
                 |v| json!({ key: { stage: knob_seconds(v) } }),
             );
         }
-        let text = format!("{name} sustain");
         sampler_knob(
             app,
             ui,
-            field(channel, &text, "Sustain level"),
+            field(channel, text.sustain, "Sustain level"),
             adsr.sustain,
             0.0..=1.0,
             1.0,
@@ -631,26 +701,43 @@ fn arpeggiator(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &Sampl
             |v| json!({ "arp": { "enabled": v } }),
         );
         let direction = match arp.direction {
-            ArpDirection::Up => "Up",
-            ArpDirection::Down => "Down",
-            ArpDirection::UpDown => "Up and down",
-            ArpDirection::DownUp => "Down and up",
-            ArpDirection::Random => "Random",
-            ArpDirection::AsPlayed => "As played",
+            ArpDirection::Up => en("Up"),
+            ArpDirection::Down => en("Down"),
+            ArpDirection::UpDown => en("Up and down"),
+            ArpDirection::DownUp => en("Down and up"),
+            ArpDirection::Random => en("Random"),
+            ArpDirection::AsPlayed => en("As played"),
         };
         sampler_combo(
             app,
             ui,
             field(channel, "Arp direction", "The order the held keys play in"),
             direction,
-            [("Up", "up"), ("Down", "down"), ("Up and down", "upDown"), ("Down and up", "downUp"), ("Random", "random"), ("As played", "asPlayed")]
-                .into_iter()
-                .map(|(label, id)| (label, json!({ "arp": { "direction": id } })))
-                .collect(),
+            [
+                (en("Up"), "up"),
+                (en("Down"), "down"),
+                (en("Up and down"), "upDown"),
+                (en("Down and up"), "downUp"),
+                (en("Random"), "random"),
+                (en("As played"), "asPlayed"),
+            ]
+            .into_iter()
+            .map(|(label, id)| (label, json!({ "arp": { "direction": id } })))
+            .collect(),
         );
-        const RATES: [(&str, i64); 7] =
-            [("1/4 step", 60), ("1/3 step", 80), ("1/2 step", 120), ("1 step", 240), ("2 steps", 480), ("1 beat", 960), ("1 bar", 3840)];
-        let rate = RATES.iter().find(|(_, ticks)| *ticks == arp.rate).map_or_else(|| format!("{} ticks", arp.rate), |(label, _)| (*label).to_owned());
+        const RATES: [(&str, i64); 7] = [
+            (en("1/4 step"), 60),
+            (en("1/3 step"), 80),
+            (en("1/2 step"), 120),
+            (en("1 step"), 240),
+            (en("2 steps"), 480),
+            (en("1 beat"), 960),
+            (en("1 bar"), 3840),
+        ];
+        let rate = RATES
+            .iter()
+            .find(|(_, ticks)| *ticks == arp.rate)
+            .map_or_else(|| tf!("{ticks} ticks", ticks = arp.rate), |(label, _)| (*label).to_owned());
         sampler_combo(
             app,
             ui,
@@ -669,8 +756,8 @@ fn arpeggiator(app: &mut BodoApp, ui: &mut Ui, channel: &Channel, params: &Sampl
             |v| json!({ "arp": { "gate": round3(v.max(0.01)) } }),
         );
         for (label, value, key, max, hint) in [
-            ("Octaves", arp.octaves, "octaves", 4.0, "How many octaves up the pattern climbs"),
-            ("Repeat", arp.repeat, "repeat", 8.0, "How many times each note plays before the next"),
+            (en("Octaves"), arp.octaves, "octaves", 4.0, en("How many octaves up the pattern climbs")),
+            (en("Repeat"), arp.repeat, "repeat", 8.0, en("How many times each note plays before the next")),
         ] {
             let mut number = f32::from(value);
             labeled(ui, label, |ui| {

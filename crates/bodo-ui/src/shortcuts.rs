@@ -206,7 +206,7 @@ pub(crate) fn ui_command_keys(id: &str) -> Option<&'static str> {
 }
 
 /// A tool's name in the shortcuts dialog, in English.
-fn tool_title(tool: Tool) -> &'static str {
+pub(crate) fn tool_title(tool: Tool) -> &'static str {
     match tool {
         Tool::Draw => en("Draw tool"),
         Tool::Paint => en("Paint tool"),
@@ -238,6 +238,7 @@ pub(crate) fn tool_keys(app: &BodoApp, tool: Tool) -> Option<String> {
 /// A tool's hint, such as "Draw (P): ...", with the key it has now in place of its default, or without a key when
 /// it has none.
 pub(crate) fn tool_hint(app: &BodoApp, ctx: &egui::Context, tool: Tool, hint: &str) -> String {
+    let hint = crate::i18n::lookup(hint).unwrap_or(hint);
     let default = format!("({})", tool.key().name());
     let now = tool_keys(app, tool).map(|keys| format!("({})", display(ctx, &keys)));
     match now {

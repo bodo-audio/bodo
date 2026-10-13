@@ -14,7 +14,7 @@ use imbl::Vector;
 use serde_json::json;
 
 use super::{canvas, heading, labeled};
-use crate::i18n::t;
+use crate::i18n::{en, t};
 use crate::theme::{self, Tokens, rem, size};
 use crate::{BodoApp, control};
 
@@ -34,20 +34,20 @@ pub(super) fn audio_clip(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
     let ChannelKind::AudioClip { sample, stretch, tempo } = &channel.kind else { return };
     let tk = Tokens::get();
     heading(ui, "Sample");
-    let name = project.samples.get(sample).map_or_else(|| String::from("Missing sample"), |s| bodo_engine::samples::display_name(&s.path));
+    let name = project.samples.get(sample).map_or_else(|| String::from(t("Missing sample")), |s| bodo_engine::samples::display_name(&s.path));
     ui.label(RichText::new(name).size(size::BODY));
 
     heading(ui, "Tempo");
     ui.horizontal(|ui| {
         let current = match stretch {
-            StretchMode::None => "Its own speed",
-            StretchMode::Resample => "Resample to the tempo",
-            StretchMode::Stretch => "Stretch to the tempo",
+            StretchMode::None => en("Its own speed"),
+            StretchMode::Resample => en("Resample to the tempo"),
+            StretchMode::Stretch => en("Stretch to the tempo"),
         };
         let mut chosen = None;
-        let combo = egui::ComboBox::from_id_salt(("audio-stretch", channel.id)).width(rem(13.6)).selected_text(current).show_ui(ui, |ui| {
-            for (label, mode) in [("Its own speed", "none"), ("Resample to the tempo", "resample"), ("Stretch to the tempo", "stretch")] {
-                if ui.selectable_label(label == current, label).clicked() {
+        let combo = egui::ComboBox::from_id_salt(("audio-stretch", channel.id)).width(rem(13.6)).selected_text(t(current)).show_ui(ui, |ui| {
+            for (label, mode) in [(en("Its own speed"), "none"), (en("Resample to the tempo"), "resample"), (en("Stretch to the tempo"), "stretch")] {
+                if ui.selectable_label(label == current, t(label)).clicked() {
                     chosen = Some(mode);
                 }
             }
@@ -79,25 +79,26 @@ pub(super) fn audio_clip(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
         ui.label(RichText::new(t("No clips yet: double-click the channel to draw it on the playlist")).size(size::SMALL).color(tk.text_dim));
         return;
     }
-    ui.label(
-        RichText::new(format!(
-            "{} {} on the playlist, from {}",
-            clips.len(),
-            if clips.len() == 1 { "clip" } else { "clips" },
-            format_position(project, clips.iter().map(|c| c.1).min().unwrap_or(Tick::ZERO))
-        ))
-        .size(size::SMALL)
-        .color(tk.text_dim),
-    );
+    let from = format_position(project, clips.iter().map(|c| c.1).min().unwrap_or(Tick::ZERO));
+    let summary = if clips.len() == 1 {
+        tf!("1 clip on the playlist, from {at}", at = from)
+    } else {
+        tf!("{count} clips on the playlist, from {at}", count = clips.len(), at = from)
+    };
+    ui.label(RichText::new(summary).size(size::SMALL).color(tk.text_dim));
     let fades = clips.first().and_then(|c| c.2).unwrap_or_default();
     let ids: Vec<ClipId> = clips.iter().map(|c| c.0).collect();
     ui.horizontal(|ui| {
-        for (label, ticks, key) in [("Fade in", fades.fade_in, "fadeIn"), ("Fade out", fades.fade_out, "fadeOut")] {
+        for (label, hint, ticks, key) in [
+            (en("Fade in"), en("The fade in of every clip of this channel"), fades.fade_in, "fadeIn"),
+            (en("Fade out"), en("The fade out of every clip of this channel"), fades.fade_out, "fadeOut"),
+        ] {
             let mut beats = ticks.0 as f32 / 960.0;
             labeled(ui, label, |ui| {
-                let drag = ui.add(egui::DragValue::new(&mut beats).range(0.0..=64.0).speed(0.02).fixed_decimals(2).suffix(" beats"));
+                let drag =
+                    ui.add(egui::DragValue::new(&mut beats).range(0.0..=64.0).speed(0.02).fixed_decimals(2).suffix(format!(" {}", t("beats"))));
                 control::record(ui, &drag, &format!("{} {}", channel.name, label.to_lowercase()), "number", None);
-                app.hint(&drag, format!("The {} of every clip of this channel", label.to_lowercase()));
+                app.hint(&drag, hint);
                 if drag.changed() {
                     app.run_gesture(&drag, "clip.set_fades", json!({ "clips": ids, key: (beats * 960.0).round() as i64 }));
                 }
@@ -106,40 +107,40 @@ pub(super) fn audio_clip(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
     });
 }
 
-/// What an automation lane controls, in words.
+/// What an automation lane controls, in words, in the interface's language.
 fn target_name(project: &Project, target: &ParamTarget) -> String {
-    let insert = |id| bodo_engine::insert_number(project, id).map_or_else(|| String::from("Master"), |n| format!("Insert {n}"));
+    let insert = |id| bodo_engine::insert_number(project, id).map_or_else(|| String::from(t("Master")), |n| tf!("Insert {number}", number = n));
     match target {
         ParamTarget::Insert(id, param) => {
             let param = match param {
-                InsertParam::Volume => "volume",
-                InsertParam::Pan => "pan",
-                InsertParam::StereoSep => "stereo separation",
+                InsertParam::Volume => en("volume"),
+                InsertParam::Pan => en("pan"),
+                InsertParam::StereoSep => en("stereo separation"),
             };
-            format!("{} {param}", insert(*id))
+            format!("{} {}", insert(*id), t(param))
         }
         ParamTarget::Slot(id, slot, param) => {
             let param = match param {
-                SlotParam::Mix => "mix",
-                SlotParam::Enabled => "switch",
+                SlotParam::Mix => en("mix"),
+                SlotParam::Enabled => en("switch"),
             };
-            format!("{} slot {} {param}", insert(*id), slot + 1)
+            tf!("{insert} slot {slot} {param}", insert = insert(*id), slot = slot + 1, param = t(param))
         }
-        ParamTarget::Plugin(_, param) => format!("Plugin parameter {param}"),
+        ParamTarget::Plugin(_, param) => tf!("Plugin parameter {param}", param = param),
         ParamTarget::Channel(id, param) => {
-            let name = project.channels.get(id).map_or_else(|| String::from("A removed channel"), |c| c.name.clone());
+            let name = project.channels.get(id).map_or_else(|| String::from(t("A removed channel")), |c| c.name.clone());
             let param = match param {
-                ChannelParam::Volume => String::from("volume"),
-                ChannelParam::Pan => String::from("pan"),
-                ChannelParam::Pitch => String::from("pitch"),
+                ChannelParam::Volume => String::from(t("volume")),
+                ChannelParam::Pan => String::from(t("pan")),
+                ChannelParam::Pitch => String::from(t("pitch")),
                 ChannelParam::Cc(n) => format!("CC {n}"),
-                ChannelParam::PitchBend => String::from("pitch bend"),
-                ChannelParam::Pressure => String::from("channel pressure"),
+                ChannelParam::PitchBend => String::from(t("pitch bend")),
+                ChannelParam::Pressure => String::from(t("channel pressure")),
             };
             format!("{name} {param}")
         }
-        ParamTarget::Route(_) => String::from("Send level"),
-        ParamTarget::Tempo => String::from("Tempo"),
+        ParamTarget::Route(_) => String::from(t("Send level")),
+        ParamTarget::Tempo => String::from(t("Tempo")),
     }
 }
 
@@ -168,9 +169,13 @@ pub(super) fn automation(app: &mut BodoApp, ui: &mut Ui, project: &Project, chan
     control::record_rect(ui, ui.id().with(("automation-curve", channel.id)), rect, &format!("{} curve", channel.name), "curve", None, false);
     let clips = clips_of(project, channel.id).len();
     ui.label(
-        RichText::new(format!("{} points, {clips} {} on the playlist", lane.points.len(), if clips == 1 { "clip" } else { "clips" }))
-            .size(size::SMALL)
-            .color(tk.text_dim),
+        RichText::new(if clips == 1 {
+            tf!("{points} points, 1 clip on the playlist", points = lane.points.len())
+        } else {
+            tf!("{points} points, {clips} clips on the playlist", points = lane.points.len(), clips = clips)
+        })
+        .size(size::SMALL)
+        .color(tk.text_dim),
     );
     ui.horizontal(|ui| {
         let draw = ui.button(t("Draw on the playlist"));
@@ -207,7 +212,7 @@ pub(super) fn layer(app: &mut BodoApp, ui: &mut Ui, project: &Project, channel: 
             ui.label(RichText::new(&c.name).size(size::BODY));
             let remove = ui.small_button(t("Remove"));
             control::record(ui, &remove, &format!("{} remove {}", channel.name, c.name), "button", None);
-            app.hint(&remove, format!("Stop playing {} from this layer", c.name));
+            app.hint(&remove, tf!("Stop playing {name} from this layer", name = c.name));
             if remove.clicked() {
                 set(app, children.iter().copied().filter(|id| id != child).collect());
             }
