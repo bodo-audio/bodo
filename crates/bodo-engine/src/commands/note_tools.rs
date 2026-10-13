@@ -877,5 +877,6 @@ pub(super) fn register(r: &mut Registry) {
         Effects::UNDOABLE,
         set_expression,
     )
-    .example(json!({ "note": 1, "pitch": [{ "at": 0, "value": 0.0 }, { "at": 120, "value": 1.0 }] }));
+    .example(json!({ "note": 1, "pitch": [{ "at": 0, "value": 0.0 }, { "at": 120, "value": 1.0 }] }))
+    .merge(super::whole);
 }

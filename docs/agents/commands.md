@@ -1750,6 +1750,7 @@ Example:
 Sets a note's pitch, pressure and timbre curves (MPE).
 
 - Effects: undoable
+- Calls in one gesture fold into one undo step.
 
 | Param | Type | Description |
 |---|---|---|
