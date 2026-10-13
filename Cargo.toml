@@ -24,6 +24,7 @@ bodo-kit-midi = { path = "kit/bodo-kit-midi" }
 
 # Bodo DAW
 bodo-control = { path = "crates/bodo-control" }
+bodo-io = { path = "crates/bodo-io" }
 bodo-mix = { path = "crates/bodo-mix" }
 bodo-model = { path = "crates/bodo-model" }
 
@@ -50,11 +51,13 @@ symphonia = { version = "0.6.1", features = ["aac", "aiff", "alac", "isomp4", "m
 midly = { version = "0.5.3", default-features = false, features = ["std"] }
 
 # Data, errors and logging
+blake3 = "1.8.7"
 imbl = { version = "7.0.2", features = ["serde"] }
 serde = { version = "1.0.229", features = ["derive", "rc"] }
 serde_json = { version = "1.0.154", features = ["float_roundtrip"] }
 thiserror = "2.0.21"
 ulid = "3.0.0"
+zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 tracing = { version = "0.1.41", default-features = false, features = ["std"] }
 
 # Platform services
