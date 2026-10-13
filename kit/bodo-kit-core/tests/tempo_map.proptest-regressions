@@ -1,0 +1,9 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 5cf6682f519de753d95e17f0ad21fc7b6fe50a5e88e990c5a01b0f4ab18ed028 # shrinks to points = [TempoPoint { at: Tick(0), bpm: 1.0, curve: Linear }, TempoPoint { at: Tick(15362), bpm: 191.55248461957387, curve: Jump }], t = 0.1666745757711949
+cc 563202f18e638e6595296cd2f6bcc72a55a355b15f341045638107a512ff5139 # shrinks to points = [TempoPoint { at: Tick(0), bpm: 1.0, curve: Linear }, TempoPoint { at: Tick(32), bpm: 855.5143149319513, curve: Jump }], t = 0.0034384338699019598
+cc 89a06c90bd66b0bff40b12d4fda02f4670ff7394f3c6cbfb87ae188e6b6917e6 # shrinks to points = [TempoPoint { at: Tick(0), bpm: 20.0, curve: Jump }, TempoPoint { at: Tick(1), bpm: 20.0, curve: Linear }, TempoPoint { at: Tick(365), bpm: 379.84670259408296, curve: Jump }], t = 0.16988875956986993
