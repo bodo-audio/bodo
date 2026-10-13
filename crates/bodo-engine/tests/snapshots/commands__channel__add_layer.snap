@@ -1,0 +1,22 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "children": [
+      "Kick",
+      "Clap"
+    ],
+    "name": "Big drums"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "children": [
+      "ch_00000000000000000000000415",
+      "ch_00000000000000000000000417"
+    ],
+    "name": "Big drums"
+  },
+  "undo": "Add layer Big drums"
+}

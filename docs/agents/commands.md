@@ -311,6 +311,52 @@ Example:
 }
 ```
 
+### `channel.add_layer`
+
+Adds a layer channel, which plays every one of its children on each note.
+
+- Effects: undoable
+- Menu: Add > Layer
+
+| Param | Type | Description |
+|---|---|---|
+| `children` | array of ChannelRef, optional | The channels it plays; the selected channels by default. |
+| `name` | string, optional | Its name; "Layer" by default. |
+
+Example:
+
+```json
+{
+  "children": [
+    "Kick",
+    "Clap"
+  ],
+  "name": "Big drums"
+}
+```
+
+### `channel.add_midi_out`
+
+Adds a channel that sends its notes to an external MIDI port.
+
+- Effects: undoable
+- Menu: Add > MIDI Out
+
+| Param | Type | Description |
+|---|---|---|
+| `midiChannel` | integer, optional | The MIDI channel, 1 to 16; 1 by default. |
+| `name` | string, optional | Its name; the port's name by default. |
+| `port` | string | The MIDI output port it sends to, by name. |
+
+Example:
+
+```json
+{
+  "midiChannel": 2,
+  "port": "IAC Bus 1"
+}
+```
+
 ### `channel.duplicate`
 
 Copies a channel's settings into a new channel after it (notes are not copied).
@@ -471,6 +517,29 @@ Example:
 }
 ```
 
+### `channel.set_layer`
+
+Sets the channels a layer plays.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The layer channel; the selected channel by default. |
+| `children` | array of ChannelRef | Every channel it plays, replacing the ones it had. |
+
+Example:
+
+```json
+{
+  "channel": "Big drums",
+  "children": [
+    "Kick",
+    "Snare"
+  ]
+}
+```
+
 ### `channel.set_midi_in`
 
 Binds a channel to a MIDI input port and optionally one MIDI channel, or removes the binding.
@@ -490,6 +559,27 @@ Example:
   "channel": "Kick",
   "midiChannel": 10,
   "port": "Pads"
+}
+```
+
+### `channel.set_midi_out`
+
+Sets the port and MIDI channel a MIDI Out channel sends to.
+
+- Effects: undoable
+
+| Param | Type | Description |
+|---|---|---|
+| `channel` | ChannelRef, optional | The MIDI Out channel; the selected channel by default. |
+| `midiChannel` | integer, optional | The MIDI channel, 1 to 16. |
+| `port` | string, optional | The MIDI output port it sends to. |
+
+Example:
+
+```json
+{
+  "channel": "IAC Bus 1",
+  "midiChannel": 10
 }
 ```
 
@@ -2884,6 +2974,77 @@ Example:
       "start": "2:1:0"
     }
   ]
+}
+```
+
+## sampler
+
+### `sampler.set`
+
+Sets any of a sampler channel's settings: the played part and loop, content options, declicking, envelopes, filter, stretch, precomputed effects and arpeggiator.
+
+- Effects: undoable
+- Calls in one gesture fold into one undo step.
+
+| Param | Type | Description |
+|---|---|---|
+| `arp` | Arp, optional | The arpeggiator. |
+| `channel` | ChannelRef, optional | The sampler channel; the selected channel by default. |
+| `declick` | DeclickMode, optional | Fades against clicks. |
+| `effects` | SampleFx, optional | Effects rendered into a copy of the sample. |
+| `end` | number, optional | Where the played part ends, 0 to 1 of the sample. |
+| `envelope` | Envelope, optional | The volume envelope. |
+| `filter` | FilterSettings, optional | The filter. |
+| `filterEnvelope` | Envelope, optional | The filter envelope. |
+| `highKey` | Key, optional | The highest key it plays. |
+| `keepOnDisk` | boolean, optional | Streams the sample from disk where the playback allows it. |
+| `loadRegions` | boolean, optional | Plays the file's regions, one per key from the root key. |
+| `loadSlices` | boolean, optional | Plays the slices between the file's markers, one per key from the root key. |
+| `loopEnd` | number, optional | The loop end, 0 to 1 of the sample. |
+| `loopMode` | Loop, optional | How the sample loops. |
+| `loopStart` | number, optional | The loop start, 0 to 1 of the sample. |
+| `lowKey` | Key, optional | The lowest key it plays. |
+| `oneShot` | boolean, optional | Plays the whole sample on every note however short the note. |
+| `pitchEnvelope` | Envelope, optional | The pitch envelope. |
+| `pitchRange` | number, optional | How far the pitch knob reaches, 1 to 48 semitones. |
+| `polyphony` | integer, optional | The most voices at once, 1 to 256. |
+| `resample` | boolean, optional | Converts the sample to the project's rate when it loads. |
+| `reverse` | boolean, optional | Plays the sample backwards. |
+| `rootKey` | Key, optional | The key that plays the sample at its own pitch, such as "C4" or 60. |
+| `start` | number, optional | Where the played part starts, 0 to 1 of the sample. |
+| `startOffset` | number, optional | Where notes start inside the played part, 0 to 1 of it. |
+| `stretch` | Stretch, optional | Time stretching. |
+
+Example:
+
+```json
+{
+  "arp": {
+    "direction": "upDown",
+    "enabled": true,
+    "rate": "1 step"
+  },
+  "channel": "Kick",
+  "declick": "smooth",
+  "effects": {
+    "fadeOut": 0.05,
+    "normalize": true
+  },
+  "end": 0.75,
+  "filter": {
+    "cutoff": 800,
+    "kind": "lowPass",
+    "resonance": 0.3
+  },
+  "filterEnvelope": {
+    "amount": 3,
+    "decay": 0.4,
+    "enabled": true
+  },
+  "loopEnd": 0.5,
+  "loopMode": "pingPong",
+  "loopStart": 0.25,
+  "oneShot": false
 }
 ```
 

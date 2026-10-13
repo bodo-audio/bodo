@@ -72,6 +72,13 @@ fn every_example_runs_validly_and_undoes_exactly() {
                 session.execute(setup, example).unwrap();
             }
         }
+        // Edits of a layer or a MIDI Out channel act on the one the adding example makes.
+        for (edit, setup) in [("channel.set_layer", "channel.add_layer"), ("channel.set_midi_out", "channel.add_midi_out")] {
+            if id == edit {
+                let example = session.registry().get(setup).unwrap().example.clone().unwrap();
+                session.execute(setup, example).unwrap();
+            }
+        }
         let spec = session.registry().get(id).unwrap();
         let example = spec.example.clone().unwrap_or_else(|| panic!("{id} has no example"));
         let undoable = spec.effects.undoable;
@@ -156,6 +163,10 @@ enum Op {
     AddChannel,
     RemoveChannel(usize),
     Route { from: usize, to: usize },
+    Sampler { channel: usize, start: f32, end: f32, cutoff: f32, arp: bool },
+    AddLayer { children: Vec<usize> },
+    SetLayer { layer: usize, children: Vec<usize> },
+    AddMidiOut { midi_channel: u8 },
     Undo,
     Redo,
 }
@@ -175,6 +186,16 @@ fn op() -> impl Strategy<Value = Op> {
         Just(Op::AddChannel),
         (0..6usize).prop_map(Op::RemoveChannel),
         (1..=17usize, 1..=17usize).prop_map(|(from, to)| Op::Route { from, to }),
+        (0..8usize, 0.0..1.0f32, 0.0..1.0f32, 20.0..20_000.0f32, any::<bool>()).prop_map(|(channel, start, end, cutoff, arp)| Op::Sampler {
+            channel,
+            start,
+            end,
+            cutoff,
+            arp
+        }),
+        prop::collection::vec(0..8usize, 0..4).prop_map(|children| Op::AddLayer { children }),
+        (0..8usize, prop::collection::vec(0..8usize, 0..4)).prop_map(|(layer, children)| Op::SetLayer { layer, children }),
+        (0..=17u8).prop_map(|midi_channel| Op::AddMidiOut { midi_channel }),
         Just(Op::Undo),
         Just(Op::Redo),
     ]
@@ -198,6 +219,19 @@ fn apply(session: &mut Session, op: &Op) {
         Op::AddChannel => session.invoke(&call("channel.add", json!({ "sample": "factory:Packs/Bodo Drums/Rim.wav" }))),
         Op::RemoveChannel(channel) => session.invoke(&call("channel.remove", json!({ "channels": [channel + 1] }))),
         Op::Route { from, to } => session.invoke(&call("mixer.add_route", json!({ "from": format!("insert:{from}"), "to": format!("insert:{to}") }))),
+        Op::Sampler { channel, start, end, cutoff, arp } => session.invoke(&call(
+            "sampler.set",
+            json!({ "channel": channel + 1, "start": start, "end": end, "filter": { "kind": "lowPass", "cutoff": cutoff }, "arp": { "enabled": arp } }),
+        )),
+        Op::AddLayer { children } => {
+            let children: Vec<usize> = children.iter().map(|c| c + 1).collect();
+            session.invoke(&call("channel.add_layer", json!({ "children": children })))
+        }
+        Op::SetLayer { layer, children } => {
+            let children: Vec<usize> = children.iter().map(|c| c + 1).collect();
+            session.invoke(&call("channel.set_layer", json!({ "channel": layer + 1, "children": children })))
+        }
+        Op::AddMidiOut { midi_channel } => session.invoke(&call("channel.add_midi_out", json!({ "port": "Synth", "midiChannel": midi_channel }))),
         Op::Undo => {
             session.undo();
             return;

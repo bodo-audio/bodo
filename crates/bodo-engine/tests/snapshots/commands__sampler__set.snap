@@ -1,0 +1,118 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "arp": {
+      "direction": "upDown",
+      "enabled": true,
+      "rate": "1 step"
+    },
+    "channel": "Kick",
+    "declick": "smooth",
+    "effects": {
+      "fadeOut": 0.05,
+      "normalize": true
+    },
+    "end": 0.75,
+    "filter": {
+      "cutoff": 800,
+      "kind": "lowPass",
+      "resonance": 0.3
+    },
+    "filterEnvelope": {
+      "amount": 3,
+      "decay": 0.4,
+      "enabled": true
+    },
+    "loopEnd": 0.5,
+    "loopMode": "pingPong",
+    "loopStart": 0.25,
+    "oneShot": false
+  },
+  "result": {
+    "channel": "ch_00000000000000000000000415",
+    "sampler": {
+      "arp": {
+        "direction": "upDown",
+        "enabled": true,
+        "gate": 0.5,
+        "octaves": 1,
+        "rate": 240,
+        "repeat": 1
+      },
+      "declick": "smooth",
+      "effects": {
+        "crossfade": 0.0,
+        "fadeIn": 0.0,
+        "fadeOut": 0.05000000074505806,
+        "fadeStereo": false,
+        "normalize": true,
+        "removeDc": false,
+        "reversePolarity": false,
+        "swapStereo": false,
+        "trim": false
+      },
+      "end": 0.75,
+      "envelope": {
+        "attack": 0.0,
+        "decay": 0.0,
+        "release": 0.01,
+        "sustain": 1.0
+      },
+      "filter": {
+        "cutoff": 800.0,
+        "keyTracking": 0.0,
+        "kind": "lowPass",
+        "resonance": 0.30000001192092896
+      },
+      "filterEnvelope": {
+        "adsr": {
+          "attack": 0.0,
+          "decay": 0.4,
+          "release": 0.1,
+          "sustain": 0.0
+        },
+        "amount": 3.0,
+        "enabled": true
+      },
+      "keepOnDisk": false,
+      "keyRange": [
+        0,
+        127
+      ],
+      "loadRegions": false,
+      "loadSlices": false,
+      "loopEnd": 0.5,
+      "loopMode": "pingPong",
+      "loopStart": 0.25,
+      "oneShot": false,
+      "pitchEnvelope": {
+        "adsr": {
+          "attack": 0.0,
+          "decay": 0.3,
+          "release": 0.1,
+          "sustain": 0.0
+        },
+        "amount": 0.0,
+        "enabled": false
+      },
+      "pitchRange": 2.0,
+      "polyphony": 32,
+      "resample": true,
+      "reverse": false,
+      "rootKey": 60,
+      "sample": "smp_00000000000000000000000414",
+      "start": 0.0,
+      "startOffset": 0.0,
+      "stretch": {
+        "mode": "resample",
+        "multiplier": 1.0,
+        "pitchCents": 0.0,
+        "timeBeats": null
+      }
+    }
+  },
+  "undo": "Edit sampler Kick"
+}

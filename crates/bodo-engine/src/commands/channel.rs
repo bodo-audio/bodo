@@ -464,7 +464,183 @@ fn set_root_key(ctx: &mut Ctx<'_>, p: SetRootKey) -> Result<Value, CommandError>
     Ok(json!({ "channel": id, "rootKey": key }))
 }
 
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AddLayer {
+    /// Its name; "Layer" by default.
+    name: Option<String>,
+    /// The channels it plays; the selected channels by default.
+    #[serde(default)]
+    children: Vec<ChannelRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetLayer {
+    /// The layer channel; the selected channel by default.
+    channel: Option<ChannelRef>,
+    /// Every channel it plays, replacing the ones it had.
+    children: Vec<ChannelRef>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct AddMidiOut {
+    /// Its name; the port's name by default.
+    name: Option<String>,
+    /// The MIDI output port it sends to, by name.
+    port: String,
+    /// The MIDI channel, 1 to 16; 1 by default.
+    midi_channel: Option<u8>,
+}
+
+#[derive(Debug, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SetMidiOut {
+    /// The MIDI Out channel; the selected channel by default.
+    channel: Option<ChannelRef>,
+    /// The MIDI output port it sends to.
+    port: Option<String>,
+    /// The MIDI channel, 1 to 16.
+    midi_channel: Option<u8>,
+}
+
+/// A new channel of `kind` named `base` (or a free variant of it), at the end of the channel rack and selected.
+fn add_kind(ctx: &mut Ctx<'_>, base: &str, kind: ChannelKind) -> (ChannelId, String) {
+    let name = unique_name(base.trim(), ctx.project.channels.values().map(|c| c.name.as_str()));
+    let id = ctx.ids().channel();
+    let channel = Channel {
+        id,
+        name: name.clone(),
+        color: palette::channel_color(ctx.project.channels.len()),
+        kind,
+        target: None,
+        volume: 1.0,
+        pan: 0.0,
+        pitch_cents: 0.0,
+        swing: 0.0,
+        muted: false,
+        midi_in: None,
+        group: None,
+    };
+    ctx.project.channels.insert(id, Arc::new(channel));
+    ctx.project.rack_order.push_back(id);
+    ctx.editor.channel = Some(id);
+    ctx.editor.channels = BTreeSet::from([id]);
+    (id, name)
+}
+
+/// The children for layer `layer`: they must exist, and none may be the layer or a layer that plays it.
+fn layer_children(ctx: &Ctx<'_>, layer: Option<ChannelId>, refs: &[ChannelRef]) -> Result<imbl::Vector<ChannelId>, CommandError> {
+    let mut children = imbl::Vector::new();
+    for r in refs {
+        let id = ctx.channel(Some(r))?;
+        if let Some(layer) = layer
+            && (id == layer || plays(&ctx.project, id, layer))
+        {
+            return Err(CommandError::rejected(format!("{} would play itself through {}", name(ctx, layer), name(ctx, id))));
+        }
+        if !children.contains(&id) {
+            children.push_back(id);
+        }
+    }
+    Ok(children)
+}
+
+/// Whether channel `from`, a layer, plays `target` through its children.
+fn plays(project: &bodo_model::Project, from: ChannelId, target: ChannelId) -> bool {
+    let mut stack = vec![from];
+    let mut seen = BTreeSet::new();
+    while let Some(id) = stack.pop() {
+        if !seen.insert(id) {
+            continue;
+        }
+        if let Some(ChannelKind::Layer { children }) = project.channels.get(&id).map(|c| &c.kind) {
+            if children.contains(&target) {
+                return true;
+            }
+            stack.extend(children.iter().copied());
+        }
+    }
+    false
+}
+
+fn add_layer(ctx: &mut Ctx<'_>, p: AddLayer) -> Result<Value, CommandError> {
+    let refs = if p.children.is_empty() { ctx.editor.channels.iter().map(|id| ChannelRef::new(id.to_string())).collect() } else { p.children };
+    let children = layer_children(ctx, None, &refs)?;
+    let base = p.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| String::from("Layer"));
+    let (id, name) = add_kind(ctx, &base, ChannelKind::Layer { children: children.clone() });
+    ctx.set_label(format!("Add layer {name}"));
+    Ok(json!({ "channel": id, "name": name, "children": children.iter().collect::<Vec<_>>() }))
+}
+
+fn set_layer(ctx: &mut Ctx<'_>, p: SetLayer) -> Result<Value, CommandError> {
+    let id = ctx.channel(p.channel.as_ref())?;
+    if !matches!(ctx.project.channels.get(&id).map(|c| &c.kind), Some(ChannelKind::Layer { .. })) {
+        return Err(CommandError::rejected(format!("{} is not a layer", name(ctx, id))));
+    }
+    let children = layer_children(ctx, Some(id), &p.children)?;
+    let result: Vec<ChannelId> = children.iter().copied().collect();
+    ctx.edit_channel(id, |c| c.kind = ChannelKind::Layer { children })?;
+    ctx.set_label(format!("Set the channels {} plays", name(ctx, id)));
+    Ok(json!({ "channel": id, "children": result }))
+}
+
+/// A MIDI channel from 1 to 16, stored from 0.
+fn midi_channel(value: u8) -> Result<u8, CommandError> {
+    in_range("midiChannel", f64::from(value), 1.0..=16.0)?;
+    Ok(value - 1)
+}
+
+fn add_midi_out(ctx: &mut Ctx<'_>, p: AddMidiOut) -> Result<Value, CommandError> {
+    if p.port.trim().is_empty() {
+        return Err(CommandError::invalid("give the MIDI port's name"));
+    }
+    let channel = midi_channel(p.midi_channel.unwrap_or(1))?;
+    let base = p.name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| p.port.clone());
+    let (id, name) = add_kind(ctx, &base, ChannelKind::MidiOut { port: p.port.clone(), channel });
+    ctx.set_label(format!("Add MIDI Out {name}"));
+    Ok(json!({ "channel": id, "name": name, "port": p.port, "midiChannel": channel + 1 }))
+}
+
+fn set_midi_out(ctx: &mut Ctx<'_>, p: SetMidiOut) -> Result<Value, CommandError> {
+    let id = ctx.channel(p.channel.as_ref())?;
+    let Some(ChannelKind::MidiOut { port, channel }) = ctx.project.channels.get(&id).map(|c| c.kind.clone()) else {
+        return Err(CommandError::rejected(format!("{} is not a MIDI Out channel", name(ctx, id))));
+    };
+    let port = p.port.unwrap_or(port);
+    let channel = match p.midi_channel {
+        Some(value) => midi_channel(value)?,
+        None => channel,
+    };
+    ctx.edit_channel(id, |c| c.kind = ChannelKind::MidiOut { port: port.clone(), channel })?;
+    ctx.set_label(format!("Set the MIDI port of {}", name(ctx, id)));
+    Ok(json!({ "channel": id, "port": port, "midiChannel": channel + 1 }))
+}
+
 pub(super) fn register(r: &mut Registry) {
+    r.edit(
+        "channel.add_layer",
+        "Add layer",
+        "Adds a layer channel, which plays every one of its children on each note.",
+        Effects::UNDOABLE,
+        add_layer,
+    )
+    .example(json!({ "name": "Big drums", "children": ["Kick", "Clap"] }))
+    .menu("Add/Layer");
+    r.edit("channel.set_layer", "Set layer children", "Sets the channels a layer plays.", Effects::UNDOABLE, set_layer)
+        .example(json!({ "channel": "Big drums", "children": ["Kick", "Snare"] }));
+    r.edit("channel.add_midi_out", "Add MIDI Out", "Adds a channel that sends its notes to an external MIDI port.", Effects::UNDOABLE, add_midi_out)
+        .example(json!({ "port": "IAC Bus 1", "midiChannel": 2 }))
+        .menu("Add/MIDI Out");
+    r.edit(
+        "channel.set_midi_out",
+        "Set MIDI Out port",
+        "Sets the port and MIDI channel a MIDI Out channel sends to.",
+        Effects::UNDOABLE,
+        set_midi_out,
+    )
+    .example(json!({ "channel": "IAC Bus 1", "midiChannel": 10 }));
     r.edit("channel.add", "Add channel", "Adds a sampler channel to the channel rack, optionally loading a sample.", Effects::UNDOABLE, add)
         .example(json!({ "sample": "factory:Packs/Bodo Drums/Kick.wav", "name": "Kick" }))
         .menu("Add/Channel");

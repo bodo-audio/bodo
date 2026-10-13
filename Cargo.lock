@@ -712,6 +712,7 @@ dependencies = [
  "bodo-io",
  "bodo-kit-audio",
  "bodo-kit-core",
+ "bodo-kit-dsp",
  "bodo-kit-graph",
  "bodo-kit-midi",
  "bodo-kit-music",

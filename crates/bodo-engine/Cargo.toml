@@ -11,6 +11,7 @@ publish.workspace = true
 bodo-kit-audio.workspace = true
 bodo-io.workspace = true
 bodo-kit-core = { workspace = true, features = ["serde"] }
+bodo-kit-dsp.workspace = true
 bodo-kit-graph.workspace = true
 bodo-kit-midi.workspace = true
 bodo-kit-music.workspace = true

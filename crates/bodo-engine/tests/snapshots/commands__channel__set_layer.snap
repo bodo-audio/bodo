@@ -1,0 +1,21 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "channel": "Big drums",
+    "children": [
+      "Kick",
+      "Snare"
+    ]
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "children": [
+      "ch_00000000000000000000000415",
+      "ch_0000000000000000000000041B"
+    ]
+  },
+  "undo": "Set the channels Big drums plays"
+}

@@ -17,6 +17,7 @@ mod playlist;
 mod preset;
 mod project;
 mod record;
+mod sampler;
 mod transport;
 
 use bodo_kit_core::Tick;
@@ -39,6 +40,7 @@ pub(crate) fn register(registry: &mut Registry) {
     midi::register(registry);
     note_tools::register(registry);
     record::register(registry);
+    sampler::register(registry);
     browser::register(registry);
     channel::register(registry);
     clip::register(registry);

@@ -1,0 +1,17 @@
+---
+source: crates/bodo-engine/tests/commands.rs
+expression: snapshot
+---
+{
+  "params": {
+    "midiChannel": 2,
+    "port": "IAC Bus 1"
+  },
+  "result": {
+    "channel": "ch_0000000000000000000000041P",
+    "midiChannel": 2,
+    "name": "IAC Bus 1",
+    "port": "IAC Bus 1"
+  },
+  "undo": "Add MIDI Out IAC Bus 1"
+}
